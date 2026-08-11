@@ -9,6 +9,25 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+# Preserved template/demo sources require generated files that were not present
+# in the starting project. They are outside the active GoBuddy Phase 1 app.
+analyzer:
+  exclude:
+    - flutter_mvvm_riverpod/**
+    - lib/constants/**
+    - lib/environment/**
+    - lib/extensions/**
+    - lib/features/authentication/**
+    - lib/features/common/**
+    - lib/features/hero_list/**
+    - lib/features/main/**
+    - lib/features/onboarding/**
+    - lib/features/premium/**
+    - lib/features/profile/**
+    - lib/routing/**
+    - lib/theme/**
+    - lib/utils/**
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`
