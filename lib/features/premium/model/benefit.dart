@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class Benefit {
-  final Icon icon;
+  final Widget icon;
   final String title;
   final String description;
 

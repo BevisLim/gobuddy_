@@ -34,9 +34,9 @@ class TrialTimeline extends StatelessWidget {
     return Column(
       children: _trials
           .mapIndexed((index, trial) => TrialItem(
-        trial: trial,
-        isLast: index == _trials.length - 1,
-      ))
+                trial: trial,
+                isLast: index == _trials.length - 1,
+              ))
           .toList(),
     );
   }
@@ -65,8 +65,8 @@ class TrialItem extends StatelessWidget {
                 color: AppColors.mono100.withAlpha(220),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(
-                trial.icon,
+              child: HugeIcon(
+                icon: trial.icon,
                 color: AppColors.mono0,
                 size: 24,
               ),

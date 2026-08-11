@@ -25,6 +25,9 @@ AuthenticationRepository authenticationRepository(Ref ref) {
 class AuthenticationRepository {
   const AuthenticationRepository();
 
+  static final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
+  static Future<void>? _googleSignInInitialization;
+
   Future<void> signInWithMagicLink(String email) async {
     // TODO: fake data
     return;
@@ -91,19 +94,20 @@ class AuthenticationRepository {
         Constants.googleUserInfoScope,
       ];
 
-      final GoogleSignIn googleSignIn = GoogleSignIn(
+      _googleSignInInitialization ??= _googleSignIn.initialize(
         clientId: Env.googleClientId,
         serverClientId: Env.googleServerClientId,
-        scopes: scopes,
       );
-      final googleUser = await googleSignIn.signIn();
-      final googleAuth = await googleUser!.authentication;
-      final accessToken = googleAuth.accessToken;
-      final idToken = googleAuth.idToken;
+      await _googleSignInInitialization;
 
-      if (accessToken == null) {
-        throw Exception(LocaleKeys.accessTokenNotFound.tr());
+      if (!_googleSignIn.supportsAuthenticate()) {
+        throw UnsupportedError(
+            'Google Sign-In is not supported on this platform.');
       }
+
+      final googleUser = await _googleSignIn.authenticate(scopeHint: scopes);
+      final googleAuth = googleUser.authentication;
+      final idToken = googleAuth.idToken;
 
       if (idToken == null) {
         throw Exception(LocaleKeys.idTokenNotFound.tr());
@@ -112,7 +116,6 @@ class AuthenticationRepository {
       final result = await supabase.auth.signInWithIdToken(
         provider: OAuthProvider.google,
         idToken: idToken,
-        accessToken: accessToken,
       );
       return result;
     } on AuthException catch (error) {
