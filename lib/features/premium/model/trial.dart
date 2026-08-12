@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class Trial {
-  final IconData icon;
+  final List<List<dynamic>> icon;
   final String title;
   final String description;
 

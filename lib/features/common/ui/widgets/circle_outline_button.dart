@@ -6,7 +6,7 @@ import '/extensions/build_context_extension.dart';
 import 'material_ink_well.dart';
 
 class CircleOutlineButton extends ConsumerWidget {
-  final IconData icon;
+  final List<List<dynamic>> icon;
   final Function()? onPressed;
   final Color? color;
 

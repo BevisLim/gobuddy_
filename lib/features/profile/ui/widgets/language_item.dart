@@ -53,7 +53,7 @@ class LanguageItem extends ConsumerWidget {
                 ),
               ),
               if (language.code == context.locale.languageCode)
-                Icon(HugeIcons.strokeRoundedTick01),
+                HugeIcon(icon: HugeIcons.strokeRoundedTick01),
             ],
           ),
         ),

@@ -115,6 +115,8 @@ lib/
 
 Contributions, issues, and feature requests are welcome!
 
+For the required Flutter MVVM module structure and group workflow, read [Module Contribution Guide](MODULE_CONTRIBUTION_GUIDE.md).
+
 ## 📝 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

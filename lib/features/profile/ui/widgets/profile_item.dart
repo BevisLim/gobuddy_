@@ -7,7 +7,7 @@ import '../../../common/ui/widgets/material_ink_well.dart';
 import 'common_rounded_item.dart';
 
 class ProfileItem extends StatelessWidget {
-  final IconData icon;
+  final List<List<dynamic>> icon;
   final String text;
   final Function() onTap;
   final Color? textColor;
