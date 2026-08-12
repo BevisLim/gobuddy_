@@ -11,7 +11,7 @@ import '../../../constants/assets.dart';
 import '../../../constants/constants.dart';
 import '../../../extensions/build_context_extension.dart';
 import '../../../generated/locale_keys.g.dart';
-import '../../../main.dart';
+import '../../common/remote/supabase_client.dart';
 import '../../../routing/routes.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/global_loading.dart';

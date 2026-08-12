@@ -13,7 +13,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '/constants/constants.dart';
 import '/environment/env.dart';
 import '/generated/locale_keys.g.dart';
-import '/main.dart';
+import '../../common/remote/supabase_client.dart';
 
 part 'authentication_repository.g.dart';
 
