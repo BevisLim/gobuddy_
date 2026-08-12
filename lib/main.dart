@@ -5,13 +5,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'environment/env.dart';
 import 'routing/router.dart';
+import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await EasyLocalization.ensureInitialized();
   await Supabase.initialize(
     url: Env.supabaseUrl,
-    anonKey: Env.supabaseAnonKey,
+    publishableKey: Env.supabaseAnonKey,
   );
 
   runApp(
@@ -32,10 +33,7 @@ class GoBuddyApp extends StatelessWidget {
     return MaterialApp.router(
       title: 'GoBuddy',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF7C3AED)),
-      ),
+      theme: AppTheme.materialTheme,
       routerConfig: router,
       localizationsDelegates: context.localizationDelegates,
       supportedLocales: context.supportedLocales,

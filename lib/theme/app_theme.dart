@@ -88,4 +88,31 @@ class AppTheme {
     fontSize: 12,
     fontWeight: FontWeight.w400,
   );
+
+  static ThemeData get materialTheme {
+    const primary = Color(0xFF7C3AED);
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: primary,
+      brightness: Brightness.light,
+      surface: const Color(0xFFF7F4FD),
+    );
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: colorScheme,
+      scaffoldBackgroundColor: const Color(0xFFF7F4FD),
+      textTheme: GoogleFonts.nunitoTextTheme(),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFE8E1F4)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFE8E1F4)),
+        ),
+      ),
+    );
+  }
 }

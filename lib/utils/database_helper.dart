@@ -2,6 +2,7 @@ import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../constants/database_constants.dart';
+import '../features/group_expense/repository/group_expense_database_schema.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -21,14 +22,23 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
+      onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _createDB,
+      onUpgrade: _upgradeDB,
     );
   }
 
   Future<void> _createDB(Database db, int version) async {
     // Heroes table
     await db.execute(HeroTable.createTableQuery);
+    await GroupExpenseDatabaseSchema.createAndSeed(db);
+  }
+
+  Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await GroupExpenseDatabaseSchema.createAndSeed(db);
+    }
   }
 
   Future<void> close() async {

@@ -7,6 +7,16 @@ import '../features/authentication/ui/register_screen.dart';
 import '../features/authentication/ui/sign_in_screen.dart';
 import '../features/authentication/ui/welcome_screen.dart';
 import '../features/matchmaking/ui/matchmaking_shell_screen.dart';
+import '../features/group_expense/ui/expense_dashboard_screen.dart';
+import '../features/group_expense/ui/create_budget_screen.dart';
+import '../features/group_expense/ui/add_expense_screen.dart';
+import '../features/group_expense/ui/edit_budget_screen.dart';
+import '../features/group_expense/ui/edit_expense_screen.dart';
+import '../features/group_expense/ui/expense_details_screen.dart';
+import '../features/group_expense/ui/outstanding_balance_screen.dart';
+import '../features/group_expense/ui/record_settlement_screen.dart';
+import '../features/group_expense/ui/settlement_history_screen.dart';
+import '../features/group_expense/ui/budget_analytics_screen.dart';
 import '../features/onboarding/ui/onboarding_screen.dart';
 import '../features/onboarding/ui/splash_screen.dart';
 import '../features/premium/ui/premium_screen.dart';
@@ -75,7 +85,7 @@ class SlideRouteTransition extends CustomTransitionPage<void> {
 }
 
 final GoRouter router = GoRouter(
-  initialLocation: Routes.splash,
+  initialLocation: Routes.expenseDashboard,
   routes: [
     GoRoute(
       path: Routes.splash,
@@ -113,6 +123,92 @@ final GoRouter router = GoRouter(
       path: Routes.main,
       pageBuilder: (context, state) =>
           state.slidePage(const MatchmakingShellScreen()),
+    ),
+    GoRoute(
+      path: Routes.expenseDashboard,
+      pageBuilder: (context, state) =>
+          state.slidePage(const ExpenseDashboardScreen()),
+    ),
+    GoRoute(
+      path: '${Routes.createBudget}/:tripId',
+      pageBuilder: (context, state) => state.slidePage(
+        CreateBudgetScreen(
+          tripId: int.parse(state.pathParameters['tripId']!),
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '${Routes.editBudget}/:tripId',
+      pageBuilder: (context, state) => state.slidePage(
+        EditBudgetScreen(
+          tripId: int.parse(state.pathParameters['tripId']!),
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '${Routes.addExpense}/:tripId',
+      pageBuilder: (context, state) => state.slidePage(
+        AddExpenseScreen(
+          tripId: int.parse(state.pathParameters['tripId']!),
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '${Routes.expenseDetails}/:tripId/:expenseId',
+      pageBuilder: (context, state) => state.slidePage(
+        ExpenseDetailsScreen(
+          tripId: int.parse(state.pathParameters['tripId']!),
+          expenseId: int.parse(state.pathParameters['expenseId']!),
+          initialSuccessMessage: state.uri.queryParameters['message'],
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '${Routes.editExpense}/:tripId/:expenseId',
+      pageBuilder: (context, state) => state.slidePage(
+        EditExpenseScreen(
+          tripId: int.parse(state.pathParameters['tripId']!),
+          expenseId: int.parse(state.pathParameters['expenseId']!),
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '${Routes.outstandingBalance}/:tripId',
+      pageBuilder: (context, state) => state.slidePage(
+        OutstandingBalanceScreen(
+          tripId: int.parse(state.pathParameters['tripId']!),
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '${Routes.recordSettlement}/:tripId',
+      pageBuilder: (context, state) => state.slidePage(
+        RecordSettlementScreen(
+          tripId: int.parse(state.pathParameters['tripId']!),
+          initialPayerId: int.tryParse(
+            state.uri.queryParameters['payerId'] ?? '',
+          ),
+          initialPayeeId: int.tryParse(
+            state.uri.queryParameters['payeeId'] ?? '',
+          ),
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '${Routes.settlementHistory}/:tripId',
+      pageBuilder: (context, state) => state.slidePage(
+        SettlementHistoryScreen(
+          tripId: int.parse(state.pathParameters['tripId']!),
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '${Routes.budgetAnalytics}/:tripId',
+      pageBuilder: (context, state) => state.slidePage(
+        BudgetAnalyticsScreen(
+          tripId: int.parse(state.pathParameters['tripId']!),
+        ),
+      ),
     ),
     GoRoute(
       path: Routes.accountInformation,
