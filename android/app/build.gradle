@@ -40,7 +40,7 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = '21'
+        jvmTarget = "21"
     }
 
     defaultConfig {
