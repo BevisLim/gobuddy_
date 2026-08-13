@@ -22,4 +22,5 @@ class Routes {
   static const recordSettlement = '/expenses/settlement/record';
   static const settlementHistory = '/expenses/settlement/history';
   static const budgetAnalytics = '/expenses/analytics';
+  static const userAccount = '/user_account';
 }

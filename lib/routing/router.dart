@@ -17,6 +17,7 @@ import '../features/group_expense/ui/outstanding_balance_screen.dart';
 import '../features/group_expense/ui/record_settlement_screen.dart';
 import '../features/group_expense/ui/settlement_history_screen.dart';
 import '../features/group_expense/ui/budget_analytics_screen.dart';
+import "../features/user_account/ui/user_account_shell.dart";
 import '../features/onboarding/ui/onboarding_screen.dart';
 import '../features/onboarding/ui/splash_screen.dart';
 import '../features/premium/ui/premium_screen.dart';
@@ -209,6 +210,8 @@ final GoRouter router = GoRouter(
           tripId: int.parse(state.pathParameters['tripId']!),
         ),
       ),
+      path: Routes.userAccount,
+      pageBuilder: (context, state) => state.slidePage(const UserAccountScreen()),
     ),
     GoRoute(
       path: Routes.accountInformation,
