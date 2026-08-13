@@ -7,6 +7,7 @@ import '../features/authentication/ui/register_screen.dart';
 import '../features/authentication/ui/sign_in_screen.dart';
 import '../features/authentication/ui/welcome_screen.dart';
 import '../features/matchmaking/ui/matchmaking_shell_screen.dart';
+import "../features/user_account/ui/user_account_shell.dart";
 import '../features/onboarding/ui/onboarding_screen.dart';
 import '../features/onboarding/ui/splash_screen.dart';
 import '../features/premium/ui/premium_screen.dart';
@@ -113,6 +114,10 @@ final GoRouter router = GoRouter(
       path: Routes.main,
       pageBuilder: (context, state) =>
           state.slidePage(const MatchmakingShellScreen()),
+    ),
+    GoRoute(
+      path: Routes.userAccount,
+      pageBuilder: (context, state) => state.slidePage(const UserAccountScreen()),
     ),
     GoRoute(
       path: Routes.accountInformation,
