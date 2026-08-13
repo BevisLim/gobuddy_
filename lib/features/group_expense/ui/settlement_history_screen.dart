@@ -13,7 +13,6 @@ import 'view_model/settlement_view_model.dart';
 import 'widgets/empty_state.dart';
 import 'widgets/budget_feedback_panel.dart';
 import 'widgets/settlement_card.dart';
-import 'widgets/group_expense_bottom_navigation.dart';
 import 'widgets/load_error_state.dart';
 import 'widgets/group_expense_app_bar.dart';
 
@@ -141,10 +140,6 @@ class SettlementHistoryScreen extends ConsumerWidget {
             ),
           ),
         ),
-      ),
-      bottomNavigationBar: GroupExpenseBottomNavigation(
-        tripId: tripId,
-        selectedIndex: 2,
       ),
     );
   }

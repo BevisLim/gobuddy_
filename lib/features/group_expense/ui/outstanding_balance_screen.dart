@@ -7,7 +7,6 @@ import '../model/money_utils.dart';
 import 'view_model/balance_view_model.dart';
 import 'widgets/app_section_header.dart';
 import 'widgets/balance_card.dart';
-import 'widgets/group_expense_bottom_navigation.dart';
 import 'widgets/load_error_state.dart';
 import 'widgets/group_expense_app_bar.dart';
 
@@ -137,10 +136,6 @@ class OutstandingBalanceScreen extends ConsumerWidget {
             ),
           ),
         ),
-      ),
-      bottomNavigationBar: GroupExpenseBottomNavigation(
-        tripId: tripId,
-        selectedIndex: 1,
       ),
     );
   }

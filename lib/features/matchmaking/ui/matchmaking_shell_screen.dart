@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../common/ui/widgets/app_module_navigation.dart';
 import '../model/matchmaking_page.dart';
 import 'view_model/matchmaking_view_model.dart';
 
@@ -52,16 +53,12 @@ class MatchmakingShellScreen extends ConsumerWidget {
         ApplicantPage(onBack: () => viewModel.goTo(MatchmakingPage.manage)),
       MatchmakingPage.profile => const ProfilePage(),
     };
-    final navPages = {
-      MatchmakingPage.discover,
-      MatchmakingPage.myTrips,
-      MatchmakingPage.profile
-    };
     return Scaffold(
       body: SafeArea(child: content),
-      bottomNavigationBar: navPages.contains(page)
-          ? BottomNav(tab: state.selectedTab, onTap: viewModel.selectTab)
-          : null,
+      bottomNavigationBar:
+          page == MatchmakingPage.discover || page == MatchmakingPage.myTrips
+              ? const AppModuleNavigation(selectedIndex: 0)
+              : null,
       floatingActionButton: page == MatchmakingPage.discover
           ? FloatingActionButton(
               onPressed: () => viewModel.goTo(MatchmakingPage.create),
@@ -105,6 +102,10 @@ class DiscoverPage extends StatelessWidget {
                 IconButton(
                     onPressed: () => onGo(MatchmakingPage.filters),
                     icon: const Icon(Icons.tune_rounded, color: _ink)),
+                IconButton(
+                    tooltip: 'My Trips',
+                    onPressed: () => onGo(MatchmakingPage.myTrips),
+                    icon: const Icon(Icons.luggage_outlined, color: _ink)),
                 IconButton(
                     onPressed: () {},
                     icon: const Icon(Icons.notifications_none_rounded,
@@ -699,31 +700,6 @@ class Avatar extends StatelessWidget {
               color: Colors.white,
               fontSize: size * .38,
               fontWeight: FontWeight.w700)));
-}
-
-class BottomNav extends StatelessWidget {
-  final int tab;
-  final ValueChanged<int> onTap;
-  const BottomNav({super.key, required this.tab, required this.onTap});
-  @override
-  Widget build(BuildContext context) => NavigationBar(
-          selectedIndex: tab,
-          onDestinationSelected: onTap,
-          height: 68,
-          destinations: const [
-            NavigationDestination(
-                icon: Icon(Icons.explore_outlined),
-                selectedIcon: Icon(Icons.explore),
-                label: 'Discover'),
-            NavigationDestination(
-                icon: Icon(Icons.luggage_outlined),
-                selectedIcon: Icon(Icons.luggage),
-                label: 'My Trips'),
-            NavigationDestination(
-                icon: Icon(Icons.person_outline),
-                selectedIcon: Icon(Icons.person),
-                label: 'Profile')
-          ]);
 }
 
 class ChipButton extends StatelessWidget {

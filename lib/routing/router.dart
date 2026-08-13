@@ -86,7 +86,7 @@ class SlideRouteTransition extends CustomTransitionPage<void> {
 }
 
 final GoRouter router = GoRouter(
-  initialLocation: Routes.expenseDashboard,
+  initialLocation: Routes.main,
   routes: [
     GoRoute(
       path: Routes.splash,
@@ -210,8 +210,11 @@ final GoRouter router = GoRouter(
           tripId: int.parse(state.pathParameters['tripId']!),
         ),
       ),
+    ),
+    GoRoute(
       path: Routes.userAccount,
-      pageBuilder: (context, state) => state.slidePage(const UserAccountScreen()),
+      pageBuilder: (context, state) =>
+          state.slidePage(const UserAccountScreen()),
     ),
     GoRoute(
       path: Routes.accountInformation,
