@@ -3,8 +3,6 @@ import 'package:go_router/go_router.dart';
 
 import '../constants/constants.dart';
 import '../features/authentication/ui/otp_screen.dart';
-import '../features/authentication/ui/register_screen.dart';
-import '../features/authentication/ui/sign_in_screen.dart';
 import '../features/authentication/ui/welcome_screen.dart';
 import '../features/matchmaking/ui/matchmaking_shell_screen.dart';
 import '../features/group_expense/ui/expense_dashboard_screen.dart';
@@ -19,7 +17,9 @@ import '../features/group_expense/ui/settlement_history_screen.dart';
 import '../features/group_expense/ui/budget_analytics_screen.dart';
 import "../features/user_account/ui/user_account_shell.dart";
 import '../features/onboarding/ui/onboarding_screen.dart';
-import '../features/onboarding/ui/splash_screen.dart';
+import '../features/user_account/ui/app_launching_screen.dart';
+import '../features/user_account/ui/login_screen.dart';
+import '../features/user_account/ui/register_account_screen.dart';
 import '../features/premium/ui/premium_screen.dart';
 import '../features/profile/model/profile.dart';
 import '../features/profile/ui/account_info_screen.dart';
@@ -86,11 +86,14 @@ class SlideRouteTransition extends CustomTransitionPage<void> {
 }
 
 final GoRouter router = GoRouter(
-  initialLocation: Routes.main,
+  initialLocation: Routes.splash,
   routes: [
     GoRoute(
       path: Routes.splash,
-      pageBuilder: (context, state) => state.slidePage(const SplashScreen()),
+      pageBuilder: (context, state) => state.slidePage(
+        const AppLaunchingScreen(),
+        direction: SlideDirection.up,
+      ),
     ),
     GoRoute(
       path: Routes.welcome,
@@ -98,11 +101,12 @@ final GoRouter router = GoRouter(
     ),
     GoRoute(
       path: Routes.register,
-      pageBuilder: (context, state) => state.slidePage(const RegisterScreen()),
+      pageBuilder: (context, state) =>
+          state.slidePage(const RegisterAccountScreen()),
     ),
     GoRoute(
       path: Routes.login,
-      pageBuilder: (context, state) => state.slidePage(const SignInScreen()),
+      pageBuilder: (context, state) => state.slidePage(const LoginScreen()),
     ),
     GoRoute(
         path: Routes.otp,
