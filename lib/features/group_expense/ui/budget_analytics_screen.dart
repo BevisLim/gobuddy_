@@ -8,7 +8,6 @@ import 'view_model/analytics_view_model.dart';
 import 'widgets/app_section_header.dart';
 import 'widgets/budget_progress_bar.dart';
 import 'widgets/empty_state.dart';
-import 'widgets/group_expense_bottom_navigation.dart';
 import 'widgets/spending_trend_chart.dart';
 import 'widgets/summary_metric_card.dart';
 import 'widgets/load_error_state.dart';
@@ -77,10 +76,6 @@ class BudgetAnalyticsScreen extends ConsumerWidget {
             ),
           ),
         ),
-      ),
-      bottomNavigationBar: GroupExpenseBottomNavigation(
-        tripId: tripId,
-        selectedIndex: 3,
       ),
     );
   }

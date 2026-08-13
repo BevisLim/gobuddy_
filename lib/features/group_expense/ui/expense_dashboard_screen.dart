@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../routing/routes.dart';
+import '../../common/ui/widgets/app_module_navigation.dart';
 import '../../common/ui/widgets/primary_button.dart';
 import '../model/expense_date_utils.dart';
 import '../model/money_utils.dart';
@@ -13,7 +14,6 @@ import 'widgets/app_section_header.dart';
 import 'widgets/budget_progress_bar.dart';
 import 'widgets/empty_state.dart';
 import 'widgets/expense_card.dart';
-import 'widgets/group_expense_bottom_navigation.dart';
 import 'widgets/group_expense_app_bar.dart';
 import 'widgets/summary_metric_card.dart';
 
@@ -95,12 +95,7 @@ class ExpenseDashboardScreen extends ConsumerWidget {
               icon: const Icon(Icons.add),
               label: const Text('Add Expense'),
             ),
-      bottomNavigationBar: dashboard.value == null
-          ? null
-          : GroupExpenseBottomNavigation(
-              tripId: dashboard.value!.tripId,
-              selectedIndex: 0,
-            ),
+      bottomNavigationBar: const AppModuleNavigation(selectedIndex: 1),
     );
   }
 }
@@ -213,6 +208,11 @@ class _QuickActions extends StatelessWidget {
         '${Routes.outstandingBalance}/${state.tripId}'
       ),
       (Icons.history, 'History', '${Routes.settlementHistory}/${state.tripId}'),
+      (
+        Icons.analytics_outlined,
+        'Analytics',
+        '${Routes.budgetAnalytics}/${state.tripId}'
+      ),
     ];
     return Wrap(
       spacing: 10,

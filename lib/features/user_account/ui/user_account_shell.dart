@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../common/ui/widgets/app_module_navigation.dart';
 import '../model/user_account_model.dart';
 import 'view_model/user_account_view_model.dart';
 
@@ -69,17 +70,22 @@ class UserAccountScreen extends ConsumerWidget {
                 UserAccountPage.settings => _AccountStaticFrame(
                     title: 'Settings',
                     subtitle: 'PREFERENCES',
-                    description: 'Configure push notifications, local database synchronization states, and systemic aesthetic variables.',
+                    description:
+                        'Configure push notifications, local database synchronization states, and systemic aesthetic variables.',
                     onBack: () => viewModel.goTo(UserAccountPage.profile),
                   ),
                 UserAccountPage.security => _AccountStaticFrame(
                     title: 'Security',
                     subtitle: 'ACCESS MANAGEMENT',
-                    description: 'Manage active authorization keys, session duration thresholds, and multi-factor validation credentials.',
+                    description:
+                        'Manage active authorization keys, session duration thresholds, and multi-factor validation credentials.',
                     onBack: () => viewModel.goTo(UserAccountPage.profile),
                   ),
               },
       ),
+      bottomNavigationBar: state.page == UserAccountPage.profile
+          ? const AppModuleNavigation(selectedIndex: 2)
+          : null,
     );
   }
 }
@@ -88,7 +94,7 @@ class UserAccountScreen extends ConsumerWidget {
 // 👤 Sub-View: Main Profile Dashboard
 // ==========================================================================
 class _AccountDashboardView extends StatelessWidget {
-  final dynamic user; 
+  final dynamic user;
   final ValueChanged<UserAccountPage> onNavigate;
 
   const _AccountDashboardView({required this.user, required this.onNavigate});
@@ -96,7 +102,13 @@ class _AccountDashboardView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String initials = user != null && user.name.trim().isNotEmpty
-        ? user.name.trim().split(' ').map((e) => e[0]).take(2).join().toUpperCase()
+        ? user.name
+            .trim()
+            .split(' ')
+            .map((e) => e[0])
+            .take(2)
+            .join()
+            .toUpperCase()
         : 'U';
 
     return ListView(
@@ -116,16 +128,21 @@ class _AccountDashboardView extends StatelessWidget {
                 alignment: Alignment.center,
                 child: Text(
                   initials,
-                  style: const TextStyle(color: _violet, fontSize: 30, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      color: _violet,
+                      fontSize: 30,
+                      fontWeight: FontWeight.bold),
                 ),
               ),
               const SizedBox(height: 16),
               Text(user?.name ?? 'Guest User', style: _heading),
               const SizedBox(height: 4),
-              Text(user?.email ?? 'no-session@gobuddy.app', style: const TextStyle(color: _muted, fontSize: 14)),
+              Text(user?.email ?? 'no-session@gobuddy.app',
+                  style: const TextStyle(color: _muted, fontSize: 14)),
               if (user != null && user.phoneNumber.isNotEmpty) ...[
                 const SizedBox(height: 4),
-                Text(user.phoneNumber, style: const TextStyle(color: _muted, fontSize: 13)),
+                Text(user.phoneNumber,
+                    style: const TextStyle(color: _muted, fontSize: 13)),
               ]
             ],
           ),
@@ -202,7 +219,8 @@ class _AccountEditViewState extends State<_AccountEditView> {
             decoration: InputDecoration(
               filled: true,
               fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
                 borderSide: const BorderSide(color: _border),
@@ -215,7 +233,9 @@ class _AccountEditViewState extends State<_AccountEditView> {
           ),
           const SizedBox(height: 32),
           InkWell(
-            onTap: widget.isSaving ? null : () => widget.onSave(_nameController.text.trim()),
+            onTap: widget.isSaving
+                ? null
+                : () => widget.onSave(_nameController.text.trim()),
             borderRadius: BorderRadius.circular(12),
             child: Container(
               width: double.infinity,
@@ -226,8 +246,16 @@ class _AccountEditViewState extends State<_AccountEditView> {
               ),
               alignment: Alignment.center,
               child: widget.isSaving
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('Save Changes', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2))
+                  : const Text('Save Changes',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16)),
             ),
           ),
         ],
@@ -262,7 +290,8 @@ class _AccountStaticFrame extends StatelessWidget {
         children: [
           Text(subtitle, style: _label),
           const SizedBox(height: 12),
-          Text(description, style: const TextStyle(color: _muted, height: 1.6, fontSize: 14)),
+          Text(description,
+              style: const TextStyle(color: _muted, height: 1.6, fontSize: 14)),
         ],
       ),
     );
@@ -277,7 +306,8 @@ class _AccountLayoutWrapper extends StatelessWidget {
   final VoidCallback onBack;
   final Widget child;
 
-  const _AccountLayoutWrapper({required this.title, required this.onBack, required this.child});
+  const _AccountLayoutWrapper(
+      {required this.title, required this.onBack, required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -287,7 +317,8 @@ class _AccountLayoutWrapper extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: _ink, size: 20),
+            icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                color: _ink, size: 20),
             onPressed: onBack,
           ),
           const SizedBox(height: 16),
@@ -305,7 +336,8 @@ class _AccountMenuTile extends StatelessWidget {
   final String title;
   final VoidCallback onTap;
 
-  const _AccountMenuTile({required this.icon, required this.title, required this.onTap});
+  const _AccountMenuTile(
+      {required this.icon, required this.title, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -314,7 +346,9 @@ class _AccountMenuTile extends StatelessWidget {
       decoration: _cardDecoration(),
       child: ListTile(
         leading: Icon(icon, color: _violet, size: 22),
-        title: Text(title, style: const TextStyle(color: _ink, fontWeight: FontWeight.w600, fontSize: 14)),
+        title: Text(title,
+            style: const TextStyle(
+                color: _ink, fontWeight: FontWeight.w600, fontSize: 14)),
         trailing: const Icon(Icons.chevron_right_rounded, color: _muted),
         onTap: onTap,
         dense: true,
