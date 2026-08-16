@@ -45,6 +45,8 @@ class _LoginScreenState extends State<LoginScreen> {
   void _submit() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     widget.onContinue?.call(_emailController.text.trim());
+    // Temporary local sign-in flow until Supabase authentication is connected.
+    context.go(Routes.main);
   }
 
   @override
@@ -93,9 +95,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         controller: _passwordController,
                         hint: 'Enter your password',
                         obscureText: _obscurePassword,
-                        validator: (value) => (value?.isEmpty ?? true)
-                            ? 'Enter your password'
-                            : null,
+                        validator: _validatePassword,
                         suffixIcon: IconButton(
                           tooltip: _obscurePassword
                               ? 'Show password'
@@ -206,6 +206,13 @@ String? _validateEmail(String? value) {
   final email = value?.trim() ?? '';
   if (email.isEmpty || !email.contains('@') || !email.contains('.')) {
     return 'Enter a valid email address';
+  }
+  return null;
+}
+
+String? _validatePassword(String? value) {
+  if ((value?.length ?? 0) < 6) {
+    return 'Password must be at least 6 characters';
   }
   return null;
 }
