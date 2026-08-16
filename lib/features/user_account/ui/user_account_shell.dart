@@ -11,6 +11,8 @@ const _ink = Color(0xFF281950);
 const _violet = Color(0xFF7C3AED);
 const _border = Color(0xFFD5CFEF);
 const _muted = Color(0xFF686082);
+const _bgSubtle = Color(0xFFF7F5FB);
+const _surface = Colors.white;
 
 const _heading = TextStyle(
   fontFamily: 'Georgia',
@@ -101,72 +103,437 @@ class _AccountDashboardView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String initials = user != null && user.name.trim().isNotEmpty
-        ? user.name
-            .trim()
-            .split(' ')
-            .map((e) => e[0])
-            .take(2)
-            .join()
-            .toUpperCase()
-        : 'U';
-
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 32, 20, 40),
+      padding: const EdgeInsets.only(bottom: 32),
       children: [
-        Center(
-          child: Column(
-            children: [
-              Container(
-                width: 88,
-                height: 88,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEDE9FE),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: _border, width: 2),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  initials,
-                  style: const TextStyle(
-                      color: _violet,
-                      fontSize: 30,
-                      fontWeight: FontWeight.bold),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(user?.name ?? 'Guest User', style: _heading),
-              const SizedBox(height: 4),
-              Text(user?.email ?? 'no-session@gobuddy.app',
-                  style: const TextStyle(color: _muted, fontSize: 14)),
-              if (user != null && user.phoneNumber.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(user.phoneNumber,
-                    style: const TextStyle(color: _muted, fontSize: 13)),
-              ]
-            ],
+        _ProfileHeader(
+          name: user?.name ?? 'Guest User',
+          onBack: () => Navigator.maybePop(context),
+          onSettings: () => onNavigate(UserAccountPage.settings),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: _ProfileStatsCard(
+            onEdit: () => onNavigate(UserAccountPage.editProfile),
           ),
         ),
-        const SizedBox(height: 36),
-        _AccountMenuTile(
-          icon: Icons.face_retouching_natural_outlined,
-          title: 'Update display name details',
-          onTap: () => onNavigate(UserAccountPage.editProfile),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: _ProfilePhotosCard(),
         ),
-        _AccountMenuTile(
-          icon: Icons.tune_rounded,
-          title: 'System & app configurations',
-          onTap: () => onNavigate(UserAccountPage.settings),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: _ProfileAboutCard(),
         ),
-        _AccountMenuTile(
-          icon: Icons.shield_outlined,
-          title: 'Security keys & validation setups',
-          onTap: () => onNavigate(UserAccountPage.security),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: _ProfileInterestsCard(),
         ),
       ],
     );
   }
 }
+
+class _ProfileHeader extends StatelessWidget {
+  final String name;
+  final VoidCallback onBack;
+  final VoidCallback onSettings;
+
+  const _ProfileHeader({
+    required this.name,
+    required this.onBack,
+    required this.onSettings,
+  });
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        height: 350,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            SizedBox(
+              height: 285,
+              width: double.infinity,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.network(_coverPhotoUrl, fit: BoxFit.cover),
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.transparent, Color(0x99281950)],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 14,
+                    left: 16,
+                    child: _FrostedIconButton(
+                      icon: Icons.arrow_back_rounded,
+                      onTap: onBack,
+                    ),
+                  ),
+                  const Positioned(
+                    top: 14,
+                    right: 62,
+                    child: _FrostedIconButton(
+                      icon: Icons.notifications_none_rounded,
+                    ),
+                  ),
+                  Positioned(
+                    top: 14,
+                    right: 16,
+                    child: _FrostedIconButton(
+                      icon: Icons.settings_outlined,
+                      onTap: onSettings,
+                    ),
+                  ),
+                  Positioned(
+                    left: 16,
+                    right: 16,
+                    bottom: 24,
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                name,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontFamily: 'Georgia',
+                                  color: Colors.white,
+                                  fontSize: 25,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 7),
+                            const _VerifiedBadge(),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        const Text('27 | Male',
+                            style: TextStyle(
+                                color: Color(0xE6FFFFFF),
+                                fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 3),
+                        const Text('Joined January 2023',
+                            style: TextStyle(
+                                color: Color(0xB3FFFFFF), fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              top: 205,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      width: 112,
+                      height: 112,
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                            color: const Color(0x59FFFFFF), width: 3),
+                        boxShadow: const [
+                          BoxShadow(
+                              color: _violet, blurRadius: 0, spreadRadius: 4)
+                        ],
+                      ),
+                      child: const ClipOval(
+                        child: Image(
+                          image: AssetImage('assets/images/avatar.webp'),
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: -2,
+                      bottom: 1,
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: _violet,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: _surface, width: 2),
+                        ),
+                        child: const Icon(Icons.camera_alt_outlined,
+                            color: Colors.white, size: 16),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+class _ProfileStatsCard extends StatelessWidget {
+  final VoidCallback onEdit;
+  const _ProfileStatsCard({required this.onEdit});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(18),
+        decoration: _cardDecoration(),
+        child: Column(children: [
+          const Row(children: [
+            Expanded(child: _ProfileStat(number: '12', label: 'TRIPS')),
+            SizedBox(height: 38, child: VerticalDivider(color: _border)),
+            Expanded(child: _ProfileStat(number: '8', label: 'CITIES')),
+          ]),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: FilledButton(
+              onPressed: onEdit,
+              style: FilledButton.styleFrom(
+                backgroundColor: _violet,
+                foregroundColor: Colors.white,
+                shape: const StadiumBorder(),
+              ),
+              child: const Text('Edit Profile',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ]),
+      );
+}
+
+class _ProfileStat extends StatelessWidget {
+  final String number;
+  final String label;
+  const _ProfileStat({required this.number, required this.label});
+
+  @override
+  Widget build(BuildContext context) => Column(children: [
+        Text(number,
+            style: const TextStyle(
+                fontFamily: 'Georgia',
+                fontSize: 22,
+                color: _ink,
+                fontWeight: FontWeight.w600)),
+        Text(label, style: _label),
+      ]);
+}
+
+class _ProfilePhotosCard extends StatelessWidget {
+  const _ProfilePhotosCard();
+
+  @override
+  Widget build(BuildContext context) => _ProfileCard(
+        title: 'Photos',
+        child: Column(children: const [
+          _PhotoSlot(url: _galleryPhotoOne, height: 170),
+          SizedBox(height: 10),
+          Row(children: [
+            Expanded(child: _PhotoSlot(url: _galleryPhotoTwo, height: 112)),
+            SizedBox(width: 10),
+            Expanded(child: _PhotoSlot(url: _galleryPhotoThree, height: 112)),
+          ]),
+        ]),
+      );
+}
+
+class _ProfileAboutCard extends StatelessWidget {
+  const _ProfileAboutCard();
+
+  @override
+  Widget build(BuildContext context) => const _ProfileCard(
+        title: 'About Me',
+        child: Text(
+          'I enjoy slow mornings, good local food, and finding the small places that make every trip memorable. Always happy to share an itinerary or discover somewhere new together.',
+          style: TextStyle(color: _muted, height: 1.7),
+        ),
+      );
+}
+
+class _ProfileInterestsCard extends StatelessWidget {
+  const _ProfileInterestsCard();
+
+  @override
+  Widget build(BuildContext context) => _ProfileCard(
+        title: 'Style & Interests',
+        edit: false,
+        child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('TRAVEL STYLE', style: _label),
+          SizedBox(height: 9),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            _PillTag(label: '🏄 Adventure'),
+            _PillTag(label: '🎒 Backpacker'),
+          ]),
+          SizedBox(height: 22),
+          Text('INTERESTS', style: _label),
+          SizedBox(height: 9),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            _PillTag(label: 'Food & Cuisine'),
+            _PillTag(label: 'Hiking'),
+            _PillTag(label: 'Museums'),
+            _PillTag(label: 'Photography'),
+          ]),
+        ]),
+      );
+}
+
+class _ProfileCard extends StatelessWidget {
+  final String title;
+  final Widget child;
+  final bool edit;
+  const _ProfileCard({required this.title, required this.child, this.edit = true});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(18),
+        decoration: _cardDecoration(),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Text(title,
+                style: const TextStyle(
+                    color: _ink, fontSize: 18, fontWeight: FontWeight.w700)),
+            const Spacer(),
+            if (edit)
+              IconButton(
+                onPressed: () {},
+                icon: const Icon(Icons.edit_outlined, color: _violet),
+                tooltip: 'Edit $title',
+              ),
+          ]),
+          const SizedBox(height: 12),
+          child,
+        ]),
+      );
+}
+
+class _PhotoSlot extends StatelessWidget {
+  final String url;
+  final double height;
+  const _PhotoSlot({required this.url, required this.height});
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+        painter: _DashedBorderPainter(),
+        child: Container(
+          height: height,
+          decoration: BoxDecoration(
+            color: _bgSubtle,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(fit: StackFit.expand, children: [
+            Image.network(url,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const ColoredBox(color: _bgSubtle)),
+            DecoratedBox(
+                decoration: BoxDecoration(color: _ink.withValues(alpha: .18))),
+            const Center(
+                child: Icon(Icons.camera_alt_outlined,
+                    color: Colors.white, size: 25)),
+          ]),
+        ),
+      );
+}
+
+class _DashedBorderPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    const radius = Radius.circular(12);
+    final path = Path()
+      ..addRRect(RRect.fromRectAndRadius(Offset.zero & size, radius));
+    final paint = Paint()
+      ..color = _border
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    for (final metric in path.computeMetrics()) {
+      for (double distance = 0; distance < metric.length; distance += 8) {
+        canvas.drawPath(metric.extractPath(distance, distance + 4), paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _PillTag extends StatelessWidget {
+  final String label;
+  const _PillTag({required this.label});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: _surface,
+          border: Border.all(color: _border),
+          borderRadius: BorderRadius.circular(99),
+        ),
+        child: Text(label,
+            style: const TextStyle(
+                color: _ink, fontSize: 12, fontWeight: FontWeight.w600)),
+      );
+}
+
+class _FrostedIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onTap;
+  const _FrostedIconButton({required this.icon, this.onTap});
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.white.withValues(alpha: .15),
+        shape: const StadiumBorder(),
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const StadiumBorder(),
+          child: SizedBox(
+              width: 38,
+              height: 38,
+              child: Icon(icon, color: Colors.white, size: 20)),
+        ),
+      );
+}
+
+class _VerifiedBadge extends StatelessWidget {
+  const _VerifiedBadge();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+        decoration: BoxDecoration(
+            color: const Color(0x337C3AED),
+            borderRadius: BorderRadius.circular(99)),
+        child: const Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.verified_rounded, size: 13, color: Colors.white),
+          SizedBox(width: 3),
+          Text('Verified',
+              style: TextStyle(
+                  color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+        ]),
+      );
+}
+
+const _coverPhotoUrl =
+    'https://images.unsplash.com/photo-1498307833015-e7b400441eb8?auto=format&fit=crop&w=1200&q=85';
+const _galleryPhotoOne =
+    'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=900&q=85';
+const _galleryPhotoTwo =
+    'https://images.unsplash.com/photo-1537996194471-e657df975ab4?auto=format&fit=crop&w=900&q=85';
+const _galleryPhotoThree =
+    'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=900&q=85';
 
 // ==========================================================================
 // 📝 Sub-View: Edit Account Information Input Form
