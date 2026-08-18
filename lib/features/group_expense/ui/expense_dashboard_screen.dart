@@ -95,7 +95,7 @@ class ExpenseDashboardScreen extends ConsumerWidget {
               icon: const Icon(Icons.add),
               label: const Text('Add Expense'),
             ),
-      bottomNavigationBar: const AppModuleNavigation(selectedIndex: 1),
+      bottomNavigationBar: const AppModuleNavigation(selectedIndex: 3),
     );
   }
 }

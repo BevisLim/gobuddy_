@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'app_colors.dart';
+
 class AppTheme {
   AppTheme._();
 
@@ -111,6 +113,33 @@ class AppTheme {
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(color: Color(0xFFE8E1F4)),
+        ),
+      ),
+    );
+  }
+
+  static ThemeData get darkMaterialTheme {
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: AppColors.brandSurface,
+      brightness: Brightness.dark,
+      surface: AppColors.mono90,
+    );
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      colorScheme: colorScheme,
+      scaffoldBackgroundColor: AppColors.mono100,
+      textTheme: GoogleFonts.nunitoTextTheme(ThemeData.dark().textTheme),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: AppColors.mono90,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.mono80),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.mono80),
         ),
       ),
     );

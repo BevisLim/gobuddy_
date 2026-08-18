@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
-import 'package:flutter_mvvm_riverpod/features/authentication/ui/otp_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/authentication/ui/welcome_screen.dart';
+import 'package:flutter_mvvm_riverpod/features/user_account/ui/otp_screen.dart';
+import 'package:flutter_mvvm_riverpod/features/user_account/ui/welcome_screen.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/matchmaking_shell_screen.dart';
+import 'package:flutter_mvvm_riverpod/features/matchmaking/model/matchmaking_page.dart';
+import 'package:flutter_mvvm_riverpod/features/group_collaboration/ui/messages_screen.dart';
 import 'package:flutter_mvvm_riverpod/features/group_expense/ui/expense_dashboard_screen.dart';
 import 'package:flutter_mvvm_riverpod/features/group_expense/ui/create_budget_screen.dart';
 import 'package:flutter_mvvm_riverpod/features/group_expense/ui/add_expense_screen.dart';
@@ -18,8 +20,14 @@ import 'package:flutter_mvvm_riverpod/features/group_expense/ui/budget_analytics
 import 'package:flutter_mvvm_riverpod/features/user_account/ui/user_account_shell.dart';
 import 'package:flutter_mvvm_riverpod/features/onboarding/ui/onboarding_screen.dart';
 import 'package:flutter_mvvm_riverpod/features/user_account/ui/app_launching_screen.dart';
+import 'package:flutter_mvvm_riverpod/features/user_account/ui/forgot_password_screen.dart';
+import 'package:flutter_mvvm_riverpod/features/user_account/ui/identity_verification_screen.dart';
+import 'package:flutter_mvvm_riverpod/features/user_account/ui/settings/blocked_users_screen.dart';
+import 'package:flutter_mvvm_riverpod/features/user_account/ui/settings/settings_screen.dart';
 import 'package:flutter_mvvm_riverpod/features/user_account/ui/login_screen.dart';
 import 'package:flutter_mvvm_riverpod/features/user_account/ui/register_account_screen.dart';
+import 'package:flutter_mvvm_riverpod/features/user_account/ui/legal/privacy_policy_screen.dart';
+import 'package:flutter_mvvm_riverpod/features/user_account/ui/legal/terms_screen.dart';
 import 'package:flutter_mvvm_riverpod/features/premium/ui/premium_screen.dart';
 import 'package:flutter_mvvm_riverpod/features/profile/model/profile.dart';
 import 'package:flutter_mvvm_riverpod/features/profile/ui/account_info_screen.dart';
@@ -109,6 +117,11 @@ final GoRouter router = GoRouter(
       pageBuilder: (context, state) => state.slidePage(const LoginScreen()),
     ),
     GoRoute(
+      path: Routes.forgotPassword,
+      pageBuilder: (context, state) =>
+          state.slidePage(const ForgotPasswordScreen()),
+    ),
+    GoRoute(
         path: Routes.otp,
         pageBuilder: (context, state) {
           final map = state.extra as Map?;
@@ -128,6 +141,16 @@ final GoRouter router = GoRouter(
       path: Routes.main,
       pageBuilder: (context, state) =>
           state.slidePage(const MatchmakingShellScreen()),
+    ),
+    GoRoute(
+      path: Routes.myTrips,
+      pageBuilder: (context, state) => state.slidePage(
+        const MatchmakingShellScreen(initialPage: MatchmakingPage.myTrips),
+      ),
+    ),
+    GoRoute(
+      path: Routes.messages,
+      pageBuilder: (context, state) => state.slidePage(const MessagesScreen()),
     ),
     GoRoute(
       path: Routes.expenseDashboard,
@@ -219,6 +242,29 @@ final GoRouter router = GoRouter(
       path: Routes.userAccount,
       pageBuilder: (context, state) =>
           state.slidePage(const UserAccountScreen()),
+    ),
+    GoRoute(
+      path: Routes.identityVerification,
+      pageBuilder: (context, state) =>
+          state.slidePage(const IdentityVerificationScreen()),
+    ),
+    GoRoute(
+      path: Routes.settings,
+      pageBuilder: (context, state) => state.slidePage(const SettingsScreen()),
+    ),
+    GoRoute(
+      path: Routes.blockedUsers,
+      pageBuilder: (context, state) =>
+          state.slidePage(const BlockedUsersScreen()),
+    ),
+    GoRoute(
+      path: Routes.termsOfService,
+      pageBuilder: (context, state) => state.slidePage(const TermsScreen()),
+    ),
+    GoRoute(
+      path: Routes.privacyPolicy,
+      pageBuilder: (context, state) =>
+          state.slidePage(const PrivacyPolicyScreen()),
     ),
     GoRoute(
       path: Routes.accountInformation,

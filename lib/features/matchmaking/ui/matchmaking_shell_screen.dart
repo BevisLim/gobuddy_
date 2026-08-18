@@ -11,11 +11,35 @@ const _border = Color(0xFFD5CFEF);
 const _muted = Color(0xFF686082);
 const _lavender = Color(0xFFEDE9FE);
 
-class MatchmakingShellScreen extends ConsumerWidget {
-  const MatchmakingShellScreen({super.key});
+class MatchmakingShellScreen extends ConsumerStatefulWidget {
+  const MatchmakingShellScreen({
+    super.key,
+    this.initialPage = MatchmakingPage.discover,
+  });
+
+  final MatchmakingPage initialPage;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MatchmakingShellScreen> createState() =>
+      _MatchmakingShellScreenState();
+}
+
+class _MatchmakingShellScreenState
+    extends ConsumerState<MatchmakingShellScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref
+            .read(matchmakingViewModelProvider.notifier)
+            .goTo(widget.initialPage);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(matchmakingViewModelProvider);
     final viewModel = ref.read(matchmakingViewModelProvider.notifier);
     final page = state.page;
@@ -57,7 +81,9 @@ class MatchmakingShellScreen extends ConsumerWidget {
       body: SafeArea(child: content),
       bottomNavigationBar:
           page == MatchmakingPage.discover || page == MatchmakingPage.myTrips
-              ? const AppModuleNavigation(selectedIndex: 0)
+              ? AppModuleNavigation(
+                  selectedIndex: page == MatchmakingPage.myTrips ? 1 : 0,
+                )
               : null,
       floatingActionButton: page == MatchmakingPage.discover
           ? FloatingActionButton(

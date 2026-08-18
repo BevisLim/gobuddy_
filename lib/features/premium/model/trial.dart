@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 
 class Trial {
   final List<List<dynamic>> icon;

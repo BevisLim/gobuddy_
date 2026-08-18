@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
 import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
-import '../../authentication/ui/view_model/authentication_view_model.dart';
+import 'package:flutter_mvvm_riverpod/features/user_account/ui/view_model/authentication_view_model.dart';
 import '../../common/ui/widgets/loading.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
