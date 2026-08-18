@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../features/common/ui/widgets/custom_snack_bar.dart';
-import '../theme/app_colors.dart';
+import 'package:flutter_mvvm_riverpod/features/common/ui/widgets/custom_snack_bar.dart';
+import 'package:flutter_mvvm_riverpod/core/theme/app_colors.dart';
 
 extension ThemeModeExtension on BuildContext {
   bool get isDarkMode => Theme.of(this).brightness == Brightness.dark;

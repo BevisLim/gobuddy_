@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../routing/routes.dart';
+import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 
 /// Fly design tokens sourced from `fly-DESIGN.md`.
 const _flyBackground = Color(0xFFFFFFFF);

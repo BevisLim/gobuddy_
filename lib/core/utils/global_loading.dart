@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../features/common/ui/widgets/loading.dart';
+import 'package:flutter_mvvm_riverpod/features/common/ui/widgets/loading.dart';
 
 class Global {
   static OverlayEntry? overlayEntry;

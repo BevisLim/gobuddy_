@@ -1,8 +1,8 @@
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
-import '../constants/database_constants.dart';
-import '../features/group_expense/repository/group_expense_database_schema.dart';
+import 'package:flutter_mvvm_riverpod/core/constants/database_constants.dart';
+import 'package:flutter_mvvm_riverpod/features/group_expense/repository/group_expense_database_schema.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();

@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../constants/assets.dart';
-import '../../../routing/routes.dart';
+import 'package:flutter_mvvm_riverpod/core/constants/assets.dart';
+import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 
 const _purple = Color(0xFF7C3AED);
 const _ink = Color(0xFF281950);

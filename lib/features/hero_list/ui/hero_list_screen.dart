@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../../extensions/build_context_extension.dart';
-import '../../../extensions/profile_extension.dart';
+import 'package:flutter_mvvm_riverpod/core/extensions/build_context_extension.dart';
+import 'package:flutter_mvvm_riverpod/core/extensions/profile_extension.dart';
 import '../../../generated/locale_keys.g.dart';
-import '../../../theme/app_theme.dart';
+import 'package:flutter_mvvm_riverpod/core/theme/app_theme.dart';
 import '../../common/ui/widgets/common_empty_data.dart';
 import '../../common/ui/widgets/common_error.dart';
 import '../../profile/ui/view_model/profile_view_model.dart';
