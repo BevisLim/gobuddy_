@@ -3,6 +3,13 @@ import 'package:flutter/material.dart';
 class AppColors {
   AppColors._();
 
+  // GoBuddy brand palette from fly-DESIGN.md.
+  static const brandPrimary = Color(0xFF281950);
+  static const brandSurface = Color(0xFF7C3AED);
+  static const brandBorder = Color(0xFFD5CFEF);
+  static const brandTextMuted = Color(0xFF686082);
+  static const brandBackground = Color(0xFFFFFFFF);
+
   static const blueberry10 = Color(0xFFE5F4FF);
   static const blueberry20 = Color(0xFFCCE9FF);
   static const blueberry30 = Color(0xFFB3DFFF);

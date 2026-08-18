@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
-import '../../authentication/ui/view_model/authentication_view_model.dart';
+import 'view_model/authentication_view_model.dart';
 
 const _purple = Color(0xFF7C3AED);
 const _ink = Color(0xFF281950);
@@ -22,6 +22,7 @@ class RegisterAccountScreen extends ConsumerStatefulWidget {
 class _RegisterAccountScreenState extends ConsumerState<RegisterAccountScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
+  bool _hasAcceptedLegalTerms = false;
 
   @override
   void dispose() {
@@ -30,6 +31,7 @@ class _RegisterAccountScreenState extends ConsumerState<RegisterAccountScreen> {
   }
 
   void _register() {
+    if (!_hasAcceptedLegalTerms) return;
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final email = _emailController.text.trim();
     ref
@@ -90,17 +92,24 @@ class _RegisterAccountScreenState extends ConsumerState<RegisterAccountScreen> {
                               horizontal: 16, vertical: 16),
                           enabledBorder: _inputBorder,
                           focusedBorder: _inputBorder.copyWith(
-                            borderSide: const BorderSide(
-                                color: _purple, width: 1.5),
+                            borderSide:
+                                const BorderSide(color: _purple, width: 1.5),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 28),
+                      const SizedBox(height: 20),
+                      _LegalAgreement(
+                        value: _hasAcceptedLegalTerms,
+                        onChanged: (value) {
+                          setState(() => _hasAcceptedLegalTerms = value);
+                        },
+                      ),
+                      const SizedBox(height: 20),
                       SizedBox(
                         width: double.infinity,
                         height: 52,
                         child: ElevatedButton(
-                          onPressed: _register,
+                          onPressed: _hasAcceptedLegalTerms ? _register : null,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _purple,
                             foregroundColor: Colors.white,
@@ -129,7 +138,8 @@ class _RegisterAccountScreenState extends ConsumerState<RegisterAccountScreen> {
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
                               child: const Text('Sign in',
-                                  style: TextStyle(fontWeight: FontWeight.w800)),
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.w800)),
                             ),
                           ],
                         ),
@@ -176,3 +186,78 @@ final _inputBorder = OutlineInputBorder(
   borderRadius: BorderRadius.circular(14),
   borderSide: const BorderSide(color: _lightPurple),
 );
+
+class _LegalAgreement extends StatelessWidget {
+  const _LegalAgreement({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Checkbox(
+          value: value,
+          activeColor: _purple,
+          onChanged: (checked) => onChanged(checked ?? false),
+        ),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 11),
+            child: Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                const Text(
+                  'I agree to the ',
+                  style: TextStyle(color: _muted, height: 1.4),
+                ),
+                _LegalLink(
+                  label: 'Terms of Service',
+                  onTap: () => context.push(Routes.termsOfService),
+                ),
+                const Text(
+                  ' and ',
+                  style: TextStyle(color: _muted, height: 1.4),
+                ),
+                _LegalLink(
+                  label: 'Privacy Policy',
+                  onTap: () => context.push(Routes.privacyPolicy),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LegalLink extends StatelessWidget {
+  const _LegalLink({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: _purple,
+          height: 1.4,
+          fontWeight: FontWeight.w700,
+          decoration: TextDecoration.underline,
+          decorationColor: _purple,
+        ),
+      ),
+    );
+  }
+}

@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_mvvm_riverpod/core/environment/env.dart';
 import 'package:flutter_mvvm_riverpod/core/routing/router.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_theme.dart';
+import 'package:flutter_mvvm_riverpod/features/common/ui/providers/app_theme_mode_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,15 +26,18 @@ Future<void> main() async {
   );
 }
 
-class GoBuddyApp extends StatelessWidget {
+class GoBuddyApp extends ConsumerWidget {
   const GoBuddyApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(appThemeModeProvider).value ?? ThemeMode.system;
     return MaterialApp.router(
       title: 'GoBuddy',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.materialTheme,
+      darkTheme: AppTheme.darkMaterialTheme,
+      themeMode: themeMode,
       routerConfig: router,
       localizationsDelegates: context.localizationDelegates,
       supportedLocales: context.supportedLocales,

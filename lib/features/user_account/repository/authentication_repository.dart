@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:easy_localization/easy_localization.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -13,7 +12,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
 import 'package:flutter_mvvm_riverpod/core/environment/env.dart';
 import 'package:flutter_mvvm_riverpod/generated/locale_keys.g.dart';
-import '../../common/remote/supabase_client.dart';
+import 'package:flutter_mvvm_riverpod/features/common/remote/supabase_client.dart';
 
 part 'authentication_repository.g.dart';
 
@@ -37,6 +36,16 @@ class AuthenticationRepository {
         email: email,
         emailRedirectTo: Constants.supabaseLoginCallback,
       );
+    } on AuthException catch (error) {
+      throw Exception(error.message);
+    } catch (error) {
+      throw Exception(LocaleKeys.unexpectedErrorOccurred.tr());
+    }
+  }
+
+  Future<void> resetPassword(String email) async {
+    try {
+      await supabase.auth.resetPasswordForEmail(email.trim());
     } on AuthException catch (error) {
       throw Exception(error.message);
     } catch (error) {
@@ -170,7 +179,7 @@ class AuthenticationRepository {
 
   Future<void> signOut() async {
     // TODO: fake data
-    setIsLogin(false);
+    await setIsLogin(false);
     return;
 
     try {

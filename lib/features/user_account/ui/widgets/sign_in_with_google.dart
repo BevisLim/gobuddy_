@@ -1,34 +1,34 @@
+import 'dart:io';
+
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import 'package:flutter_mvvm_riverpod/generated/locale_keys.g.dart';
 import 'package:flutter_mvvm_riverpod/core/constants/assets.dart';
-import 'package:flutter_mvvm_riverpod/core/extensions/build_context_extension.dart';
-import 'package:flutter_mvvm_riverpod/features/authentication/ui/view_model/authentication_view_model.dart';
+import 'package:flutter_mvvm_riverpod/features/user_account/ui/view_model/authentication_view_model.dart';
 import 'package:flutter_mvvm_riverpod/features/common/ui/widgets/secondary_button.dart';
 
-class SignInWithApple extends ConsumerWidget {
-  const SignInWithApple({super.key});
+class SignInWithGoogle extends ConsumerWidget {
+  const SignInWithGoogle({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return SecondaryButton(
       icon: SizedBox(
-        width: 20,
-        height: 20,
+        width: 32,
+        height: 32,
         child: SvgPicture.asset(
-          Assets.appleLogo,
+          Assets.googleLogo,
           fit: BoxFit.contain,
-          colorFilter: ColorFilter.mode(
-            context.secondaryTextColor,
-            BlendMode.srcIn,
-          ),
         ),
       ),
-      text: 'apple'.tr(),
+      text: Platform.isIOS
+          ? LocaleKeys.google.tr()
+          : LocaleKeys.signInWithGoogle.tr(),
       onPressed: () =>
-          ref.read(authenticationViewModelProvider.notifier).signInWithApple(),
+          ref.read(authenticationViewModelProvider.notifier).signInWithGoogle(),
     );
   }
 }

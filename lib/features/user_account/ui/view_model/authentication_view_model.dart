@@ -4,10 +4,10 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
-import '../../../../features/profile/ui/view_model/profile_view_model.dart';
-import '../../../../generated/locale_keys.g.dart';
+import 'package:flutter_mvvm_riverpod/features/profile/ui/view_model/profile_view_model.dart';
+import 'package:flutter_mvvm_riverpod/generated/locale_keys.g.dart';
 import '../../repository/authentication_repository.dart';
-import '../../ui/state/authentication_state.dart';
+import '../state/authentication_state.dart';
 
 part 'authentication_view_model.g.dart';
 
@@ -28,6 +28,19 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
 
     if (result is AsyncError) {
       state = AsyncError(result.error.toString(), StackTrace.current);
+      return;
+    }
+
+    state = const AsyncData(AuthenticationState());
+  }
+
+  Future<void> resetPassword(String email) async {
+    state = const AsyncValue.loading();
+    final result =
+        await AsyncValue.guard(() => _repository.resetPassword(email.trim()));
+
+    if (result case AsyncError(:final error, :final stackTrace)) {
+      state = AsyncError(error, stackTrace);
       return;
     }
 
@@ -86,7 +99,8 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
     debugPrint(
         '${Constants.tag} [AuthenticationViewModel.handleResult] authResponse: ${authResponse?.user?.toJson()}');
     if (authResponse == null) {
-      state = AsyncError(LocaleKeys.unexpectedErrorOccurred.tr(), StackTrace.current);
+      state = AsyncError(
+          LocaleKeys.unexpectedErrorOccurred.tr(), StackTrace.current);
       return;
     }
 
@@ -119,10 +133,10 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
       avatar = metaData['avatar_url'];
     }
     ref.read(profileViewModelProvider.notifier).updateProfile(
-      email: user.email,
-      name: name,
-      avatar: avatar,
-    );
+          email: user.email,
+          name: name,
+          avatar: avatar,
+        );
   }
 
   Future<bool> isLogin() async {

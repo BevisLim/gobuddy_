@@ -1,11 +1,12 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:flutter_mvvm_riverpod/core/extensions/build_context_extension.dart';
-import 'package:flutter_mvvm_riverpod/generated/locale_keys.g.dart';
+import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_theme.dart';
+import 'package:flutter_mvvm_riverpod/generated/locale_keys.g.dart';
 
 class SignInAgreement extends StatelessWidget {
   const SignInAgreement({super.key});
@@ -28,7 +29,7 @@ class SignInAgreement extends StatelessWidget {
                 style: AppTheme.title12,
                 recognizer: TapGestureRecognizer()
                   ..onTap = () {
-                    context.tryLaunchUrl(Constants.termsOfService);
+                    context.push(Routes.termsOfService);
                   },
               ),
               TextSpan(text: ' ${LocaleKeys.signInAgreementMiddle.tr()} '),
@@ -37,7 +38,7 @@ class SignInAgreement extends StatelessWidget {
                 style: AppTheme.title12,
                 recognizer: TapGestureRecognizer()
                   ..onTap = () {
-                    context.tryLaunchUrl(Constants.privacyPolicy);
+                    context.push(Routes.privacyPolicy);
                   },
               ),
               TextSpan(text: ' ${LocaleKeys.signInAgreementSuffix.tr()}'),

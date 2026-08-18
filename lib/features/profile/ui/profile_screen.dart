@@ -16,7 +16,7 @@ import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_colors.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_theme.dart';
 import 'package:flutter_mvvm_riverpod/core/utils/global_loading.dart';
-import '../../authentication/ui/view_model/authentication_view_model.dart';
+import 'package:flutter_mvvm_riverpod/features/user_account/ui/view_model/authentication_view_model.dart';
 import '../../common/ui/widgets/common_dialog.dart';
 import '../model/profile.dart';
 import 'view_model/profile_view_model.dart';
@@ -143,7 +143,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
-              LocaleKeys.preferences.tr(),
+              'Legal',
               style: AppTheme.title20,
             ),
           ),
@@ -152,16 +152,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             icon: HugeIcons.strokeRoundedNews,
             text: LocaleKeys.termsOfService.tr(),
             isFirst: true,
-            onTap: () => context.tryLaunchUrl(Constants.termsOfService),
+            onTap: () => context.push(Routes.termsOfService),
           ),
           ProfileItem(
             icon: HugeIcons.strokeRoundedShield01,
             text: LocaleKeys.privacyPolicy.tr(),
-            onTap: () => context.tryLaunchUrl(Constants.privacyPolicy),
+            isLast: true,
+            onTap: () => context.push(Routes.privacyPolicy),
           ),
+          const SizedBox(height: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              LocaleKeys.preferences.tr(),
+              style: AppTheme.title20,
+            ),
+          ),
+          const SizedBox(height: 8),
           ProfileItem(
             icon: HugeIcons.strokeRoundedUserMultiple,
             text: LocaleKeys.aboutUs.tr(),
+            isFirst: true,
             onTap: () => context.tryLaunchUrl(Constants.aboutUs),
           ),
           ProfileItem(

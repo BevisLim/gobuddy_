@@ -8,10 +8,10 @@ import 'package:pinput/pinput.dart';
 
 import 'package:flutter_mvvm_riverpod/core/constants/assets.dart';
 import 'package:flutter_mvvm_riverpod/core/extensions/build_context_extension.dart';
-import '../../../features/authentication/ui/view_model/authentication_view_model.dart';
-import '../../../features/common/ui/widgets/common_back_button.dart';
-import '../../../features/common/ui/widgets/primary_button.dart';
-import '../../../generated/locale_keys.g.dart';
+import 'package:flutter_mvvm_riverpod/features/common/ui/widgets/common_back_button.dart';
+import 'package:flutter_mvvm_riverpod/features/common/ui/widgets/primary_button.dart';
+import 'package:flutter_mvvm_riverpod/generated/locale_keys.g.dart';
+import 'view_model/authentication_view_model.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_theme.dart';
 
 class OtpScreen extends ConsumerStatefulWidget {
