@@ -23,4 +23,6 @@ class Routes {
   static const settlementHistory = '/expenses/settlement/history';
   static const budgetAnalytics = '/expenses/analytics';
   static const userAccount = '/user_account';
+  static const emergencyContacts = '/safety/emergency-contacts';
+  static const addEmergencyContact = '/safety/emergency-contacts/add';
 }

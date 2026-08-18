@@ -25,6 +25,8 @@ import '../features/profile/model/profile.dart';
 import '../features/profile/ui/account_info_screen.dart';
 import '../features/profile/ui/appearances_screen.dart';
 import '../features/profile/ui/languages_screen.dart';
+import '../features/safety/ui/add_emergency_contact_screen.dart';
+import '../features/safety/ui/emergency_contacts_screen.dart';
 import 'routes.dart';
 
 enum SlideDirection {
@@ -235,6 +237,16 @@ final GoRouter router = GoRouter(
     GoRoute(
       path: Routes.languages,
       pageBuilder: (context, state) => state.slidePage(const LanguagesScreen()),
+    ),
+    GoRoute(
+      path: Routes.emergencyContacts,
+      pageBuilder: (context, state) =>
+          state.slidePage(const EmergencyContactsScreen()),
+    ),
+    GoRoute(
+      path: Routes.addEmergencyContact,
+      pageBuilder: (context, state) =>
+          state.slidePage(const AddEmergencyContactScreen()),
     ),
     GoRoute(
       path: Routes.premium,
