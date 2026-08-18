@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../../constants/constants.dart';
+import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
 import '../../../../features/profile/ui/view_model/profile_view_model.dart';
 import '../../../../generated/locale_keys.g.dart';
 import '../../repository/authentication_repository.dart';

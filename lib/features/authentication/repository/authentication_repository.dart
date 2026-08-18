@@ -10,9 +10,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '/constants/constants.dart';
-import '/environment/env.dart';
-import '/generated/locale_keys.g.dart';
+import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
+import 'package:flutter_mvvm_riverpod/core/environment/env.dart';
+import 'package:flutter_mvvm_riverpod/generated/locale_keys.g.dart';
 import '../../common/remote/supabase_client.dart';
 
 part 'authentication_repository.g.dart';

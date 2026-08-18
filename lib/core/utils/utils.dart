@@ -1,8 +1,8 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:easy_localization/easy_localization.dart';
 
-import '../features/common/remote/api_client.dart';
-import '../generated/locale_keys.g.dart';
+import 'package:flutter_mvvm_riverpod/features/common/remote/api_client.dart';
+import 'package:flutter_mvvm_riverpod/generated/locale_keys.g.dart';
 
 class Utils {
   Utils._();

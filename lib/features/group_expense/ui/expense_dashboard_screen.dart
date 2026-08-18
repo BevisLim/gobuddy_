@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import '../../../routing/routes.dart';
+import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import '../../common/ui/widgets/app_module_navigation.dart';
 import '../../common/ui/widgets/primary_button.dart';
 import '../model/expense_date_utils.dart';
