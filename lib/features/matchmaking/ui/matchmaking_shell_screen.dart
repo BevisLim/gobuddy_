@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../routing/routes.dart';
 import '../../common/ui/widgets/app_module_navigation.dart';
 import '../model/matchmaking_page.dart';
 import 'view_model/matchmaking_view_model.dart';
@@ -341,7 +343,15 @@ class TripDetailsPage extends StatelessWidget {
             left: 16,
             right: 16,
             bottom: 16,
-            child: PrimaryButton(label: 'Request to Join', onTap: onRequest)),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              OutlinedButton.icon(
+                onPressed: () => context.push(Routes.groupCollaboration),
+                icon: const Icon(Icons.groups_outlined),
+                label: const Text('Open group workspace'),
+              ),
+              const SizedBox(height: 8),
+              PrimaryButton(label: 'Request to Join', onTap: onRequest),
+            ])),
       ]);
 }
 

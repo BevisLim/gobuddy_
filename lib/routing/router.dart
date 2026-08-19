@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../constants/constants.dart';
 import '../features/authentication/ui/otp_screen.dart';
 import '../features/authentication/ui/welcome_screen.dart';
+import 'package:flutter_mvvm_riverpod/features/collaboration/ui/group_collaboration_screen.dart';
 import '../features/matchmaking/ui/matchmaking_shell_screen.dart';
 import '../features/group_expense/ui/expense_dashboard_screen.dart';
 import '../features/group_expense/ui/create_budget_screen.dart';
@@ -246,6 +247,13 @@ final GoRouter router = GoRouter(
           ),
           direction: SlideDirection.up,
         );
+      },
+    ),
+    GoRoute(
+      path: Routes.groupCollaboration,
+      pageBuilder: (context, state) {
+        final tripId = state.uri.queryParameters['tripId'] ?? '';
+        return state.slidePage(GroupCollaborationScreen(tripId: tripId));
       },
     ),
   ],

@@ -43,6 +43,7 @@ dependencies:
   firebase_analytics: ^12.4.6
   firebase_core: ^4.13.0
   firebase_crashlytics: ^5.2.7
+  file_picker: ^8.1.7
   flutter_riverpod: ^3.1.0
   flutter_svg: ^2.2.1
   freezed_annotation: ^3.0.0
@@ -58,7 +59,7 @@ dependencies:
   json_annotation: ^4.9.0
   lottie: ^3.3.2
   ming_cute_icons: ^0.0.7
-  package_info_plus: ^10.2.1
+  package_info_plus: ^9.0.1
   path: ^1.9.0
   path_provider: ^2.1.5
   permission_handler: ^13.0.1
