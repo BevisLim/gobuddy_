@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/environment/env.dart';
 import '../../../core/routing/routes.dart';
 import '../../common/remote/supabase_client.dart';
 
@@ -44,6 +45,10 @@ class _AppLaunchingScreenState extends State<AppLaunchingScreen>
 
   void _goToLogin() {
     if (!mounted) return;
+    if (!Env.hasSupabase) {
+      context.go(Routes.main);
+      return;
+    }
     final destination =
         supabase.auth.currentSession == null ? Routes.login : Routes.main;
     context.go(destination);

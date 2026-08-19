@@ -11,10 +11,12 @@ import 'package:flutter_mvvm_riverpod/features/common/ui/providers/app_theme_mod
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await EasyLocalization.ensureInitialized();
-  await Supabase.initialize(
-    url: Env.supabaseUrl,
-    publishableKey: Env.supabaseAnonKey,
-  );
+  if (Env.hasSupabase) {
+    await Supabase.initialize(
+      url: Env.supabaseUrl,
+      publishableKey: Env.supabaseAnonKey,
+    );
+  }
 
   runApp(
     EasyLocalization(

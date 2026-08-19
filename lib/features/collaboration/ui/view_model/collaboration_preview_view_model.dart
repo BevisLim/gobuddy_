@@ -34,6 +34,19 @@ class CollaborationPreviewViewModel extends Notifier<CollaborationPreviewState> 
     state = state.copyWith(chatMessages: [...state.chatMessages, PreviewChatMessage(sender: 'You', body: body.trim())], message: 'Message sent.');
   }
   void selectDay(int day) => state = state.copyWith(selectedDay: day);
+  void toggleActivityPin(String activityKey) {
+    final pinned = List<String>.from(state.pinnedActivityKeys);
+    final isPinned = pinned.contains(activityKey);
+    isPinned ? pinned.remove(activityKey) : pinned.add(activityKey);
+    state = state.copyWith(pinnedActivityKeys: pinned, message: isPinned ? 'Activity unpinned.' : 'Activity pinned to the top.');
+  }
+  void saveActivityForKey(String activityKey, PreviewActivity activity) {
+    state = state.copyWith(activityOverrides: {...state.activityOverrides, activityKey: activity}, message: 'Activity changes saved.');
+  }
+  void setActivityLock(String activityKey, PreviewActivity activity, bool isLocked) {
+    saveActivityForKey(activityKey, PreviewActivity(title: activity.title, category: activity.category, date: activity.date, time: activity.time, location: activity.location, budget: activity.budget, notes: activity.notes, status: activity.status, isLocked: isLocked));
+    state = state.copyWith(message: isLocked ? 'Activity locked.' : 'Activity unlocked.');
+  }
   void togglePin() => state = state.copyWith(isPinned: !state.isPinned, message: state.isPinned ? 'Activity unpinned.' : 'Activity pinned to the top.');
   void saveActivity(PreviewActivity activity) => state = state.copyWith(activity: activity, message: 'Activity changes saved.');
   void addProposal(PreviewActivity activity) => state = state.copyWith(proposals: [...state.proposals, activity], message: 'Activity proposal submitted.');

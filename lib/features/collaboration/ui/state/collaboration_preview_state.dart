@@ -19,6 +19,7 @@ class CollaborationPreviewState {
     ],
     this.receivedRequests = const [PreviewFriend(id: 'farah', name: 'Farah Aziz', username: 'farahaziz', email: 'farah@example.com')],
     this.sentRequestIds = const [], this.selectedFriendIds = const [],
+    this.pinnedActivityKeys = const [], this.activityOverrides = const {},
   });
   final bool isPinned;
   final int primaryPollVotes;
@@ -40,7 +41,9 @@ class CollaborationPreviewState {
   final List<PreviewFriend> receivedRequests;
   final List<String> sentRequestIds;
   final List<String> selectedFriendIds;
-  CollaborationPreviewState copyWith({bool? isPinned, int? primaryPollVotes, PreviewActivity? activity, List<PreviewActivity>? proposals, List<PreviewSharedFile>? sharedFiles, PreviewPoll? poll, PreviewCallType? activeCall, bool clearCall = false, bool? microphoneMuted, bool? cameraOn, bool? frontCamera, String? message, List<PreviewChatMessage>? chatMessages, bool? memberMuted, bool? memberRemoved, int? selectedDay, List<PreviewMember>? members, List<PreviewFriend>? friendDirectory, List<PreviewFriend>? receivedRequests, List<String>? sentRequestIds, List<String>? selectedFriendIds}) => CollaborationPreviewState(
+  final List<String> pinnedActivityKeys;
+  final Map<String, PreviewActivity> activityOverrides;
+  CollaborationPreviewState copyWith({bool? isPinned, int? primaryPollVotes, PreviewActivity? activity, List<PreviewActivity>? proposals, List<PreviewSharedFile>? sharedFiles, PreviewPoll? poll, PreviewCallType? activeCall, bool clearCall = false, bool? microphoneMuted, bool? cameraOn, bool? frontCamera, String? message, List<PreviewChatMessage>? chatMessages, bool? memberMuted, bool? memberRemoved, int? selectedDay, List<PreviewMember>? members, List<PreviewFriend>? friendDirectory, List<PreviewFriend>? receivedRequests, List<String>? sentRequestIds, List<String>? selectedFriendIds, List<String>? pinnedActivityKeys, Map<String, PreviewActivity>? activityOverrides}) => CollaborationPreviewState(
     isPinned: isPinned ?? this.isPinned, primaryPollVotes: primaryPollVotes ?? this.primaryPollVotes,
     activity: activity ?? this.activity, proposals: proposals ?? this.proposals, sharedFiles: sharedFiles ?? this.sharedFiles,
     poll: poll ?? this.poll, activeCall: clearCall ? null : (activeCall ?? this.activeCall),
@@ -50,6 +53,7 @@ class CollaborationPreviewState {
     selectedDay: selectedDay ?? this.selectedDay, members: members ?? this.members,
     friendDirectory: friendDirectory ?? this.friendDirectory, receivedRequests: receivedRequests ?? this.receivedRequests,
     sentRequestIds: sentRequestIds ?? this.sentRequestIds, selectedFriendIds: selectedFriendIds ?? this.selectedFriendIds,
+    pinnedActivityKeys: pinnedActivityKeys ?? this.pinnedActivityKeys, activityOverrides: activityOverrides ?? this.activityOverrides,
   );
 }
 

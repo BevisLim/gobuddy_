@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:flutter_mvvm_riverpod/core/environment/env.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration_models.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/group_collaboration_preview_screen.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/view_model/group_collaboration_view_model.dart';
@@ -13,7 +14,9 @@ class GroupCollaborationScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (tripId.isEmpty) return const GroupCollaborationPreviewScreen();
+    if (tripId.isEmpty || !Env.hasSupabase) {
+      return GroupCollaborationPreviewScreen(tripId: tripId);
+    }
     final workspace = ref.watch(groupCollaborationViewModelProvider(tripId));
     return workspace.when(
       loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
