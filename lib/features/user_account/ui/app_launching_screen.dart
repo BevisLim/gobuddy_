@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../routing/routes.dart';
+import '../../../core/routing/routes.dart';
+import '../../common/remote/supabase_client.dart';
 
 /// Fly design tokens sourced from `fly-DESIGN.md`.
 const _flyBackground = Color(0xFFFFFFFF);
@@ -42,7 +43,10 @@ class _AppLaunchingScreenState extends State<AppLaunchingScreen>
   }
 
   void _goToLogin() {
-    if (mounted) context.go(Routes.login);
+    if (!mounted) return;
+    final destination =
+        supabase.auth.currentSession == null ? Routes.login : Routes.main;
+    context.go(destination);
   }
 
   @override
@@ -109,7 +113,7 @@ class _BrandMark extends StatelessWidget {
           color: _flySurface,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: const Icon(Icons.explore_rounded,
-            color: _flyOnPrimary, size: 34),
+        child:
+            const Icon(Icons.explore_rounded, color: _flyOnPrimary, size: 34),
       );
 }

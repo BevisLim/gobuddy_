@@ -6,11 +6,11 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-import '../../../../constants/constants.dart';
-import '../../../../extensions/build_context_extension.dart';
-import '../../../../extensions/profile_extension.dart';
-import '../../../../extensions/string_extension.dart';
-import '../../../authentication/ui/view_model/authentication_view_model.dart';
+import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
+import 'package:flutter_mvvm_riverpod/core/extensions/build_context_extension.dart';
+import 'package:flutter_mvvm_riverpod/core/extensions/profile_extension.dart';
+import 'package:flutter_mvvm_riverpod/core/extensions/string_extension.dart';
+import 'package:flutter_mvvm_riverpod/features/user_account/ui/view_model/authentication_view_model.dart';
 import '../../model/profile.dart';
 import '../../repository/profile_repository.dart';
 import '../../ui/state/profile_state.dart';

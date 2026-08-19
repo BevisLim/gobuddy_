@@ -3,9 +3,9 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
-import '../../../../constants/assets.dart';
-import '../../../../extensions/string_extension.dart';
-import '../../../../theme/app_colors.dart';
+import 'package:flutter_mvvm_riverpod/core/constants/assets.dart';
+import 'package:flutter_mvvm_riverpod/core/extensions/string_extension.dart';
+import 'package:flutter_mvvm_riverpod/core/theme/app_colors.dart';
 
 class Avatar extends StatelessWidget {
   final String? url;

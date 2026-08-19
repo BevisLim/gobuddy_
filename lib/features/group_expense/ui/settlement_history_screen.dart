@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../../extensions/build_context_extension.dart';
-import '../../../routing/routes.dart';
+import 'package:flutter_mvvm_riverpod/core/extensions/build_context_extension.dart';
+import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import '../model/expense_date_utils.dart';
 import '../model/money_utils.dart';
 import '../model/settlement.dart';

@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:uuid/uuid.dart';
 
-import '../../../routing/routes.dart';
+
 import '../../common/ui/widgets/app_module_navigation.dart';
+import '../../../core/routing/routes.dart';
+import '../model/matchmaking_models.dart';
 import '../model/matchmaking_page.dart';
-import 'view_model/matchmaking_view_model.dart';
+import 'view_model/matchmaking_view_model_v2.dart';
 
 const _ink = Color(0xFF281950);
 const _violet = Color(0xFF7C3AED);
@@ -13,53 +18,122 @@ const _border = Color(0xFFD5CFEF);
 const _muted = Color(0xFF686082);
 const _lavender = Color(0xFFEDE9FE);
 
-class MatchmakingShellScreen extends ConsumerWidget {
+class MatchmakingShellScreen extends ConsumerStatefulWidget {
   const MatchmakingShellScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(matchmakingViewModelProvider);
-    final viewModel = ref.read(matchmakingViewModelProvider.notifier);
+  ConsumerState<MatchmakingShellScreen> createState() =>
+      _MatchmakingShellScreenState();
+}
+
+class _MatchmakingShellScreenState
+    extends ConsumerState<MatchmakingShellScreen> {
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(matchmakingViewModelV2Provider);
+    final viewModel = ref.read(matchmakingViewModelV2Provider.notifier);
     final page = state.page;
     final content = switch (page) {
       MatchmakingPage.discover => DiscoverPage(
           filter: state.selectedFilter,
+          trips: state.discoveryTrips,
+          savedTripIds: state.savedTripIds,
           filters: state.availableFilters,
           onFilter: viewModel.selectFilter,
-          onGo: viewModel.goTo),
-      MatchmakingPage.filters => FilterPage(
+          onOpenFilters: () => viewModel.goTo(MatchmakingPage.filters),
+          onDetails: (id) => viewModel.openTrip(id, MatchmakingPage.details),
+          onRequest: (id) => viewModel.openTrip(id, MatchmakingPage.request),
+          onSave: viewModel.toggleSavedTrip),
+      MatchmakingPage.filters => InteractiveFilterPage(
+          initialFilters: state.filters,
           onBack: () => viewModel.goTo(MatchmakingPage.discover),
-          onApply: () => viewModel.goTo(MatchmakingPage.discover)),
+          onApply: viewModel.applyFilters,
+          onReset: viewModel.resetFilters),
       MatchmakingPage.details => TripDetailsPage(
+          trip: state.selectedTrip!,
           onBack: () => viewModel.goTo(MatchmakingPage.discover),
           onRequest: () => viewModel.goTo(MatchmakingPage.request)),
-      MatchmakingPage.create => CreateTripPage(
+      MatchmakingPage.create => InteractiveTripFormPage(
           onBack: () => viewModel.goTo(MatchmakingPage.discover),
-          onPublish: () => viewModel.goTo(MatchmakingPage.myTrips)),
-      MatchmakingPage.edit => CreateTripPage(
+          onPublish: viewModel.saveTrip),
+      MatchmakingPage.edit => InteractiveTripFormPage(
           edit: true,
+          initialTrip: state.selectedTrip,
           onBack: () => viewModel.goTo(MatchmakingPage.myTrips),
-          onPublish: () => viewModel.goTo(MatchmakingPage.myTrips)),
+          onPublish: viewModel.saveTrip,
+          onDelete: () => viewModel.deleteTrip(state.selectedTrip!.id)),
       MatchmakingPage.myTrips => MyTripsPage(
+          trips: state.ownedTrips,
+          onBack: () => viewModel.goTo(MatchmakingPage.discover),
           onCreate: () => viewModel.goTo(MatchmakingPage.create),
-          onManage: () => viewModel.goTo(MatchmakingPage.manage),
-          onEdit: () => viewModel.goTo(MatchmakingPage.edit)),
+          onManage: viewModel.openRequests,
+          onEdit: (id) => viewModel.openTrip(id, MatchmakingPage.edit),
+          onDelete: viewModel.deleteTrip),
       MatchmakingPage.request => RequestPage(
+          trip: state.selectedTrip!,
           onCancel: () => viewModel.goTo(MatchmakingPage.details),
-          onSend: () => viewModel.goTo(MatchmakingPage.sent)),
+          onSend: (message) =>
+              viewModel.sendRequest(state.selectedTrip!.id, message)),
       MatchmakingPage.sent =>
         RequestSentPage(onBack: () => viewModel.goTo(MatchmakingPage.discover)),
       MatchmakingPage.manage => ManageRequestsPage(
-          onApplicant: () => viewModel.goTo(MatchmakingPage.applicant)),
-      MatchmakingPage.applicant =>
-        ApplicantPage(onBack: () => viewModel.goTo(MatchmakingPage.manage)),
+          trip: state.managedTrip!,
+          requests: state.managedRequests,
+          applicants: state.applicants,
+          onBack: () => viewModel.goTo(MatchmakingPage.myTrips),
+          onApplicant: viewModel.openApplicant,
+          onDecision: viewModel.decideRequest),
+      MatchmakingPage.applicant => ApplicantPage(
+          applicant: state.selectedApplicant!,
+          request: state.managedRequests.firstWhere(
+              (item) => item.applicantId == state.selectedApplicantId),
+          onDecision: (id, decision) {
+            viewModel.decideRequest(id, decision);
+            viewModel.goTo(MatchmakingPage.manage);
+          },
+          onBack: () => viewModel.goTo(MatchmakingPage.manage)),
       MatchmakingPage.profile => const ProfilePage(),
     };
     return Scaffold(
-      body: SafeArea(child: content),
+      body: SafeArea(
+          child: Column(children: [
+        if (state.isLoading) const LinearProgressIndicator(minHeight: 3),
+        if (state.errorMessage != null)
+          Material(
+              color: const Color(0xFFFFE8E8),
+              child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Row(children: [
+                    const Icon(Icons.error_outline, color: Colors.red),
+                    const SizedBox(width: 8),
+                    Expanded(
+                        child: Text('Could not sync with Supabase: '
+                            '${state.errorMessage}')),
+                    TextButton(
+                        onPressed: viewModel.refresh,
+                        child: const Text('Retry'))
+                  ]))),
+        Expanded(child: content)
+      ])),
       bottomNavigationBar:
           page == MatchmakingPage.discover || page == MatchmakingPage.myTrips
-              ? const AppModuleNavigation(selectedIndex: 0)
+              ? AppModuleNavigation(
+                  selectedIndex: page == MatchmakingPage.myTrips ? 1 : 0,
+                  onDestinationSelected: (index) {
+                    switch (index) {
+                      case 0:
+                        viewModel.goTo(MatchmakingPage.discover);
+                      case 1:
+                        viewModel.goTo(MatchmakingPage.myTrips);
+                      case 2:
+                        context.go(Routes.messages);
+                      case 3:
+                        context.go(Routes.expenseDashboard);
+                      default:
+                        context.go(Routes.userAccount);
+                    }
+                  },
+                )
               : null,
       floatingActionButton: page == MatchmakingPage.discover
           ? FloatingActionButton(
@@ -76,15 +150,23 @@ class MatchmakingShellScreen extends ConsumerWidget {
 
 class DiscoverPage extends StatelessWidget {
   final String filter;
+  final List<MatchmakingTrip> trips;
+  final Set<String> savedTripIds;
   final List<String> filters;
   final ValueChanged<String> onFilter;
-  final ValueChanged<MatchmakingPage> onGo;
+  final VoidCallback onOpenFilters;
+  final ValueChanged<String> onDetails, onRequest, onSave;
   const DiscoverPage(
       {super.key,
       required this.filter,
+      required this.trips,
+      required this.savedTripIds,
       required this.filters,
       required this.onFilter,
-      required this.onGo});
+      required this.onOpenFilters,
+      required this.onDetails,
+      required this.onRequest,
+      required this.onSave});
 
   @override
   Widget build(BuildContext context) => ColoredBox(
@@ -102,17 +184,17 @@ class DiscoverPage extends StatelessWidget {
                         color: _ink)),
                 const Spacer(),
                 IconButton(
-                    onPressed: () => onGo(MatchmakingPage.filters),
+                    onPressed: onOpenFilters,
                     icon: const Icon(Icons.tune_rounded, color: _ink)),
                 IconButton(
-                    tooltip: 'My Trips',
-                    onPressed: () => onGo(MatchmakingPage.myTrips),
-                    icon: const Icon(Icons.luggage_outlined, color: _ink)),
-                IconButton(
-                    onPressed: () {},
+                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('No new notifications.'))),
                     icon: const Icon(Icons.notifications_none_rounded,
                         color: _ink)),
-                const Avatar(letter: 'M', size: 34),
+                InkWell(
+                    onTap: () => context.go(Routes.userAccount),
+                    customBorder: const CircleBorder(),
+                    child: const Avatar(letter: 'M', size: 34)),
               ])),
           SizedBox(
             height: 38,
@@ -137,19 +219,48 @@ class DiscoverPage extends StatelessWidget {
               child: ListView(
                   padding: const EdgeInsets.fromLTRB(16, 18, 16, 96),
                   children: [
-                TripCard(
-                    onDetails: () => onGo(MatchmakingPage.details),
-                    onRequest: () => onGo(MatchmakingPage.request)),
-                const SizedBox(height: 18),
-                const _SmallDiscoverCard(),
+                for (final trip in trips) ...[
+                  TripCard(
+                      trip: trip,
+                      saved: savedTripIds.contains(trip.id),
+                      onSave: () => onSave(trip.id),
+                      onDetails: () => onDetails(trip.id),
+                      onRequest: () => onRequest(trip.id)),
+                  const SizedBox(height: 18),
+                ],
+                if (trips.isEmpty) const _NoTripsFound(),
               ])),
         ]),
       );
 }
 
+class _NoTripsFound extends StatelessWidget {
+  const _NoTripsFound();
+  @override
+  Widget build(BuildContext context) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 80, horizontal: 24),
+      child: Column(children: [
+        const Icon(Icons.search_off_rounded, size: 48, color: _muted),
+        const SizedBox(height: 14),
+        const Text('No trips found', style: _heading),
+        const SizedBox(height: 7),
+        Text('Try another travel style.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: _muted.withValues(alpha: .9))),
+      ]));
+}
+
 class TripCard extends StatelessWidget {
-  final VoidCallback onDetails, onRequest;
-  const TripCard({super.key, required this.onDetails, required this.onRequest});
+  final MatchmakingTrip trip;
+  final VoidCallback onDetails, onRequest, onSave;
+  final bool saved;
+  const TripCard(
+      {super.key,
+      required this.trip,
+      required this.onDetails,
+      required this.onRequest,
+      required this.onSave,
+      required this.saved});
   @override
   Widget build(BuildContext context) => Container(
       decoration: _cardDecoration(radius: 24, feed: true),
@@ -158,31 +269,30 @@ class TripCard extends StatelessWidget {
         SizedBox(
             height: 270,
             child: Stack(fit: StackFit.expand, children: [
-              const TravelImage(url: _tokyo),
+              TravelImage(url: trip.imageUrl),
               const DecoratedBox(
                   decoration: BoxDecoration(
                       gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [Colors.transparent, Color(0xCC171025)]))),
-              const Positioned(
-                  top: 14, left: 14, child: VerifiedBadge(glass: true)),
+              Positioned(top: 14, left: 14, child: VerifiedBadge(glass: true)),
               const Positioned(top: 14, right: 14, child: _Counter()),
-              const Positioned(
+              Positioned(
                   left: 20,
                   right: 20,
                   bottom: 18,
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Tokyo, Japan',
+                        Text(trip.destination,
                             style: TextStyle(
                                 fontFamily: 'Georgia',
                                 color: Colors.white,
                                 fontSize: 27,
                                 fontWeight: FontWeight.w600)),
                         SizedBox(height: 5),
-                        Text('MAY 14 — MAY 21 · 7 DAYS',
+                        Text(_dateRange(trip.startDate, trip.endDate),
                             style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 12,
@@ -194,32 +304,34 @@ class TripCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Row(children: [
-                Avatar(letter: 'E', size: 40, color: Color(0xFFB59BF1)),
-                SizedBox(width: 10),
+              Row(children: [
+                Avatar(
+                    letter: trip.hostInitials,
+                    size: 40,
+                    color: const Color(0xFFB59BF1)),
+                const SizedBox(width: 10),
                 Expanded(
                     child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                      Text('Sophia Lee',
+                      Text(trip.hostName,
                           style: TextStyle(
                               color: _ink, fontWeight: FontWeight.w700)),
-                      Text('Trip organizer',
+                      const Text('Trip organizer',
                           style: TextStyle(color: _muted, fontSize: 12))
                     ])),
-                Text('\$1,800',
+                Text('\$${trip.budget}',
                     style: TextStyle(
                         color: _ink, fontWeight: FontWeight.w700, fontSize: 16))
               ]),
               const SizedBox(height: 14),
-              const Wrap(spacing: 7, runSpacing: 7, children: [
-                ChipButton(label: 'Adventure', small: true),
-                ChipButton(label: 'Nature', small: true),
-                SlotChip()
+              Wrap(spacing: 7, runSpacing: 7, children: [
+                ...trip.styles
+                    .map((style) => ChipButton(label: style, small: true)),
+                SlotChip(spots: trip.spotsLeft)
               ]),
               const SizedBox(height: 13),
-              const Text(
-                  'Hiking mountain passes, quiet alpine stays, and long Italian lunches. Looking for kind, curious people who love early starts.',
+              Text(trip.description,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(height: 1.45, fontSize: 14, color: _muted)),
@@ -230,9 +342,12 @@ class TripCard extends StatelessWidget {
                 border: Border(top: BorderSide(color: _border))),
             child: Row(children: [
               IconButton(
-                  onPressed: () {},
-                  icon:
-                      const Icon(Icons.favorite_border_rounded, color: _violet),
+                  onPressed: onSave,
+                  icon: Icon(
+                      saved
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                      color: _violet),
                   style: IconButton.styleFrom(
                       side: const BorderSide(color: _border),
                       shape: const CircleBorder())),
@@ -247,59 +362,235 @@ class TripCard extends StatelessWidget {
       ]));
 }
 
-class FilterPage extends StatelessWidget {
-  final VoidCallback onBack, onApply;
-  const FilterPage({super.key, required this.onBack, required this.onApply});
+class InteractiveFilterPage extends StatefulWidget {
+  final VoidCallback onBack, onReset;
+  final ValueChanged<MatchmakingFilters> onApply;
+  final MatchmakingFilters initialFilters;
+  const InteractiveFilterPage(
+      {super.key,
+      required this.initialFilters,
+      required this.onBack,
+      required this.onApply,
+      required this.onReset});
+
+  @override
+  State<InteractiveFilterPage> createState() => _InteractiveFilterPageState();
+}
+
+class _InteractiveFilterPageState extends State<InteractiveFilterPage> {
+  final _destination = TextEditingController();
+  final _start = TextEditingController();
+  final _end = TextEditingController();
+  RangeValues _budget = const RangeValues(500, 2500);
+  RangeValues _ages = const RangeValues(22, 35);
+  String _gender = 'Any';
+  final _styles = <String>{};
+  static const _styleOptions = [
+    'Adventure',
+    'Foodie',
+    'Luxury',
+    'Backpacker',
+    'Nature',
+    'Culture'
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    final filters = widget.initialFilters;
+    _destination.text = filters.destination;
+    _start.text =
+        filters.startDate == null ? '' : _dateInput(filters.startDate!);
+    _end.text = filters.endDate == null ? '' : _dateInput(filters.endDate!);
+    _budget =
+        RangeValues(filters.minBudget.toDouble(), filters.maxBudget.toDouble());
+    _ages = RangeValues(filters.minAge.toDouble(), filters.maxAge.toDouble());
+    _gender = filters.gender;
+    _styles.addAll(filters.styles);
+  }
+
+  @override
+  void dispose() {
+    _destination.dispose();
+    _start.dispose();
+    _end.dispose();
+    super.dispose();
+  }
+
+  InputDecoration _decoration(String hint, {IconData? icon}) => InputDecoration(
+      hintText: hint,
+      suffixIcon: icon == null ? null : Icon(icon, size: 19, color: _muted),
+      filled: true,
+      fillColor: Colors.white,
+      border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: _border)),
+      enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: _border)));
+
+  Future<void> _pickDate(TextEditingController controller) async {
+    final date = await showDatePicker(
+        context: context,
+        initialDate: DateTime.now(),
+        firstDate: DateTime.now(),
+        lastDate: DateTime.now().add(const Duration(days: 3650)));
+    if (date != null) {
+      controller.text = '${date.day.toString().padLeft(2, '0')}/'
+          '${date.month.toString().padLeft(2, '0')}/${date.year}';
+    }
+  }
+
+  Widget _dateField(TextEditingController controller, String hint) => TextField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      inputFormatters: const [_DateInputFormatter()],
+      decoration: _decoration(hint, icon: Icons.calendar_today_outlined),
+      onTap: () => _pickDate(controller));
+
+  void _reset() {
+    setState(() {
+      _destination.clear();
+      _start.clear();
+      _end.clear();
+      _budget = const RangeValues(0, 10000);
+      _ages = const RangeValues(18, 80);
+      _gender = 'Any';
+      _styles.clear();
+    });
+    widget.onReset();
+  }
+
+  DateTime? _parseOptionalDate(String value) {
+    if (value.isEmpty) return null;
+    final parts = value.split('/');
+    if (parts.length != 3) return null;
+    final day = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    final year = int.tryParse(parts[2]);
+    if (day == null || month == null || year == null) return null;
+    final date = DateTime(year, month, day);
+    return date.day == day && date.month == month && date.year == year
+        ? date
+        : null;
+  }
+
+  void _apply() {
+    final start = _parseOptionalDate(_start.text);
+    final end = _parseOptionalDate(_end.text);
+    if ((_start.text.isNotEmpty && start == null) ||
+        (_end.text.isNotEmpty && end == null) ||
+        (start != null && end != null && end.isBefore(start))) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enter a valid date range.')));
+      return;
+    }
+    widget.onApply(MatchmakingFilters(
+      destination: _destination.text.trim(),
+      startDate: start,
+      endDate: end,
+      minBudget: _budget.start.round(),
+      maxBudget: _budget.end.round(),
+      minAge: _ages.start.round(),
+      maxAge: _ages.end.round(),
+      gender: _gender,
+      styles: {..._styles},
+    ));
+  }
+
   @override
   Widget build(BuildContext context) => FormPage(
       title: 'Search & filter',
-      onBack: onBack,
+      onBack: widget.onBack,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const FieldLabel('DESTINATION'),
-        const AppField(hint: 'Where would you like to go?'),
+        TextField(
+            controller: _destination,
+            decoration: _decoration('Where would you like to go?')),
         const SizedBox(height: 22),
         const FieldLabel('DATE RANGE'),
-        const Row(children: [
-          Expanded(
-              child: AppField(
-                  hint: 'Start date', icon: Icons.calendar_today_outlined)),
-          SizedBox(width: 12),
-          Expanded(
-              child: AppField(
-                  hint: 'End date', icon: Icons.calendar_today_outlined))
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(child: _dateField(_start, 'Start date')),
+          const SizedBox(width: 12),
+          Expanded(child: _dateField(_end, 'End date'))
         ]),
         const SizedBox(height: 22),
         const FieldLabel('BUDGET'),
-        const RangeTitle(left: '\$500', right: '\$2,500'),
-        const Slider(value: .55, onChanged: _noop),
+        RangeTitle(
+            left: '\$${_budget.start.round()}',
+            right: '\$${_budget.end.round()}'),
+        RangeSlider(
+            values: _budget,
+            min: 0,
+            max: 10000,
+            divisions: 100,
+            labels: RangeLabels(
+                '\$${_budget.start.round()}', '\$${_budget.end.round()}'),
+            onChanged: (value) => setState(() => _budget = value)),
         const SizedBox(height: 16),
         const FieldLabel('AGE RANGE'),
-        const RangeTitle(left: '22', right: '35'),
-        const Slider(value: .5, onChanged: _noop),
+        RangeTitle(
+            left: _ages.start.round().toString(),
+            right: _ages.end.round().toString()),
+        RangeSlider(
+            values: _ages,
+            min: 18,
+            max: 80,
+            divisions: 62,
+            labels: RangeLabels(
+                _ages.start.round().toString(), _ages.end.round().toString()),
+            onChanged: (value) => setState(() => _ages = value)),
         const SizedBox(height: 18),
         const FieldLabel('PREFERRED GENDER'),
-        const Segmented(),
+        const SizedBox(height: 8),
+        Row(
+            children: ['Any', 'Female', 'Male']
+                .map((gender) => Expanded(
+                    child: Padding(
+                        padding:
+                            EdgeInsets.only(right: gender == 'Male' ? 0 : 8),
+                        child: ChipButton(
+                            label: gender,
+                            active: _gender == gender,
+                            onTap: () => setState(() => _gender = gender)))))
+                .toList()),
         const SizedBox(height: 22),
         const FieldLabel('TRAVEL STYLE'),
-        const StyleWrap(),
+        const SizedBox(height: 8),
+        Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _styleOptions
+                .map((style) => ChipButton(
+                    label: style,
+                    active: _styles.contains(style),
+                    onTap: () => setState(() => _styles.contains(style)
+                        ? _styles.remove(style)
+                        : _styles.add(style))))
+                .toList()),
         const SizedBox(height: 32),
-        PrimaryButton(label: 'Apply Filters', onTap: onApply),
+        PrimaryButton(label: 'Apply Filters', onTap: _apply),
         const SizedBox(height: 10),
-        OutlineButton(label: 'Reset', onTap: () {}),
+        OutlineButton(label: 'Reset', onTap: _reset),
       ]));
 }
 
 class TripDetailsPage extends StatelessWidget {
+  final MatchmakingTrip trip;
   final VoidCallback onBack, onRequest;
   const TripDetailsPage(
-      {super.key, required this.onBack, required this.onRequest});
+      {super.key,
+      required this.trip,
+      required this.onBack,
+      required this.onRequest});
   @override
   Widget build(BuildContext context) => Stack(children: [
         ListView(padding: EdgeInsets.zero, children: [
           SizedBox(
               height: 240,
               child: Stack(fit: StackFit.expand, children: [
-                const TravelImage(url: _tokyo),
+                TravelImage(url: trip.imageUrl),
                 Positioned(top: 16, left: 16, child: RoundBack(onTap: onBack))
               ])),
           Padding(
@@ -307,35 +598,40 @@ class TripDetailsPage extends StatelessWidget {
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Tokyo, Japan', style: _heading),
+                    Text(trip.destination, style: _heading),
                     const SizedBox(height: 5),
-                    const Text('MAY 14 — MAY 21, 2026', style: _label),
+                    Text(_dateRange(trip.startDate, trip.endDate),
+                        style: _label),
                     const SizedBox(height: 20),
-                    const InfoRows(),
+                    InfoRows(trip: trip),
                     const SizedBox(height: 24),
                     const FieldLabel('TRIP HOST'),
                     const SizedBox(height: 9),
-                    const Row(children: [
-                      Avatar(letter: 'E', size: 46, color: Color(0xFFB59BF1)),
-                      SizedBox(width: 11),
-                      Text('Sophia Lee',
+                    Row(children: [
+                      Avatar(
+                          letter: trip.hostInitials,
+                          size: 46,
+                          color: const Color(0xFFB59BF1)),
+                      const SizedBox(width: 11),
+                      Text(trip.hostName,
                           style: TextStyle(
                               fontWeight: FontWeight.w700, color: _ink)),
-                      SizedBox(width: 8),
-                      VerifiedBadge()
+                      const SizedBox(width: 8),
+                      if (trip.verifiedHost) const VerifiedBadge()
                     ]),
                     const SizedBox(height: 24),
                     const FieldLabel('TRAVEL STYLE'),
                     const SizedBox(height: 9),
-                    const Wrap(spacing: 8, children: [
-                      ChipButton(label: 'Adventure', active: true),
-                      ChipButton(label: 'Nature', active: true)
-                    ]),
+                    Wrap(
+                        spacing: 8,
+                        children: trip.styles
+                            .map((style) =>
+                                ChipButton(label: style, active: true))
+                            .toList()),
                     const SizedBox(height: 24),
                     const FieldLabel('ABOUT THIS TRIP'),
                     const SizedBox(height: 9),
-                    const Text(
-                        'Looking for a calm travel companion to explore Tokyo’s neighbourhoods, hidden izakayas, ramen shops, and art museums. I prefer a relaxed pace with some structure and plenty of room for a great conversation.',
+                    Text(trip.description,
                         style: TextStyle(height: 1.65, color: _muted)),
                   ])),
         ]),
@@ -355,121 +651,386 @@ class TripDetailsPage extends StatelessWidget {
       ]);
 }
 
-class CreateTripPage extends StatelessWidget {
-  final VoidCallback onBack, onPublish;
+class InteractiveTripFormPage extends StatefulWidget {
+  final VoidCallback onBack;
+  final ValueChanged<MatchmakingTrip> onPublish;
+  final VoidCallback? onDelete;
+  final MatchmakingTrip? initialTrip;
   final bool edit;
-  const CreateTripPage(
+  const InteractiveTripFormPage(
       {super.key,
       required this.onBack,
       required this.onPublish,
+      this.onDelete,
+      this.initialTrip,
       this.edit = false});
+
+  @override
+  State<InteractiveTripFormPage> createState() =>
+      _InteractiveTripFormPageState();
+}
+
+class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _destination,
+      _start,
+      _end,
+      _budget,
+      _vacancies,
+      _description;
+  final _styles = <String>{};
+  String _gender = 'Any';
+  RangeValues _ages = const RangeValues(22, 40);
+  static const _styleOptions = [
+    'Adventure',
+    'Foodie',
+    'Luxury',
+    'Backpacker',
+    'Nature',
+    'Culture'
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    final trip = widget.initialTrip;
+    _destination = TextEditingController(text: trip?.destination ?? '');
+    _start = TextEditingController(
+        text: trip == null ? '' : _dateInput(trip.startDate));
+    _end = TextEditingController(
+        text: trip == null ? '' : _dateInput(trip.endDate));
+    _budget = TextEditingController(text: trip?.budget.toString() ?? '');
+    _vacancies = TextEditingController(text: trip?.vacancies.toString() ?? '');
+    _description = TextEditingController(text: trip?.description ?? '');
+    if (trip != null) {
+      _styles.addAll(trip.styles);
+      _gender = trip.gender;
+      _ages = RangeValues(trip.minAge.toDouble(), trip.maxAge.toDouble());
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final item in [
+      _destination,
+      _start,
+      _end,
+      _budget,
+      _vacancies,
+      _description
+    ]) {
+      item.dispose();
+    }
+    super.dispose();
+  }
+
+  InputDecoration _decoration(String hint, {String? prefix, IconData? icon}) =>
+      InputDecoration(
+          hintText: hint,
+          prefixText: prefix,
+          suffixIcon: icon == null ? null : Icon(icon, size: 19),
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: _border)),
+          enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: _border)));
+
+  Widget _field(TextEditingController controller, String hint,
+          {TextInputType? keyboard,
+          List<TextInputFormatter>? formatters,
+          String? prefix,
+          IconData? icon,
+          int lines = 1,
+          bool required = true,
+          VoidCallback? onTap}) =>
+      TextFormField(
+          controller: controller,
+          keyboardType: keyboard,
+          inputFormatters: formatters,
+          maxLines: lines,
+          onTap: onTap,
+          decoration: _decoration(hint, prefix: prefix, icon: icon),
+          validator: required
+              ? (value) =>
+                  value == null || value.trim().isEmpty ? 'Required' : null
+              : null);
+
+  Future<void> _pickDate(TextEditingController controller) async {
+    final date = await showDatePicker(
+        context: context,
+        initialDate: DateTime.now(),
+        firstDate: DateTime.now(),
+        lastDate: DateTime.now().add(const Duration(days: 3650)));
+    if (date != null) {
+      controller.text = '${date.day.toString().padLeft(2, '0')}/'
+          '${date.month.toString().padLeft(2, '0')}/${date.year}';
+    }
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate() || _styles.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content:
+              Text('Complete the required fields and select a travel style.')));
+      return;
+    }
+    final start = _parseDate(_start.text);
+    final end = _parseDate(_end.text);
+    if (start == null || end == null || end.isBefore(start)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('End date cannot be earlier than start date.')));
+      return;
+    }
+    widget.onPublish(MatchmakingTrip(
+      id: widget.initialTrip?.id ?? const Uuid().v4(),
+      destination: _destination.text.trim(),
+      startDate: start,
+      endDate: end,
+      budget: int.parse(_budget.text),
+      styles: {..._styles},
+      hostId: widget.initialTrip?.hostId ?? 'current-user',
+      hostName: widget.initialTrip?.hostName ?? 'Morgan Lee',
+      hostInitials: widget.initialTrip?.hostInitials ?? 'ML',
+      imageUrl: widget.initialTrip?.imageUrl ?? _tokyo,
+      gender: _gender,
+      minAge: _ages.start.round(),
+      maxAge: _ages.end.round(),
+      vacancies: int.parse(_vacancies.text),
+      description: _description.text.trim(),
+      joined: widget.initialTrip?.joined ?? 0,
+      verifiedHost: widget.initialTrip?.verifiedHost ?? true,
+      status: widget.initialTrip?.status ?? TripStatus.active,
+      isOwned: true,
+    ));
+  }
+
+  DateTime? _parseDate(String value) {
+    final parts = value.split('/');
+    if (parts.length != 3) return null;
+    final day = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    final year = int.tryParse(parts[2]);
+    if (day == null || month == null || year == null) return null;
+    final date = DateTime(year, month, day);
+    return date.year == year && date.month == month && date.day == day
+        ? date
+        : null;
+  }
+
+  Future<void> _delete() async {
+    final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+                title: const Text('Delete trip?'),
+                content: const Text('This action cannot be undone.'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Cancel')),
+                  TextButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('Delete',
+                          style: TextStyle(color: Color(0xFFDC2626))))
+                ]));
+    if (confirmed == true) widget.onDelete?.call();
+  }
+
   @override
   Widget build(BuildContext context) => FormPage(
-      title: edit ? 'Edit Trip' : 'Create Trip',
-      onBack: onBack,
-      child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: _cardDecoration(),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const FieldLabel('DESTINATION'),
-            AppField(hint: edit ? 'Tokyo, Japan' : 'e.g. Tokyo, Japan'),
-            const SizedBox(height: 18),
-            Row(children: [
-              Expanded(
-                  child: AppField(
-                      hint: edit ? '12/08/2025' : 'dd/mm/yyyy',
-                      icon: Icons.calendar_today_outlined)),
-              SizedBox(width: 10),
-              Expanded(
-                  child: AppField(
-                      hint: edit ? '20/08/2025' : 'dd/mm/yyyy',
-                      icon: Icons.calendar_today_outlined))
-            ]),
-            const SizedBox(height: 18),
-            const FieldLabel('BUDGET'),
-            AppField(
-                hint: edit ? '\$1,200 – \$1,800' : 'e.g. \$1,200 – \$1,800'),
-            const SizedBox(height: 18),
-            const FieldLabel('TRAVEL STYLE'),
-            const StyleWrap(),
-            const SizedBox(height: 18),
-            const FieldLabel('PREFERRED GENDER'),
-            const AppField(hint: 'Any', icon: Icons.expand_more),
-            const SizedBox(height: 18),
-            const FieldLabel('AGE PREFERENCE'),
-            const RangeTitle(left: '22', right: '40'),
-            const Slider(value: .48, onChanged: _noop),
-            const SizedBox(height: 18),
-            const FieldLabel('AVAILABLE VACANCIES'),
-            AppField(hint: edit ? '2' : 'e.g. 2', icon: Icons.people_outline),
-            const SizedBox(height: 18),
-            const FieldLabel('DESCRIPTION'),
-            AppField(
-                hint: edit
-                    ? 'Looking for a calm travel companion to explore Tokyo’s neighbourhoods, hidden izakayas, ramen shops, and art museums.'
-                    : 'Describe your trip and ideal companion...',
-                lines: 4),
-            const SizedBox(height: 24),
-            PrimaryButton(
-                label: edit ? 'Save Changes' : 'Publish Trip',
-                onTap: onPublish),
-            if (edit) ...[
-              const SizedBox(height: 10),
-              OutlineButton(label: 'Delete Trip', onTap: onPublish),
-            ],
-          ])));
+        title: widget.edit ? 'Edit Trip' : 'Create Trip',
+        onBack: widget.onBack,
+        child: Form(
+            key: _formKey,
+            child: Container(
+                padding: const EdgeInsets.all(18),
+                decoration: _cardDecoration(),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const FieldLabel('DESTINATION'),
+                      _field(_destination, 'e.g. Tokyo, Japan'),
+                      const SizedBox(height: 18),
+                      Row(children: [
+                        Expanded(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                              const FieldLabel('START DATE'),
+                              const SizedBox(height: 8),
+                              _field(_start, 'dd/mm/yyyy',
+                                  keyboard: TextInputType.number,
+                                  formatters: const [_DateInputFormatter()],
+                                  icon: Icons.calendar_today_outlined,
+                                  onTap: () => _pickDate(_start))
+                            ])),
+                        const SizedBox(width: 10),
+                        Expanded(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                              const FieldLabel('END DATE'),
+                              const SizedBox(height: 8),
+                              _field(_end, 'dd/mm/yyyy',
+                                  keyboard: TextInputType.number,
+                                  formatters: const [_DateInputFormatter()],
+                                  icon: Icons.calendar_today_outlined,
+                                  onTap: () => _pickDate(_end))
+                            ]))
+                      ]),
+                      const SizedBox(height: 18),
+                      const FieldLabel('BUDGET'),
+                      _field(_budget, 'e.g. 1800',
+                          prefix: '\$ ',
+                          keyboard: TextInputType.number,
+                          formatters: [FilteringTextInputFormatter.digitsOnly]),
+                      const SizedBox(height: 18),
+                      const FieldLabel('TRAVEL STYLE'),
+                      Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: _styleOptions
+                              .map((style) => ChipButton(
+                                  label: style,
+                                  active: _styles.contains(style),
+                                  onTap: () => setState(() =>
+                                      _styles.contains(style)
+                                          ? _styles.remove(style)
+                                          : _styles.add(style))))
+                              .toList()),
+                      const SizedBox(height: 18),
+                      const FieldLabel('PREFERRED GENDER'),
+                      DropdownButtonFormField<String>(
+                          initialValue: _gender,
+                          decoration: _decoration('Select gender'),
+                          items: ['Any', 'Female', 'Male']
+                              .map((value) => DropdownMenuItem(
+                                  value: value, child: Text(value)))
+                              .toList(),
+                          onChanged: (value) =>
+                              setState(() => _gender = value ?? 'Any')),
+                      const SizedBox(height: 18),
+                      const FieldLabel('AGE PREFERENCE'),
+                      RangeTitle(
+                          left: _ages.start.round().toString(),
+                          right: _ages.end.round().toString()),
+                      RangeSlider(
+                          values: _ages,
+                          min: 18,
+                          max: 80,
+                          divisions: 62,
+                          labels: RangeLabels(_ages.start.round().toString(),
+                              _ages.end.round().toString()),
+                          onChanged: (value) => setState(() => _ages = value)),
+                      const SizedBox(height: 18),
+                      const FieldLabel('AVAILABLE VACANCIES'),
+                      _field(_vacancies, 'e.g. 2',
+                          keyboard: TextInputType.number,
+                          formatters: [FilteringTextInputFormatter.digitsOnly],
+                          icon: Icons.people_outline),
+                      const SizedBox(height: 18),
+                      const FieldLabel('DESCRIPTION (OPTIONAL)'),
+                      _field(_description,
+                          'Describe your trip and ideal companion...',
+                          lines: 4, required: false),
+                      const SizedBox(height: 24),
+                      PrimaryButton(
+                          label: widget.edit ? 'Save Changes' : 'Publish Trip',
+                          onTap: _submit),
+                      if (widget.edit) ...[
+                        const SizedBox(height: 10),
+                        OutlineButton(label: 'Delete Trip', onTap: _delete)
+                      ]
+                    ]))),
+      );
+}
+
+class _DateInputFormatter extends TextInputFormatter {
+  const _DateInputFormatter();
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
+    final clipped = digits.substring(0, digits.length.clamp(0, 8));
+    final buffer = StringBuffer();
+    for (var i = 0; i < clipped.length; i++) {
+      if (i == 2 || i == 4) buffer.write('/');
+      buffer.write(clipped[i]);
+    }
+    final text = buffer.toString();
+    return TextEditingValue(
+        text: text, selection: TextSelection.collapsed(offset: text.length));
+  }
 }
 
 class MyTripsPage extends StatelessWidget {
-  final VoidCallback onCreate, onManage, onEdit;
+  final VoidCallback onBack, onCreate;
+  final List<MatchmakingTrip> trips;
+  final ValueChanged<String> onManage, onEdit, onDelete;
   const MyTripsPage(
       {super.key,
+      required this.trips,
+      required this.onBack,
       required this.onCreate,
       required this.onManage,
+      required this.onDelete,
       required this.onEdit});
   @override
   Widget build(BuildContext context) =>
       ListView(padding: const EdgeInsets.fromLTRB(20, 18, 20, 100), children: [
-        const Text('My trips', style: _display),
+        Row(children: [
+          RoundBack(onTap: onBack),
+          const SizedBox(width: 13),
+          const Text('My trips', style: _display),
+        ]),
         const SizedBox(height: 7),
         const Text('Your adventures, all in one place.',
             style: TextStyle(color: _muted)),
-        const SizedBox(height: 24),
-        CompactTrip(
-            destination: 'Tokyo, Japan',
-            dates: 'Aug 12 – Aug 20, 2025',
-            members: '1 joined',
-            onEdit: onEdit,
-            onManage: onManage),
-        const SizedBox(height: 14),
-        CompactTrip(
-            destination: 'Bali, Indonesia',
-            dates: 'Sep 5 – Sep 15, 2025',
-            members: '2 joined',
-            image: _bali),
-        const SizedBox(height: 14),
-        CompactTrip(
-            destination: 'Paris, France',
-            dates: 'Oct 1 – Oct 8, 2025',
-            members: '0 joined',
-            image: _paris,
-            status: 'Closed'),
-        const SizedBox(height: 14),
-        CompactTrip(
-            destination: 'Kyoto, Japan',
-            dates: 'Nov 10 – Nov 18, 2025',
-            members: '1 joined',
-            image: _kyoto,
-            status: 'Draft'),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         OutlineButton(label: '+ Create a new trip', onTap: onCreate),
+        const SizedBox(height: 24),
+        if (trips.isEmpty) const _NoTripsFound(),
+        for (final trip in trips) ...[
+          CompactTrip(
+              destination: trip.destination,
+              dates: _dateRange(trip.startDate, trip.endDate),
+              members: '${trip.joined} joined',
+              image: trip.imageUrl,
+              status: _statusLabel(trip.status),
+              onEdit: () => onEdit(trip.id),
+              onManage: () => onManage(trip.id),
+              onDelete: () => onDelete(trip.id)),
+          const SizedBox(height: 14),
+        ],
       ]);
 }
 
-class RequestPage extends StatelessWidget {
-  final VoidCallback onCancel, onSend;
-  const RequestPage({super.key, required this.onCancel, required this.onSend});
+class RequestPage extends StatefulWidget {
+  final MatchmakingTrip trip;
+  final VoidCallback onCancel;
+  final bool Function(String message) onSend;
+  const RequestPage(
+      {super.key,
+      required this.trip,
+      required this.onCancel,
+      required this.onSend});
+
+  @override
+  State<RequestPage> createState() => _RequestPageState();
+}
+
+class _RequestPageState extends State<RequestPage> {
+  final _controller = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => Center(
       child: SingleChildScrollView(
@@ -481,28 +1042,42 @@ class RequestPage extends StatelessWidget {
             const SizedBox(height: 8),
             const VerifiedBadge(),
             const SizedBox(height: 12),
-            const Text('Joining: Tokyo, Japan',
+            Text('Joining: ${widget.trip.destination}',
                 textAlign: TextAlign.center, style: TextStyle(color: _muted)),
             const SizedBox(height: 28),
-            const Align(
+            Align(
                 alignment: Alignment.centerLeft,
-                child: FieldLabel('MESSAGE TO SOPHIA')),
+                child: FieldLabel(
+                    'MESSAGE TO ${widget.trip.hostName.toUpperCase()}')),
             const SizedBox(height: 8),
-            const AppField(
+            AppField(
                 hint:
                     'Introduce yourself and share why this trip feels right for you...',
-                lines: 7),
-            const Align(
+                lines: 7,
+                controller: _controller,
+                maxLength: 500,
+                onChanged: (_) => setState(() => _error = null)),
+            Align(
               alignment: Alignment.centerRight,
               child: Padding(
                   padding: EdgeInsets.only(top: 5),
-                  child: Text('0 / 500',
-                      style: TextStyle(color: _muted, fontSize: 11))),
+                  child: Text('${_controller.text.length} / 500',
+                      style: const TextStyle(color: _muted, fontSize: 11))),
             ),
+            if (_error != null) ...[
+              const SizedBox(height: 6),
+              Text(_error!, style: const TextStyle(color: Color(0xFFDC2626))),
+            ],
             const SizedBox(height: 22),
-            PrimaryButton(label: 'Send Request', onTap: onSend),
+            PrimaryButton(
+                label: 'Send Request',
+                onTap: () {
+                  if (!widget.onSend(_controller.text)) {
+                    setState(() => _error = 'Enter a message before sending.');
+                  }
+                }),
             const SizedBox(height: 10),
-            OutlineButton(label: 'Cancel', onTap: onCancel),
+            OutlineButton(label: 'Cancel', onTap: widget.onCancel),
           ])));
 }
 
@@ -541,28 +1116,57 @@ class RequestSentPage extends StatelessWidget {
 }
 
 class ManageRequestsPage extends StatelessWidget {
-  final VoidCallback onApplicant;
-  const ManageRequestsPage({super.key, required this.onApplicant});
+  final VoidCallback onBack;
+  final MatchmakingTrip trip;
+  final List<JoinRequest> requests;
+  final List<MatchmakingApplicant> applicants;
+  final ValueChanged<String> onApplicant;
+  final void Function(String, ApplicantDecision) onDecision;
+  const ManageRequestsPage(
+      {super.key,
+      required this.onBack,
+      required this.onApplicant,
+      required this.trip,
+      required this.requests,
+      required this.applicants,
+      required this.onDecision});
+
+  MatchmakingApplicant _applicant(String id) =>
+      applicants.firstWhere((item) => item.id == id);
   @override
   Widget build(BuildContext context) =>
       ListView(padding: const EdgeInsets.fromLTRB(20, 18, 20, 30), children: [
-        const Text('Requests', style: _display),
+        Row(children: [
+          RoundBack(onTap: onBack),
+          const SizedBox(width: 13),
+          const Text('Requests', style: _display),
+        ]),
         const SizedBox(height: 7),
-        const Text('Tokyo, Japan · 3 applicants',
+        Text('${trip.destination} · ${requests.length} applicants',
             style: TextStyle(color: _muted)),
         const SizedBox(height: 22),
-        ApplicantCard(name: 'Priya Sharma', letter: 'PS', onTap: onApplicant),
-        const SizedBox(height: 14),
-        const ApplicantCard(
-            name: 'Lucas Mendes', letter: 'LM', status: 'Accepted'),
-        const SizedBox(height: 14),
-        const ApplicantCard(name: 'Yuki Tanaka', letter: 'YT', status: 'Held')
+        for (final request in requests) ...[
+          ApplicantCard(
+              applicant: _applicant(request.applicantId),
+              onTap: () => onApplicant(request.applicantId),
+              status: _decisionLabel(request.decision),
+              onDecision: (decision) => onDecision(request.id, decision)),
+          const SizedBox(height: 14),
+        ]
       ]);
 }
 
 class ApplicantPage extends StatelessWidget {
+  final MatchmakingApplicant applicant;
+  final JoinRequest request;
   final VoidCallback onBack;
-  const ApplicantPage({super.key, required this.onBack});
+  final void Function(String, ApplicantDecision) onDecision;
+  const ApplicantPage(
+      {super.key,
+      required this.applicant,
+      required this.request,
+      required this.onBack,
+      required this.onDecision});
   @override
   Widget build(BuildContext context) => Stack(children: [
         ListView(padding: EdgeInsets.zero, children: [
@@ -578,50 +1182,57 @@ class ApplicantPage extends StatelessWidget {
                   children: [
                     RoundBack(onTap: onBack),
                     const SizedBox(height: 22),
-                    const Center(
-                        child: Avatar(letter: 'PS', size: 80, color: _violet)),
+                    Center(
+                        child: Avatar(
+                            letter: applicant.initials,
+                            size: 80,
+                            color: _violet)),
                     const SizedBox(height: 12),
-                    const Center(child: Text('Priya Sharma', style: _heading)),
+                    Center(child: Text(applicant.name, style: _heading)),
                     const SizedBox(height: 6),
-                    const Center(
+                    Center(
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      VerifiedBadge(),
-                      SizedBox(width: 7),
-                      Text('28 · Female', style: TextStyle(color: _muted))
+                      if (applicant.verified) const VerifiedBadge(),
+                      const SizedBox(width: 7),
+                      Text('${applicant.age} · ${applicant.gender}',
+                          style: const TextStyle(color: _muted))
                     ])),
                     const SizedBox(height: 24),
-                    const Row(
+                    Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
-                          Stat(number: '12', label: 'TRIPS'),
-                          Stat(number: '4.9', label: 'RATING'),
-                          Stat(number: '4', label: 'LANGUAGES')
+                          Stat(number: '${applicant.trips}', label: 'TRIPS'),
+                          Stat(number: '${applicant.rating}', label: 'RATING'),
+                          Stat(
+                              number: '${applicant.languages.length}',
+                              label: 'LANGUAGES')
                         ])
                   ])),
-          const Padding(
+          Padding(
               padding: EdgeInsets.fromLTRB(20, 24, 20, 100),
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     FieldLabel('LANGUAGES'),
                     SizedBox(height: 8),
-                    Wrap(spacing: 8, children: [
-                      ChipButton(label: 'English'),
-                      ChipButton(label: 'Hindi'),
-                      ChipButton(label: 'Tamil')
-                    ]),
+                    Wrap(
+                        spacing: 8,
+                        children: applicant.languages
+                            .map((value) => ChipButton(label: value))
+                            .toList()),
                     SizedBox(height: 24),
                     FieldLabel('TRAVEL STYLE'),
                     SizedBox(height: 8),
-                    Wrap(spacing: 8, children: [
-                      ChipButton(label: 'Culture', active: true),
-                      ChipButton(label: 'Foodie', active: true)
-                    ]),
+                    Wrap(
+                        spacing: 8,
+                        children: applicant.styles
+                            .map((value) =>
+                                ChipButton(label: value, active: true))
+                            .toList()),
                     SizedBox(height: 24),
                     FieldLabel('ABOUT'),
                     SizedBox(height: 8),
-                    Text(
-                        'Solo traveller from Mumbai. Visited 18 countries. Love markets, museums, and late-night street food adventures.',
+                    Text(applicant.bio,
                         style: TextStyle(color: _muted, height: 1.65))
                   ]))
         ]),
@@ -634,19 +1245,25 @@ class ApplicantPage extends StatelessWidget {
                   child: StatusButton(
                       label: 'Accept',
                       color: Color(0xFFDCFCE7),
-                      text: Color(0xFF16A34A))),
+                      text: Color(0xFF16A34A),
+                      onTap: () =>
+                          onDecision(request.id, ApplicantDecision.accepted))),
               const SizedBox(width: 8),
               Expanded(
                   child: StatusButton(
                       label: 'Hold',
                       color: Color(0xFFFEF9C3),
-                      text: Color(0xFFD97706))),
+                      text: Color(0xFFD97706),
+                      onTap: () =>
+                          onDecision(request.id, ApplicantDecision.held))),
               const SizedBox(width: 8),
               Expanded(
                   child: StatusButton(
                       label: 'Decline',
                       color: Color(0xFFFEE2E2),
-                      text: Color(0xFFDC2626)))
+                      text: Color(0xFFDC2626),
+                      onTap: () =>
+                          onDecision(request.id, ApplicantDecision.declined)))
             ]))
       ]);
 }
@@ -664,7 +1281,9 @@ class ProfilePage extends StatelessWidget {
         const SizedBox(height: 26),
         SizedBox(
             width: 260,
-            child: OutlineButton(label: 'Edit profile', onTap: () {}))
+            child: OutlineButton(
+                label: 'Open account',
+                onTap: () => context.go(Routes.userAccount)))
       ]));
 }
 
@@ -762,15 +1381,16 @@ class VerifiedBadge extends StatelessWidget {
 }
 
 class SlotChip extends StatelessWidget {
-  const SlotChip({super.key});
+  final int spots;
+  const SlotChip({super.key, this.spots = 3});
   @override
   Widget build(BuildContext context) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
           color: const Color(0xFFDCFCE7),
           borderRadius: BorderRadius.circular(99)),
-      child: const Text('3 spots left',
-          style: TextStyle(
+      child: Text('$spots ${spots == 1 ? 'spot' : 'spots'} left',
+          style: const TextStyle(
               color: Color(0xFF16803B),
               fontSize: 11,
               fontWeight: FontWeight.w700)));
@@ -853,9 +1473,24 @@ class AppField extends StatelessWidget {
   final String hint;
   final IconData? icon;
   final int lines;
-  const AppField({super.key, required this.hint, this.icon, this.lines = 1});
+  final TextEditingController? controller;
+  final ValueChanged<String>? onChanged;
+  final int? maxLength;
+  const AppField(
+      {super.key,
+      required this.hint,
+      this.icon,
+      this.lines = 1,
+      this.controller,
+      this.onChanged,
+      this.maxLength});
   @override
   Widget build(BuildContext context) => TextField(
+      controller: controller,
+      onChanged: onChanged,
+      maxLength: maxLength,
+      buildCounter:
+          (_, {required currentLength, required isFocused, maxLength}) => null,
       maxLines: lines,
       decoration: InputDecoration(
           hintText: hint,
@@ -894,32 +1529,6 @@ class RangeTitle extends StatelessWidget {
       ]));
 }
 
-class Segmented extends StatelessWidget {
-  const Segmented({super.key});
-  @override
-  Widget build(BuildContext context) => Row(
-      children: ['Any', 'Female', 'Male']
-          .map((x) => Expanded(
-              child: Padding(
-                  padding: EdgeInsets.only(right: x == 'Male' ? 0 : 8),
-                  child: ChipButton(label: x, active: x == 'Any'))))
-          .toList());
-}
-
-class StyleWrap extends StatelessWidget {
-  const StyleWrap({super.key});
-  @override
-  Widget build(BuildContext context) =>
-      const Wrap(spacing: 8, runSpacing: 8, children: [
-        ChipButton(label: 'Adventure', active: true),
-        ChipButton(label: 'Foodie'),
-        ChipButton(label: 'Luxury'),
-        ChipButton(label: 'Backpacker'),
-        ChipButton(label: 'Nature', active: true),
-        ChipButton(label: 'Culture')
-      ]);
-}
-
 class RoundBack extends StatelessWidget {
   final VoidCallback onTap;
   const RoundBack({super.key, required this.onTap});
@@ -937,21 +1546,26 @@ class RoundBack extends StatelessWidget {
 }
 
 class InfoRows extends StatelessWidget {
-  const InfoRows({super.key});
+  final MatchmakingTrip trip;
+  const InfoRows({super.key, required this.trip});
   @override
-  Widget build(BuildContext context) => const Column(children: [
+  Widget build(BuildContext context) => Column(children: [
         InfoRow(
-            icon: Icons.payments_outlined, label: 'Budget', value: '\$1,800'),
+            icon: Icons.payments_outlined,
+            label: 'Budget',
+            value: '\$${trip.budget}'),
         InfoRow(
             icon: Icons.group_outlined,
             label: 'Available slots',
-            value: '3 of 6'),
+            value: '${trip.spotsLeft} of ${trip.vacancies}'),
         InfoRow(
             icon: Icons.person_outline,
             label: 'Preferred gender',
-            value: 'Any'),
+            value: trip.gender),
         InfoRow(
-            icon: Icons.cake_outlined, label: 'Preferred age', value: '24 — 38')
+            icon: Icons.cake_outlined,
+            label: 'Preferred age',
+            value: '${trip.minAge} — ${trip.maxAge}')
       ]);
 }
 
@@ -986,6 +1600,7 @@ class CompactTrip extends StatelessWidget {
   final String status;
   final VoidCallback? onManage;
   final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
   const CompactTrip({
     super.key,
     required this.destination,
@@ -995,7 +1610,29 @@ class CompactTrip extends StatelessWidget {
     this.status = 'Active',
     this.onManage,
     this.onEdit,
+    this.onDelete,
   });
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    if (onDelete == null) return;
+    final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+                title: const Text('Delete trip?'),
+                content:
+                    Text('Delete $destination? This action cannot be undone.'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Cancel')),
+                  TextButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('Delete',
+                          style: TextStyle(color: Color(0xFFDC2626))))
+                ]));
+    if (confirmed == true) onDelete?.call();
+  }
+
   @override
   Widget build(BuildContext context) => Container(
       decoration: _cardDecoration(),
@@ -1042,7 +1679,9 @@ class CompactTrip extends StatelessWidget {
                       onPressed: onManage, child: const Text('Requests'))),
               Expanded(
                   child: TextButton(
-                      onPressed: () {},
+                      onPressed: onDelete == null
+                          ? null
+                          : () => _confirmDelete(context),
                       child: const Text('Delete',
                           style: TextStyle(color: Color(0xFFDC2626)))))
             ]))
@@ -1050,15 +1689,16 @@ class CompactTrip extends StatelessWidget {
 }
 
 class ApplicantCard extends StatelessWidget {
-  final String name, letter;
+  final MatchmakingApplicant applicant;
   final String status;
   final VoidCallback? onTap;
+  final ValueChanged<ApplicantDecision>? onDecision;
   const ApplicantCard(
       {super.key,
-      required this.name,
-      required this.letter,
+      required this.applicant,
       this.status = 'Pending',
-      this.onTap});
+      this.onTap,
+      this.onDecision});
   @override
   Widget build(BuildContext context) => Container(
       padding: const EdgeInsets.all(16),
@@ -1069,54 +1709,76 @@ class ApplicantCard extends StatelessWidget {
               onTap: onTap,
               borderRadius: BorderRadius.circular(24),
               child: Avatar(
-                  letter: letter, size: 46, color: const Color(0xFFBB9AF2))),
+                  letter: applicant.initials,
+                  size: 46,
+                  color: const Color(0xFFBB9AF2))),
           const SizedBox(width: 10),
           Expanded(
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                 Row(children: [
-                  Text(name,
+                  Text(applicant.name,
                       style: const TextStyle(
                           color: _ink, fontWeight: FontWeight.w700)),
                   const SizedBox(width: 5),
-                  const VerifiedBadge()
+                  if (applicant.verified) const VerifiedBadge()
                 ]),
-                const Text('28 · Female',
-                    style: TextStyle(color: _muted, fontSize: 12))
+                Text('${applicant.age} · ${applicant.gender}',
+                    style: const TextStyle(color: _muted, fontSize: 12))
               ])),
           _Status(label: status)
         ]),
         const SizedBox(height: 12),
-        const Wrap(spacing: 6, children: [
-          ChipButton(label: 'Adventure', small: true),
-          ChipButton(label: 'Culture', small: true)
-        ]),
+        Wrap(
+            spacing: 6,
+            children: applicant.styles
+                .map((value) => ChipButton(label: value, small: true))
+                .toList()),
         const SizedBox(height: 12),
-        const Text(
-            '“I love trips that leave space for unexpected detours and good meals.”',
+        Text('“${applicant.introduction}”',
             style: TextStyle(
                 fontStyle: FontStyle.italic, color: _muted, height: 1.45)),
         if (status == 'Pending') ...[
           const SizedBox(height: 14),
-          Row(children: const [
+          Row(children: [
             Expanded(
                 child: StatusButton(
                     label: 'Accept',
                     color: Color(0xFFDCFCE7),
-                    text: Color(0xFF16A34A))),
-            SizedBox(width: 7),
+                    text: Color(0xFF16A34A),
+                    onTap: () => onDecision?.call(ApplicantDecision.accepted))),
+            const SizedBox(width: 7),
             Expanded(
                 child: StatusButton(
                     label: 'Hold',
                     color: Color(0xFFFEF9C3),
-                    text: Color(0xFFD97706))),
-            SizedBox(width: 7),
+                    text: Color(0xFFD97706),
+                    onTap: () => onDecision?.call(ApplicantDecision.held))),
+            const SizedBox(width: 7),
             Expanded(
                 child: StatusButton(
                     label: 'Decline',
                     color: Color(0xFFFEE2E2),
-                    text: Color(0xFFDC2626)))
+                    text: Color(0xFFDC2626),
+                    onTap: () => onDecision?.call(ApplicantDecision.declined)))
+          ])
+        ] else if (status == 'Held') ...[
+          const SizedBox(height: 14),
+          Row(children: [
+            Expanded(
+                child: StatusButton(
+                    label: 'Accept',
+                    color: const Color(0xFFDCFCE7),
+                    text: const Color(0xFF16A34A),
+                    onTap: () => onDecision?.call(ApplicantDecision.accepted))),
+            const SizedBox(width: 7),
+            Expanded(
+                child: StatusButton(
+                    label: 'Delete',
+                    color: const Color(0xFFFEE2E2),
+                    text: const Color(0xFFDC2626),
+                    onTap: () => onDecision?.call(ApplicantDecision.declined)))
           ])
         ]
       ]));
@@ -1125,16 +1787,18 @@ class ApplicantCard extends StatelessWidget {
 class StatusButton extends StatelessWidget {
   final String label;
   final Color color, text;
+  final VoidCallback? onTap;
   const StatusButton(
       {super.key,
       required this.label,
       required this.color,
-      required this.text});
+      required this.text,
+      this.onTap});
   @override
   Widget build(BuildContext context) => SizedBox(
       height: 42,
       child: TextButton(
-          onPressed: () {},
+          onPressed: onTap,
           style: TextButton.styleFrom(
               backgroundColor: color,
               foregroundColor: text,
@@ -1178,37 +1842,6 @@ class _Counter extends StatelessWidget {
               color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)));
 }
 
-class _SmallDiscoverCard extends StatelessWidget {
-  const _SmallDiscoverCard();
-  @override
-  Widget build(BuildContext context) => Container(
-      height: 170,
-      decoration: _cardDecoration(radius: 20),
-      clipBehavior: Clip.antiAlias,
-      child: Row(children: [
-        const Expanded(child: TravelImage(url: _kyoto)),
-        Expanded(
-            child: Padding(
-                padding: EdgeInsets.all(16),
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text('Kyoto, Japan',
-                          style: TextStyle(
-                              fontFamily: 'Georgia',
-                              fontSize: 20,
-                              fontWeight: FontWeight.w600,
-                              color: _ink)),
-                      SizedBox(height: 8),
-                      Text('OCT 8 — OCT 15', style: _label),
-                      SizedBox(height: 10),
-                      Text('Culture · Foodie',
-                          style: TextStyle(color: _muted, fontSize: 12))
-                    ])))
-      ]));
-}
-
 class TravelImage extends StatelessWidget {
   final String url;
   final double? radius;
@@ -1217,10 +1850,13 @@ class TravelImage extends StatelessWidget {
   Widget build(BuildContext context) => ClipRRect(
       borderRadius:
           radius == null ? BorderRadius.zero : BorderRadius.circular(radius!),
-      child: Image.network(url,
+      child: CachedNetworkImage(
+          imageUrl: url,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) =>
-              const ColoredBox(color: Color(0xFFEDE9FE))));
+          placeholder: (_, __) => const ColoredBox(color: Color(0xFFEDE9FE)),
+          errorWidget: (_, __, ___) => const ColoredBox(
+              color: Color(0xFFEDE9FE),
+              child: Icon(Icons.image_not_supported_outlined))));
 }
 
 class Stat extends StatelessWidget {
@@ -1267,12 +1903,24 @@ const _label = TextStyle(
     fontSize: 11,
     fontWeight: FontWeight.w700,
     letterSpacing: .5);
-void _noop(double _) {}
+
+String _dateInput(DateTime date) => '${date.day.toString().padLeft(2, '0')}/'
+    '${date.month.toString().padLeft(2, '0')}/${date.year}';
+
+String _dateRange(DateTime start, DateTime end) =>
+    '${_dateInput(start)} — ${_dateInput(end)}';
+
+String _statusLabel(TripStatus status) => switch (status) {
+      TripStatus.active => 'Active',
+      TripStatus.closed => 'Closed',
+      TripStatus.draft => 'Draft',
+    };
 const _tokyo =
     'https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=1200&q=85';
-const _kyoto =
-    'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=900&q=85';
-const _bali =
-    'https://images.unsplash.com/photo-1537996194471-e657df975ab4?auto=format&fit=crop&w=900&q=85';
-const _paris =
-    'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=900&q=85';
+
+String _decisionLabel(ApplicantDecision? decision) => switch (decision) {
+      ApplicantDecision.accepted => 'Accepted',
+      ApplicantDecision.held => 'Held',
+      ApplicantDecision.declined => 'Declined',
+      _ => 'Pending',
+    };

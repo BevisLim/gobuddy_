@@ -1,5 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../core/routing/routes.dart';
 import '../../common/ui/widgets/app_module_navigation.dart';
 import '../model/user_account_model.dart';
 import 'view_model/user_account_view_model.dart';
@@ -64,17 +69,12 @@ class UserAccountScreen extends ConsumerWidget {
                     onNavigate: viewModel.goTo,
                   ),
                 UserAccountPage.editProfile => _AccountEditView(
-                    initialName: state.user?.name ?? '',
+                    user: state.user!,
                     isSaving: state.isLoading,
                     onBack: () => viewModel.goTo(UserAccountPage.profile),
-                    onSave: viewModel.updateProfileName,
-                  ),
-                UserAccountPage.settings => _AccountStaticFrame(
-                    title: 'Settings',
-                    subtitle: 'PREFERENCES',
-                    description:
-                        'Configure push notifications, local database synchronization states, and systemic aesthetic variables.',
-                    onBack: () => viewModel.goTo(UserAccountPage.profile),
+                    onSave: viewModel.updateProfile,
+                    onSelectImage: viewModel.selectProfileImage,
+                    onVerify: () => context.push(Routes.identityVerification),
                   ),
                 UserAccountPage.security => _AccountStaticFrame(
                     title: 'Security',
@@ -86,7 +86,7 @@ class UserAccountScreen extends ConsumerWidget {
               },
       ),
       bottomNavigationBar: state.page == UserAccountPage.profile
-          ? const AppModuleNavigation(selectedIndex: 2)
+          ? const AppModuleNavigation(selectedIndex: 4)
           : null,
     );
   }
@@ -96,7 +96,7 @@ class UserAccountScreen extends ConsumerWidget {
 // 👤 Sub-View: Main Profile Dashboard
 // ==========================================================================
 class _AccountDashboardView extends StatelessWidget {
-  final dynamic user;
+  final UserAccount? user;
   final ValueChanged<UserAccountPage> onNavigate;
 
   const _AccountDashboardView({required this.user, required this.onNavigate});
@@ -107,14 +107,22 @@ class _AccountDashboardView extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 32),
       children: [
         _ProfileHeader(
-          name: user?.name ?? 'Guest User',
+          user: user,
           onBack: () => Navigator.maybePop(context),
-          onSettings: () => onNavigate(UserAccountPage.settings),
+          onSettings: () => context.push(Routes.settings),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
           child: _ProfileStatsCard(
             onEdit: () => onNavigate(UserAccountPage.editProfile),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: _AccountMenuTile(
+            icon: Icons.health_and_safety_outlined,
+            title: 'Emergency contacts',
+            onTap: () => context.push(Routes.emergencyContacts),
           ),
         ),
         const Padding(
@@ -135,12 +143,12 @@ class _AccountDashboardView extends StatelessWidget {
 }
 
 class _ProfileHeader extends StatelessWidget {
-  final String name;
+  final UserAccount? user;
   final VoidCallback onBack;
   final VoidCallback onSettings;
 
   const _ProfileHeader({
-    required this.name,
+    required this.user,
     required this.onBack,
     required this.onSettings,
   });
@@ -157,7 +165,13 @@ class _ProfileHeader extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.network(_coverPhotoUrl, fit: BoxFit.cover),
+                  Image(
+                    image: _accountImageProvider(
+                      user?.backgroundPhoto,
+                      fallback: _coverPhotoUrl,
+                    ),
+                    fit: BoxFit.cover,
+                  ),
                   const DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -201,7 +215,9 @@ class _ProfileHeader extends StatelessWidget {
                           children: [
                             Flexible(
                               child: Text(
-                                name,
+                                user?.fullName ??
+                                    user?.username ??
+                                    'Guest User',
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   fontFamily: 'Georgia',
@@ -211,13 +227,18 @@ class _ProfileHeader extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 7),
-                            const _VerifiedBadge(),
+                            if (user?.isVerified == true) ...[
+                              const SizedBox(width: 7),
+                              const _VerifiedBadge(),
+                            ],
                           ],
                         ),
                         const SizedBox(height: 6),
-                        const Text('27 | Male',
-                            style: TextStyle(
+                        Text(
+                            user?.gender == null
+                                ? 'Profile details not added'
+                                : user!.gender!,
+                            style: const TextStyle(
                                 color: Color(0xE6FFFFFF),
                                 fontWeight: FontWeight.w600)),
                         const SizedBox(height: 3),
@@ -251,9 +272,12 @@ class _ProfileHeader extends StatelessWidget {
                               color: _violet, blurRadius: 0, spreadRadius: 4)
                         ],
                       ),
-                      child: const ClipOval(
+                      child: ClipOval(
                         child: Image(
-                          image: AssetImage('assets/images/avatar.webp'),
+                          image: _accountImageProvider(
+                            user?.profilePhoto,
+                            fallback: 'assets/images/avatar.webp',
+                          ),
                           fit: BoxFit.cover,
                         ),
                       ),
@@ -332,6 +356,50 @@ class _ProfileStat extends StatelessWidget {
       ]);
 }
 
+class _AccountMenuTile extends StatelessWidget {
+  const _AccountMenuTile({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Ink(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            decoration: _cardDecoration(),
+            child: Row(
+              children: [
+                Icon(icon, color: _violet),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      color: _ink,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: _muted,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
 class _ProfilePhotosCard extends StatelessWidget {
   const _ProfilePhotosCard();
 
@@ -370,23 +438,25 @@ class _ProfileInterestsCard extends StatelessWidget {
   Widget build(BuildContext context) => _ProfileCard(
         title: 'Style & Interests',
         edit: false,
-        child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('TRAVEL STYLE', style: _label),
-          SizedBox(height: 9),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            _PillTag(label: '🏄 Adventure'),
-            _PillTag(label: '🎒 Backpacker'),
-          ]),
-          SizedBox(height: 22),
-          Text('INTERESTS', style: _label),
-          SizedBox(height: 9),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            _PillTag(label: 'Food & Cuisine'),
-            _PillTag(label: 'Hiking'),
-            _PillTag(label: 'Museums'),
-            _PillTag(label: 'Photography'),
-          ]),
-        ]),
+        child: const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('TRAVEL STYLE', style: _label),
+              SizedBox(height: 9),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                _PillTag(label: '🏄 Adventure'),
+                _PillTag(label: '🎒 Backpacker'),
+              ]),
+              SizedBox(height: 22),
+              Text('INTERESTS', style: _label),
+              SizedBox(height: 9),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                _PillTag(label: 'Food & Cuisine'),
+                _PillTag(label: 'Hiking'),
+                _PillTag(label: 'Museums'),
+                _PillTag(label: 'Photography'),
+              ]),
+            ]),
       );
 }
 
@@ -394,7 +464,8 @@ class _ProfileCard extends StatelessWidget {
   final String title;
   final Widget child;
   final bool edit;
-  const _ProfileCard({required this.title, required this.child, this.edit = true});
+  const _ProfileCard(
+      {required this.title, required this.child, this.edit = true});
 
   @override
   Widget build(BuildContext context) => Container(
@@ -437,7 +508,8 @@ class _PhotoSlot extends StatelessWidget {
           child: Stack(fit: StackFit.expand, children: [
             Image.network(url,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const ColoredBox(color: _bgSubtle)),
+                errorBuilder: (_, __, ___) =>
+                    const ColoredBox(color: _bgSubtle)),
             DecoratedBox(
                 decoration: BoxDecoration(color: _ink.withValues(alpha: .18))),
             const Center(
@@ -521,7 +593,9 @@ class _VerifiedBadge extends StatelessWidget {
           SizedBox(width: 3),
           Text('Verified',
               style: TextStyle(
-                  color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700)),
         ]),
       );
 }
@@ -539,16 +613,20 @@ const _galleryPhotoThree =
 // 📝 Sub-View: Edit Account Information Input Form
 // ==========================================================================
 class _AccountEditView extends StatefulWidget {
-  final String initialName;
+  final UserAccount user;
   final bool isSaving;
   final VoidCallback onBack;
-  final ValueChanged<String> onSave;
+  final ValueChanged<UserAccountProfileUpdate> onSave;
+  final Future<String?> Function() onSelectImage;
+  final VoidCallback onVerify;
 
   const _AccountEditView({
-    required this.initialName,
+    required this.user,
     required this.isSaving,
     required this.onBack,
     required this.onSave,
+    required this.onSelectImage,
+    required this.onVerify,
   });
 
   @override
@@ -556,17 +634,30 @@ class _AccountEditView extends StatefulWidget {
 }
 
 class _AccountEditViewState extends State<_AccountEditView> {
-  late final TextEditingController _nameController;
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _usernameController;
+  late final TextEditingController _countryController;
+  late final TextEditingController _bioController;
+  String? _gender;
+  String? _backgroundPhoto;
+  String? _profilePhoto;
 
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.initialName);
+    _usernameController = TextEditingController(text: widget.user.username);
+    _countryController = TextEditingController(text: widget.user.country);
+    _bioController = TextEditingController(text: widget.user.bio);
+    _gender = widget.user.gender;
+    _backgroundPhoto = widget.user.backgroundPhoto;
+    _profilePhoto = widget.user.profilePhoto;
   }
 
   @override
   void dispose() {
-    _nameController.dispose();
+    _usernameController.dispose();
+    _countryController.dispose();
+    _bioController.dispose();
     super.dispose();
   }
 
@@ -575,60 +666,335 @@ class _AccountEditViewState extends State<_AccountEditView> {
     return _AccountLayoutWrapper(
       title: 'Edit Profile',
       onBack: widget.onBack,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('FULL NAME', style: _label),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _nameController,
-            enabled: !widget.isSaving,
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: _border),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: _border),
-              ),
+      child: Form(
+        key: _formKey,
+        child: ListView(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: _PhotoPicker(
+                    label: 'BACKGROUND PHOTO',
+                    imagePath: _backgroundPhoto,
+                    icon: Icons.landscape_outlined,
+                    onTap: widget.isSaving
+                        ? null
+                        : () => _selectPhoto(isBackground: true),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _PhotoPicker(
+                    label: 'PROFILE PHOTO',
+                    imagePath: _profilePhoto,
+                    icon: Icons.person_outline_rounded,
+                    circular: true,
+                    onTap: widget.isSaving
+                        ? null
+                        : () => _selectPhoto(isBackground: false),
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 32),
-          InkWell(
-            onTap: widget.isSaving
-                ? null
-                : () => widget.onSave(_nameController.text.trim()),
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              decoration: BoxDecoration(
-                color: widget.isSaving ? _muted : _violet,
-                borderRadius: BorderRadius.circular(12),
+            const SizedBox(height: 24),
+            _EditField(
+              label: 'USERNAME',
+              controller: _usernameController,
+              enabled: !widget.isSaving,
+              validator: (value) => value == null || value.trim().isEmpty
+                  ? 'Username is required'
+                  : null,
+            ),
+            const SizedBox(height: 18),
+            _VerifiedIdentityField(
+              label: 'FULL NAME',
+              value: widget.user.fullName,
+              isVerified: widget.user.isVerified,
+            ),
+            const SizedBox(height: 18),
+            DropdownButtonFormField<String>(
+              initialValue: _gender,
+              decoration: _editInputDecoration('GENDER'),
+              items: const ['Female', 'Male', 'Non-binary', 'Prefer not to say']
+                  .map((value) => DropdownMenuItem(
+                        value: value,
+                        child: Text(value),
+                      ))
+                  .toList(),
+              onChanged: widget.isSaving
+                  ? null
+                  : (value) => setState(() => _gender = value),
+            ),
+            const SizedBox(height: 18),
+            _VerifiedIdentityField(
+              label: 'DATE OF BIRTH',
+              value: widget.user.dateOfBirth == null
+                  ? null
+                  : _formatDate(widget.user.dateOfBirth!),
+              isVerified: widget.user.isVerified,
+            ),
+            const SizedBox(height: 18),
+            _EditField(
+              label: 'COUNTRY',
+              controller: _countryController,
+              enabled: !widget.isSaving,
+            ),
+            const SizedBox(height: 18),
+            _EditField(
+              label: 'BIO',
+              controller: _bioController,
+              enabled: !widget.isSaving,
+              maxLines: 4,
+            ),
+            if (!widget.user.isVerified) ...[
+              const SizedBox(height: 24),
+              OutlinedButton.icon(
+                onPressed: widget.isSaving ? null : widget.onVerify,
+                icon: const Icon(Icons.verified_user_outlined),
+                label: const Text('Verify Identity'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _violet,
+                  minimumSize: const Size.fromHeight(52),
+                  side: const BorderSide(color: _border),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
               ),
-              alignment: Alignment.center,
+            ],
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: widget.isSaving ? null : _save,
+              style: FilledButton.styleFrom(
+                backgroundColor: _violet,
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(52),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
               child: widget.isSaving
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
+                  ? const SizedBox.square(
+                      dimension: 20,
                       child: CircularProgressIndicator(
-                          color: Colors.white, strokeWidth: 2))
-                  : const Text('Save Changes',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16)),
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Text(
+                      'Save Changes',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
             ),
-          ),
-        ],
+            const SizedBox(height: 24),
+          ],
+        ),
       ),
     );
   }
+
+  Future<void> _selectPhoto({required bool isBackground}) async {
+    final path = await widget.onSelectImage();
+    if (path == null || !mounted) return;
+    setState(() {
+      if (isBackground) {
+        _backgroundPhoto = path;
+      } else {
+        _profilePhoto = path;
+      }
+    });
+  }
+
+  void _save() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    widget.onSave(
+      UserAccountProfileUpdate(
+        backgroundPhoto: _backgroundPhoto,
+        profilePhoto: _profilePhoto,
+        username: _usernameController.text.trim(),
+        gender: _gender,
+        country: _countryController.text.trim(),
+        bio: _bioController.text.trim(),
+      ),
+    );
+  }
+}
+
+class _PhotoPicker extends StatelessWidget {
+  const _PhotoPicker({
+    required this.label,
+    required this.imagePath,
+    required this.icon,
+    required this.onTap,
+    this.circular = false,
+  });
+
+  final String label;
+  final String? imagePath;
+  final IconData icon;
+  final VoidCallback? onTap;
+  final bool circular;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: _label),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            height: 112,
+            decoration: BoxDecoration(
+              color: _bgSubtle,
+              shape: circular ? BoxShape.circle : BoxShape.rectangle,
+              borderRadius: circular ? null : BorderRadius.circular(16),
+              border: Border.all(color: _border),
+              image: imagePath == null
+                  ? null
+                  : DecorationImage(
+                      image: _accountImageProvider(imagePath),
+                      fit: BoxFit.cover,
+                    ),
+            ),
+            alignment: Alignment.center,
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: const BoxDecoration(
+                color: _surface,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: _violet, size: 22),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EditField extends StatelessWidget {
+  const _EditField({
+    required this.label,
+    required this.controller,
+    required this.enabled,
+    this.validator,
+    this.maxLines = 1,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final bool enabled;
+  final String? Function(String?)? validator;
+  final int maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: _label),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          enabled: enabled,
+          validator: validator,
+          maxLines: maxLines,
+          decoration: _editInputDecoration(),
+        ),
+      ],
+    );
+  }
+}
+
+class _VerifiedIdentityField extends StatelessWidget {
+  const _VerifiedIdentityField({
+    required this.label,
+    required this.value,
+    required this.isVerified,
+  });
+
+  final String label;
+  final String? value;
+  final bool isVerified;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: _label),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
+          decoration: BoxDecoration(
+            color: _bgSubtle,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: _border),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  isVerified
+                      ? value ?? 'Verified information unavailable'
+                      : 'Verify identity to add this information',
+                  style: TextStyle(
+                    color: isVerified ? _ink : _muted,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                isVerified ? Icons.verified_rounded : Icons.lock_outline,
+                color: isVerified ? _violet : _muted,
+                size: 20,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+InputDecoration _editInputDecoration([String? label]) {
+  return InputDecoration(
+    labelText: label,
+    filled: true,
+    fillColor: _surface,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: const BorderSide(color: _border),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: const BorderSide(color: _border),
+    ),
+  );
+}
+
+ImageProvider<Object> _accountImageProvider(
+  String? path, {
+  String fallback = 'assets/images/avatar.webp',
+}) {
+  final resolved = path == null || path.isEmpty ? fallback : path;
+  if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
+    return NetworkImage(resolved);
+  }
+  if (resolved.startsWith('assets/')) return AssetImage(resolved);
+  return FileImage(File(resolved));
+}
+
+String _formatDate(DateTime date) {
+  final month = date.month.toString().padLeft(2, '0');
+  final day = date.day.toString().padLeft(2, '0');
+  return '${date.year}-$month-$day';
 }
 
 // ==========================================================================
@@ -693,33 +1059,6 @@ class _AccountLayoutWrapper extends StatelessWidget {
           const SizedBox(height: 24),
           Expanded(child: child),
         ],
-      ),
-    );
-  }
-}
-
-class _AccountMenuTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final VoidCallback onTap;
-
-  const _AccountMenuTile(
-      {required this.icon, required this.title, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      decoration: _cardDecoration(),
-      child: ListTile(
-        leading: Icon(icon, color: _violet, size: 22),
-        title: Text(title,
-            style: const TextStyle(
-                color: _ink, fontWeight: FontWeight.w600, fontSize: 14)),
-        trailing: const Icon(Icons.chevron_right_rounded, color: _muted),
-        onTap: onTap,
-        dense: true,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }

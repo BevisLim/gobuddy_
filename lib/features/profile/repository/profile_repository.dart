@@ -4,10 +4,10 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../../constants/constants.dart';
+import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
 import '../../../features/profile/model/profile.dart';
 import '../../common/remote/supabase_client.dart';
-import '../../../utils/utils.dart';
+import 'package:flutter_mvvm_riverpod/core/utils/utils.dart';
 import '../../premium/model/premium_info.dart';
 
 part 'profile_repository.g.dart';
@@ -30,6 +30,7 @@ class ProfileRepository {
     return fakeProfile;
     // END TODO
 
+    // ignore: dead_code
     final userId = supabase.auth.currentUser?.id;
     Profile profile = Profile();
     CustomerInfo? customerInfo;
@@ -86,6 +87,7 @@ class ProfileRepository {
     prefs.setString(Constants.profileKey, jsonEncode(profile.toJson()));
     return;
 
+    // ignore: dead_code
     final userId = profile.id;
     if (userId == null) return;
     try {

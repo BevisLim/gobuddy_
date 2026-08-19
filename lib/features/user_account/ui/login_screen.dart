@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../constants/assets.dart';
-import '../../../routing/routes.dart';
+import '../../../core/constants/assets.dart';
+import '../../../core/routing/routes.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../common/remote/supabase_client.dart';
 
-const _purple = Color(0xFF7C3AED);
-const _ink = Color(0xFF281950);
-const _lightPurple = Color(0xFFD5CFEF);
-const _muted = Color(0xFF686082);
+const _purple = AppColors.brandSurface;
+const _ink = AppColors.brandPrimary;
+const _lightPurple = AppColors.brandBorder;
+const _muted = AppColors.brandTextMuted;
 
 /// A self-contained sign-in interface for the User Account module.
 class LoginScreen extends StatefulWidget {
@@ -34,6 +37,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _isSigningIn = false;
 
   @override
   void dispose() {
@@ -42,11 +46,33 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    widget.onContinue?.call(_emailController.text.trim());
-    // Temporary local sign-in flow until Supabase authentication is connected.
-    context.go(Routes.main);
+    setState(() => _isSigningIn = true);
+
+    try {
+      final email = _emailController.text.trim();
+      await supabase.auth.signInWithPassword(
+        email: email,
+        password: _passwordController.text,
+      );
+      widget.onContinue?.call(email);
+      if (mounted) context.go(Routes.main);
+    } on AuthException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.message)),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to sign in. Try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSigningIn = false);
+    }
   }
 
   @override
@@ -116,7 +142,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         width: double.infinity,
                         height: 52,
                         child: ElevatedButton(
-                          onPressed: _submit,
+                          onPressed: _isSigningIn ? null : _submit,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _purple,
                             foregroundColor: Colors.white,
@@ -125,8 +151,19 @@ class _LoginScreenState extends State<LoginScreen> {
                               borderRadius: BorderRadius.circular(14),
                             ),
                           ),
-                          child: const Text('Continue',
-                              style: TextStyle(fontWeight: FontWeight.w700)),
+                          child: _isSigningIn
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  'Continue',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -134,7 +171,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         width: double.infinity,
                         height: 52,
                         child: OutlinedButton(
-                          onPressed: widget.onForgotPassword,
+                          onPressed: widget.onForgotPassword ??
+                              () => context.push(Routes.forgotPassword),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: _purple,
                             side: const BorderSide(color: _lightPurple),
@@ -187,7 +225,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
                               child: const Text('Sign up now',
-                                  style: TextStyle(fontWeight: FontWeight.w800)),
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.w800)),
                             ),
                           ],
                         ),

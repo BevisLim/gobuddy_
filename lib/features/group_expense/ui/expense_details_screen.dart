@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../routing/routes.dart';
+import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import '../model/expense_date_utils.dart';
 import '../model/money_utils.dart';
 import 'view_model/expense_view_model.dart';

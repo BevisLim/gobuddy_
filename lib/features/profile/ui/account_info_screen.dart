@@ -4,11 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../extensions/build_context_extension.dart';
+import 'package:flutter_mvvm_riverpod/core/extensions/build_context_extension.dart';
 import '../../../generated/locale_keys.g.dart';
-import '../../../extensions/string_extension.dart';
-import '../../../theme/app_theme.dart';
-import '../../../utils/global_loading.dart';
+import 'package:flutter_mvvm_riverpod/core/extensions/string_extension.dart';
+import 'package:flutter_mvvm_riverpod/core/theme/app_theme.dart';
+import 'package:flutter_mvvm_riverpod/core/utils/global_loading.dart';
 import '../../common/ui/widgets/common_header.dart';
 import '../../common/ui/widgets/common_text_form_field.dart';
 import '../../common/ui/widgets/primary_button.dart';

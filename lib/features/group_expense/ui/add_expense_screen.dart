@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../routing/routes.dart';
+import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import 'expense_form.dart';
 import 'widgets/group_expense_app_bar.dart';
 
