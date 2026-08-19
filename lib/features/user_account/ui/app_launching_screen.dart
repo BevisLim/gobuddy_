@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../routing/routes.dart';
+import '../../../core/routing/routes.dart';
 import '../../common/remote/supabase_client.dart';
 
 /// Fly design tokens sourced from `fly-DESIGN.md`.

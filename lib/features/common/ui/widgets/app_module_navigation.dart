@@ -7,14 +7,20 @@ class AppModuleNavigation extends StatelessWidget {
   const AppModuleNavigation({
     super.key,
     required this.selectedIndex,
+    this.onDestinationSelected,
   });
 
   final int selectedIndex;
+  final ValueChanged<int>? onDestinationSelected;
 
   @override
   Widget build(BuildContext context) => NavigationBar(
         selectedIndex: selectedIndex,
         onDestinationSelected: (index) {
+          if (onDestinationSelected != null) {
+            onDestinationSelected!(index);
+            return;
+          }
           final route = switch (index) {
             0 => Routes.main,
             1 => Routes.myTrips,

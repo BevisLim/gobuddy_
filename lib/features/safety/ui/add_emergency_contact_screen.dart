@@ -3,8 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../theme/app_theme.dart';
-import '../../../utils/validator.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/validator.dart';
 import '../../common/ui/widgets/common_header.dart';
 import '../../common/ui/widgets/primary_button.dart';
 import 'view_model/emergency_contacts_view_model.dart';
@@ -36,7 +36,8 @@ class _AddEmergencyContactScreenState
   Widget build(BuildContext context) {
     final state = ref.watch(emergencyContactsViewModelProvider);
 
-    ref.listen(emergencyContactsViewModelProvider.select((value) => value.error),
+    ref.listen(
+        emergencyContactsViewModelProvider.select((value) => value.error),
         (previous, next) {
       if (next == null || next == previous) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(next)));
@@ -119,7 +120,9 @@ class _AddEmergencyContactScreenState
   }
 
   String? _validatePhone(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Phone number is required.';
+    if (value == null || value.trim().isEmpty) {
+      return 'Phone number is required.';
+    }
     final normalised = value.replaceAll(RegExp(r'[^0-9]'), '');
     return normalised.length >= 7 && normalised.length <= 15
         ? null
@@ -130,13 +133,12 @@ class _AddEmergencyContactScreenState
     FocusScope.of(context).unfocus();
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
-    final saved = await ref
-        .read(emergencyContactsViewModelProvider.notifier)
-        .addContact(
-          name: _nameController.text,
-          phoneNumber: _phoneController.text,
-          email: _emailController.text,
-        );
+    final saved =
+        await ref.read(emergencyContactsViewModelProvider.notifier).addContact(
+              name: _nameController.text,
+              phoneNumber: _phoneController.text,
+              email: _emailController.text,
+            );
     if (saved && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Emergency contact added.')),

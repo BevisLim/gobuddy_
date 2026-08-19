@@ -42,6 +42,8 @@ void main() {
         description: 'Food trip.',
         isOwned: true);
     notifier.saveTrip(trip);
+    expect(container.read(matchmakingViewModelV2Provider).page,
+        MatchmakingPage.myTrips);
     expect(
         container
             .read(matchmakingViewModelV2Provider)

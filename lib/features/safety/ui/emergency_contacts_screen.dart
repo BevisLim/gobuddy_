@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../routing/routes.dart';
-import '../../../theme/app_colors.dart';
-import '../../../theme/app_theme.dart';
+import '../../../core/routing/routes.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../common/ui/widgets/common_header.dart';
 import 'view_model/emergency_contacts_view_model.dart';
 
@@ -15,7 +15,8 @@ class EmergencyContactsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(emergencyContactsViewModelProvider);
 
-    ref.listen(emergencyContactsViewModelProvider.select((value) => value.error),
+    ref.listen(
+        emergencyContactsViewModelProvider.select((value) => value.error),
         (previous, next) {
       if (next == null || next == previous) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(next)));
@@ -40,7 +41,8 @@ class EmergencyContactsScreen extends ConsumerWidget {
                           return Card(
                             elevation: 0,
                             child: ListTile(
-                              contentPadding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                              contentPadding:
+                                  const EdgeInsets.fromLTRB(16, 8, 8, 8),
                               leading: CircleAvatar(
                                 backgroundColor: AppColors.rambutan10,
                                 child: Text(
@@ -50,7 +52,8 @@ class EmergencyContactsScreen extends ConsumerWidget {
                                   ),
                                 ),
                               ),
-                              title: Text(contact.name, style: AppTheme.title16),
+                              title:
+                                  Text(contact.name, style: AppTheme.title16),
                               subtitle: Text(
                                 '${contact.phoneNumber}\n${contact.email}',
                                 style: AppTheme.body14,

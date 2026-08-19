@@ -31,6 +31,7 @@ class AuthenticationRepository {
     // TODO: fake data
     return;
 
+    // ignore: dead_code
     try {
       await supabase.auth.signInWithOtp(
         email: email,
@@ -71,6 +72,7 @@ class AuthenticationRepository {
         ),
       );
 
+      // ignore: dead_code
       final result = await supabase.auth.verifyOTP(
         email: email,
         token: token,
@@ -97,6 +99,7 @@ class AuthenticationRepository {
       ),
     );
 
+    // ignore: dead_code
     try {
       const List<String> scopes = <String>[
         Constants.googleEmailScope,
@@ -147,6 +150,7 @@ class AuthenticationRepository {
       ),
     );
 
+    // ignore: dead_code
     try {
       final rawNonce = supabase.auth.generateRawNonce();
       final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
@@ -182,6 +186,7 @@ class AuthenticationRepository {
     await setIsLogin(false);
     return;
 
+    // ignore: dead_code
     try {
       await supabase.auth.signOut();
       Purchases.logOut();
@@ -198,6 +203,7 @@ class AuthenticationRepository {
     return prefs.getBool(Constants.isLoginKey) ?? false;
     // END TODO
 
+    // ignore: dead_code
     return supabase.auth.currentUser != null;
   }
 

@@ -7,6 +7,9 @@ import '../../model/matchmaking_page.dart';
 import '../../repository/matchmaking_repository.dart';
 import '../state/matchmaking_state_v2.dart';
 
+final matchmakingInitialPageProvider =
+    Provider<MatchmakingPage>((ref) => MatchmakingPage.discover);
+
 final matchmakingViewModelV2Provider =
     NotifierProvider<MatchmakingViewModelV2, MatchmakingStateV2>(
         MatchmakingViewModelV2.new);
@@ -19,6 +22,7 @@ class MatchmakingViewModelV2 extends Notifier<MatchmakingStateV2> {
     final connected = _repository.hasAuthenticatedUser;
     if (connected) unawaited(Future<void>.microtask(refresh));
     return MatchmakingStateV2(
+        page: ref.watch(matchmakingInitialPageProvider),
         availableFilters: _repository.discoveryFilters,
         trips: connected ? const [] : _repository.trips,
         applicants: _repository.applicants,
