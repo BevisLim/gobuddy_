@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../routing/routes.dart';
+import '../../../core/routing/routes.dart';
 import '../../common/ui/widgets/app_module_navigation.dart';
 import '../model/user_account_model.dart';
 import 'view_model/user_account_view_model.dart';
@@ -354,6 +354,50 @@ class _ProfileStat extends StatelessWidget {
                 fontWeight: FontWeight.w600)),
         Text(label, style: _label),
       ]);
+}
+
+class _AccountMenuTile extends StatelessWidget {
+  const _AccountMenuTile({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Ink(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            decoration: _cardDecoration(),
+            child: Row(
+              children: [
+                Icon(icon, color: _violet),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      color: _ink,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: _muted,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
 }
 
 class _ProfilePhotosCard extends StatelessWidget {

@@ -3,8 +3,9 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../constants/assets.dart';
-import '../../../routing/routes.dart';
+import '../../../core/constants/assets.dart';
+import '../../../core/routing/routes.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../common/remote/supabase_client.dart';
 
 const _purple = AppColors.brandSurface;

@@ -6,7 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../common/ui/widgets/app_module_navigation.dart';
-import '../../../routing/routes.dart';
+import '../../../core/routing/routes.dart';
 import '../model/matchmaking_models.dart';
 import '../model/matchmaking_page.dart';
 import 'view_model/matchmaking_view_model_v2.dart';
@@ -18,12 +18,7 @@ const _muted = Color(0xFF686082);
 const _lavender = Color(0xFFEDE9FE);
 
 class MatchmakingShellScreen extends ConsumerStatefulWidget {
-  const MatchmakingShellScreen({
-    super.key,
-    this.initialPage = MatchmakingPage.discover,
-  });
-
-  final MatchmakingPage initialPage;
+  const MatchmakingShellScreen({super.key});
 
   @override
   ConsumerState<MatchmakingShellScreen> createState() =>
@@ -33,7 +28,7 @@ class MatchmakingShellScreen extends ConsumerStatefulWidget {
 class _MatchmakingShellScreenState
     extends ConsumerState<MatchmakingShellScreen> {
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final state = ref.watch(matchmakingViewModelV2Provider);
     final viewModel = ref.read(matchmakingViewModelV2Provider.notifier);
     final page = state.page;
@@ -45,7 +40,6 @@ class _MatchmakingShellScreenState
           filters: state.availableFilters,
           onFilter: viewModel.selectFilter,
           onOpenFilters: () => viewModel.goTo(MatchmakingPage.filters),
-          onOpenMyTrips: () => viewModel.goTo(MatchmakingPage.myTrips),
           onDetails: (id) => viewModel.openTrip(id, MatchmakingPage.details),
           onRequest: (id) => viewModel.openTrip(id, MatchmakingPage.request),
           onSave: viewModel.toggleSavedTrip),
@@ -59,7 +53,7 @@ class _MatchmakingShellScreenState
           onBack: () => viewModel.goTo(MatchmakingPage.discover),
           onRequest: () => viewModel.goTo(MatchmakingPage.request)),
       MatchmakingPage.create => InteractiveTripFormPage(
-          onBack: () => viewModel.goTo(MatchmakingPage.myTrips),
+          onBack: () => viewModel.goTo(MatchmakingPage.discover),
           onPublish: viewModel.saveTrip),
       MatchmakingPage.edit => InteractiveTripFormPage(
           edit: true,
@@ -124,6 +118,20 @@ class _MatchmakingShellScreenState
           page == MatchmakingPage.discover || page == MatchmakingPage.myTrips
               ? AppModuleNavigation(
                   selectedIndex: page == MatchmakingPage.myTrips ? 1 : 0,
+                  onDestinationSelected: (index) {
+                    switch (index) {
+                      case 0:
+                        viewModel.goTo(MatchmakingPage.discover);
+                      case 1:
+                        viewModel.goTo(MatchmakingPage.myTrips);
+                      case 2:
+                        context.go(Routes.messages);
+                      case 3:
+                        context.go(Routes.expenseDashboard);
+                      default:
+                        context.go(Routes.userAccount);
+                    }
+                  },
                 )
               : null,
       floatingActionButton: page == MatchmakingPage.discover
@@ -145,7 +153,7 @@ class DiscoverPage extends StatelessWidget {
   final Set<String> savedTripIds;
   final List<String> filters;
   final ValueChanged<String> onFilter;
-  final VoidCallback onOpenFilters, onOpenMyTrips;
+  final VoidCallback onOpenFilters;
   final ValueChanged<String> onDetails, onRequest, onSave;
   const DiscoverPage(
       {super.key,
@@ -155,7 +163,6 @@ class DiscoverPage extends StatelessWidget {
       required this.filters,
       required this.onFilter,
       required this.onOpenFilters,
-      required this.onOpenMyTrips,
       required this.onDetails,
       required this.onRequest,
       required this.onSave});
@@ -178,10 +185,6 @@ class DiscoverPage extends StatelessWidget {
                 IconButton(
                     onPressed: onOpenFilters,
                     icon: const Icon(Icons.tune_rounded, color: _ink)),
-                IconButton(
-                    tooltip: 'My Trips',
-                    onPressed: onOpenMyTrips,
-                    icon: const Icon(Icons.luggage_outlined, color: _ink)),
                 IconButton(
                     onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('No new notifications.'))),
@@ -732,6 +735,7 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
           String? prefix,
           IconData? icon,
           int lines = 1,
+          bool required = true,
           VoidCallback? onTap}) =>
       TextFormField(
           controller: controller,
@@ -740,8 +744,10 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
           maxLines: lines,
           onTap: onTap,
           decoration: _decoration(hint, prefix: prefix, icon: icon),
-          validator: (value) =>
-              value == null || value.trim().isEmpty ? 'Required' : null);
+          validator: required
+              ? (value) =>
+                  value == null || value.trim().isEmpty ? 'Required' : null
+              : null);
 
   Future<void> _pickDate(TextEditingController controller) async {
     final date = await showDatePicker(
@@ -758,7 +764,8 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
   void _submit() {
     if (!_formKey.currentState!.validate() || _styles.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Complete all fields and select a travel style.')));
+          content:
+              Text('Complete the required fields and select a travel style.')));
       return;
     }
     final start = _parseDate(_start.text);
@@ -915,10 +922,10 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
                           formatters: [FilteringTextInputFormatter.digitsOnly],
                           icon: Icons.people_outline),
                       const SizedBox(height: 18),
-                      const FieldLabel('DESCRIPTION'),
+                      const FieldLabel('DESCRIPTION (OPTIONAL)'),
                       _field(_description,
                           'Describe your trip and ideal companion...',
-                          lines: 4),
+                          lines: 4, required: false),
                       const SizedBox(height: 24),
                       PrimaryButton(
                           label: widget.edit ? 'Save Changes' : 'Publish Trip',

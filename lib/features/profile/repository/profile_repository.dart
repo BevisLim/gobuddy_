@@ -30,6 +30,7 @@ class ProfileRepository {
     return fakeProfile;
     // END TODO
 
+    // ignore: dead_code
     final userId = supabase.auth.currentUser?.id;
     Profile profile = Profile();
     CustomerInfo? customerInfo;
@@ -86,6 +87,7 @@ class ProfileRepository {
     prefs.setString(Constants.profileKey, jsonEncode(profile.toJson()));
     return;
 
+    // ignore: dead_code
     final userId = profile.id;
     if (userId == null) return;
     try {
