@@ -1,8 +1,7 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:sqflite/sqflite.dart';
 
-import '../../../constants/database_constants.dart';
+import 'package:flutter_mvvm_riverpod/core/constants/database_constants.dart';
 import '../../common/local/database_provider.dart';
 import '../../common/remote/api_client.dart';
 import '../model/hero.dart';

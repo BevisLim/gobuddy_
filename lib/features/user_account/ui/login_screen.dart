@@ -7,10 +7,10 @@ import '../../../constants/assets.dart';
 import '../../../routing/routes.dart';
 import '../../common/remote/supabase_client.dart';
 
-const _purple = Color(0xFF7C3AED);
-const _ink = Color(0xFF281950);
-const _lightPurple = Color(0xFFD5CFEF);
-const _muted = Color(0xFF686082);
+const _purple = AppColors.brandSurface;
+const _ink = AppColors.brandPrimary;
+const _lightPurple = AppColors.brandBorder;
+const _muted = AppColors.brandTextMuted;
 
 /// A self-contained sign-in interface for the User Account module.
 class LoginScreen extends StatefulWidget {
@@ -170,7 +170,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         width: double.infinity,
                         height: 52,
                         child: OutlinedButton(
-                          onPressed: widget.onForgotPassword,
+                          onPressed: widget.onForgotPassword ??
+                              () => context.push(Routes.forgotPassword),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: _purple,
                             side: const BorderSide(color: _lightPurple),

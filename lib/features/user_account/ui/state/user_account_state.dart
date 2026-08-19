@@ -18,12 +18,13 @@ class UserAccountState {
     UserAccount? user,
     bool? isLoading,
     String? error,
+    bool clearError = false,
   }) {
     return UserAccountState(
       page: page ?? this.page,
       user: user ?? this.user,
       isLoading: isLoading ?? this.isLoading,
-      error: error ?? this.error,
+      error: clearError ? null : error ?? this.error,
     );
   }
 
@@ -38,5 +39,6 @@ class UserAccountState {
           error == other.error;
 
   @override
-  int get hashCode => page.hashCode ^ user.hashCode ^ isLoading.hashCode ^ error.hashCode;
+  int get hashCode =>
+      page.hashCode ^ user.hashCode ^ isLoading.hashCode ^ error.hashCode;
 }

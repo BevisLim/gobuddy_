@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../routing/routes.dart';
+import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 
 class AppModuleNavigation extends StatelessWidget {
   const AppModuleNavigation({
@@ -17,7 +17,9 @@ class AppModuleNavigation extends StatelessWidget {
         onDestinationSelected: (index) {
           final route = switch (index) {
             0 => Routes.main,
-            1 => Routes.expenseDashboard,
+            1 => Routes.myTrips,
+            2 => Routes.messages,
+            3 => Routes.expenseDashboard,
             _ => Routes.userAccount,
           };
           if (index != selectedIndex) context.go(route);
@@ -27,6 +29,16 @@ class AppModuleNavigation extends StatelessWidget {
             icon: Icon(Icons.explore_outlined),
             selectedIcon: Icon(Icons.explore),
             label: 'Matchmaking',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.luggage_outlined),
+            selectedIcon: Icon(Icons.luggage),
+            label: 'My Trips',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.chat_bubble_outline_rounded),
+            selectedIcon: Icon(Icons.chat_bubble_rounded),
+            label: 'Messages',
           ),
           NavigationDestination(
             icon: Icon(Icons.receipt_long_outlined),

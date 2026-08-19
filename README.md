@@ -124,3 +124,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## ⭐ Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=namanh11611/flutter_mvvm_riverpod&type=date&legend=top-left)](https://www.star-history.com/#namanh11611/flutter_mvvm_riverpod&type=date&legend=top-left)
+
+
+flutter pub get
+dart run easy_localization:generate -f keys -o locale_keys.g.dart --source-dir assets/translations
+dart run build_runner build --delete-conflicting-outputs

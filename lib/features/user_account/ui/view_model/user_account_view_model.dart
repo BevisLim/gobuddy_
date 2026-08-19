@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../model/user_account_model.dart';
 import '../../repository/user_account_repository.dart';
 import '../state/user_account_state.dart';
@@ -15,7 +16,7 @@ class UserAccountViewModel extends Notifier<UserAccountState> {
   UserAccountState build() {
     // Fire off async data initialization so it doesn't block layout threads
     _initLoad();
-    
+
     // Return standard initial loading state immediately
     return const UserAccountState(isLoading: true);
   }
@@ -34,19 +35,25 @@ class UserAccountViewModel extends Notifier<UserAccountState> {
   /// Change the currently active sub-page within the user account module
   void goTo(UserAccountPage page) => state = state.copyWith(page: page);
 
-  /// Updates user profile information and updates the repository layer
-  Future<void> updateProfileName(String newName) async {
-    if (state.user == null || newName.isEmpty) return;
+  Future<void> updateProfile(UserAccountProfileUpdate update) async {
+    if (state.user == null || update.username.trim().isEmpty) return;
 
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true, clearError: true);
     final repository = ref.read(userAccountRepositoryProvider);
 
     try {
-      // Sync update change to the data layer source
-      await repository.updateAccountName(state.user!.uid, newName);
-      
-      // Mutate local state values and slide back to the main profile page
-      final updatedUser = state.user!.copyWith(name: newName);
+      await repository.updateProfile(state.user!.uid, update);
+
+      // Full name and date of birth are intentionally absent from the normal
+      // update contract. They can only be changed by identity verification.
+      final updatedUser = state.user!.copyWith(
+        backgroundPhoto: update.backgroundPhoto,
+        profilePhoto: update.profilePhoto,
+        username: update.username.trim(),
+        gender: update.gender,
+        country: update.country,
+        bio: update.bio.trim(),
+      );
       state = state.copyWith(
         user: updatedUser,
         page: UserAccountPage.profile,
@@ -54,6 +61,38 @@ class UserAccountViewModel extends Notifier<UserAccountState> {
       );
     } catch (e) {
       state = state.copyWith(error: e.toString(), isLoading: false);
+    }
+  }
+
+  Future<String?> selectProfileImage() async {
+    final image = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
+    return image?.path;
+  }
+
+  Future<bool> completeIdentityVerification() async {
+    final user = state.user;
+    if (user == null || state.isLoading) return false;
+
+    state = state.copyWith(isLoading: true, clearError: true);
+    final repository = ref.read(userAccountRepositoryProvider);
+
+    try {
+      final verified = await repository.completeMockIdentityVerification();
+      state = state.copyWith(
+        user: user.copyWith(
+          fullName: verified.fullName,
+          dateOfBirth: verified.dateOfBirth,
+          isVerified: true,
+        ),
+        isLoading: false,
+      );
+      return true;
+    } catch (error) {
+      state = state.copyWith(error: error.toString(), isLoading: false);
+      return false;
     }
   }
 }

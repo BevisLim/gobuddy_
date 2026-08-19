@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../routing/routes.dart';
+import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import 'package:go_router/go_router.dart';
 import '../model/money_utils.dart';
 import 'view_model/balance_view_model.dart';

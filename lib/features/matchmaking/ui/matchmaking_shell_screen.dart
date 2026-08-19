@@ -17,9 +17,21 @@ const _border = Color(0xFFD5CFEF);
 const _muted = Color(0xFF686082);
 const _lavender = Color(0xFFEDE9FE);
 
-class MatchmakingShellScreen extends ConsumerWidget {
-  const MatchmakingShellScreen({super.key});
+class MatchmakingShellScreen extends ConsumerStatefulWidget {
+  const MatchmakingShellScreen({
+    super.key,
+    this.initialPage = MatchmakingPage.discover,
+  });
 
+  final MatchmakingPage initialPage;
+
+  @override
+  ConsumerState<MatchmakingShellScreen> createState() =>
+      _MatchmakingShellScreenState();
+}
+
+class _MatchmakingShellScreenState
+    extends ConsumerState<MatchmakingShellScreen> {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(matchmakingViewModelV2Provider);
@@ -110,7 +122,9 @@ class MatchmakingShellScreen extends ConsumerWidget {
       ])),
       bottomNavigationBar:
           page == MatchmakingPage.discover || page == MatchmakingPage.myTrips
-              ? const AppModuleNavigation(selectedIndex: 0)
+              ? AppModuleNavigation(
+                  selectedIndex: page == MatchmakingPage.myTrips ? 1 : 0,
+                )
               : null,
       floatingActionButton: page == MatchmakingPage.discover
           ? FloatingActionButton(
