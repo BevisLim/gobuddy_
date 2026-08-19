@@ -11,6 +11,14 @@ class CollaborationPreviewState {
       PreviewChatMessage(sender: 'You', body: "Let's vote on it in the timeline."),
     ],
     this.memberMuted = false, this.memberRemoved = false, this.selectedDay = 1,
+    this.members = const [PreviewMember(id: 'aina', name: 'Aina Rahman', email: 'aina@example.com')],
+    this.friendDirectory = const [
+      PreviewFriend(id: 'nora', name: 'Nora Lim', username: 'noralim', email: 'nora@example.com'),
+      PreviewFriend(id: 'david', name: 'David Tan', username: 'davidtan', email: 'david@example.com'),
+      PreviewFriend(id: 'mei', name: 'Mei Wong', username: 'meiw', email: 'mei@example.com'),
+    ],
+    this.receivedRequests = const [PreviewFriend(id: 'farah', name: 'Farah Aziz', username: 'farahaziz', email: 'farah@example.com')],
+    this.sentRequestIds = const [], this.selectedFriendIds = const [],
   });
   final bool isPinned;
   final int primaryPollVotes;
@@ -27,14 +35,21 @@ class CollaborationPreviewState {
   final bool memberMuted;
   final bool memberRemoved;
   final int selectedDay;
-  CollaborationPreviewState copyWith({bool? isPinned, int? primaryPollVotes, PreviewActivity? activity, List<PreviewActivity>? proposals, List<PreviewSharedFile>? sharedFiles, PreviewPoll? poll, PreviewCallType? activeCall, bool clearCall = false, bool? microphoneMuted, bool? cameraOn, bool? frontCamera, String? message, List<PreviewChatMessage>? chatMessages, bool? memberMuted, bool? memberRemoved, int? selectedDay}) => CollaborationPreviewState(
+  final List<PreviewMember> members;
+  final List<PreviewFriend> friendDirectory;
+  final List<PreviewFriend> receivedRequests;
+  final List<String> sentRequestIds;
+  final List<String> selectedFriendIds;
+  CollaborationPreviewState copyWith({bool? isPinned, int? primaryPollVotes, PreviewActivity? activity, List<PreviewActivity>? proposals, List<PreviewSharedFile>? sharedFiles, PreviewPoll? poll, PreviewCallType? activeCall, bool clearCall = false, bool? microphoneMuted, bool? cameraOn, bool? frontCamera, String? message, List<PreviewChatMessage>? chatMessages, bool? memberMuted, bool? memberRemoved, int? selectedDay, List<PreviewMember>? members, List<PreviewFriend>? friendDirectory, List<PreviewFriend>? receivedRequests, List<String>? sentRequestIds, List<String>? selectedFriendIds}) => CollaborationPreviewState(
     isPinned: isPinned ?? this.isPinned, primaryPollVotes: primaryPollVotes ?? this.primaryPollVotes,
     activity: activity ?? this.activity, proposals: proposals ?? this.proposals, sharedFiles: sharedFiles ?? this.sharedFiles,
     poll: poll ?? this.poll, activeCall: clearCall ? null : (activeCall ?? this.activeCall),
     microphoneMuted: microphoneMuted ?? this.microphoneMuted, cameraOn: cameraOn ?? this.cameraOn,
     frontCamera: frontCamera ?? this.frontCamera, message: message, chatMessages: chatMessages ?? this.chatMessages,
     memberMuted: memberMuted ?? this.memberMuted, memberRemoved: memberRemoved ?? this.memberRemoved,
-    selectedDay: selectedDay ?? this.selectedDay,
+    selectedDay: selectedDay ?? this.selectedDay, members: members ?? this.members,
+    friendDirectory: friendDirectory ?? this.friendDirectory, receivedRequests: receivedRequests ?? this.receivedRequests,
+    sentRequestIds: sentRequestIds ?? this.sentRequestIds, selectedFriendIds: selectedFriendIds ?? this.selectedFriendIds,
   );
 }
 
@@ -71,4 +86,21 @@ class PreviewChatMessage {
   const PreviewChatMessage({required this.sender, required this.body});
   final String sender;
   final String body;
+}
+
+class PreviewMember {
+  const PreviewMember({required this.id, required this.name, required this.email, this.isMuted = false});
+  final String id;
+  final String name;
+  final String email;
+  final bool isMuted;
+  PreviewMember copyWith({bool? isMuted}) => PreviewMember(id: id, name: name, email: email, isMuted: isMuted ?? this.isMuted);
+}
+
+class PreviewFriend {
+  const PreviewFriend({required this.id, required this.name, required this.username, required this.email});
+  final String id;
+  final String name;
+  final String username;
+  final String email;
 }

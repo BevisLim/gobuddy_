@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/state/collaboration_preview_state.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/view_model/collaboration_preview_view_model.dart';
+import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/friend_management_sheet.dart';
 
 const _categories = ['Dining', 'Sightseeing', 'Transport', 'Accommodation', 'Flight'];
 const _statuses = ['Proposed', 'Confirmed', 'Cancelled'];
@@ -49,14 +50,15 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
   void dispose() { _messageController.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => ListView(padding: const EdgeInsets.all(16), children: [
-    const Text('Member Management', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-    if (widget.state.memberRemoved)
+    Row(children: [const Expanded(child: Text('Member Management', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))), TextButton.icon(onPressed: () => showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (_) => const FriendManagementSheet()), icon: const Icon(Icons.person_add_outlined), label: const Text('Add friend'))]),
+    if (widget.state.members.isEmpty)
       const Card(child: ListTile(leading: Icon(Icons.person_remove_outlined), title: Text('Aina Rahman was removed'), subtitle: Text('This member no longer has access to the group.')))
     else Card(child: ListTile(leading: const CircleAvatar(child: Text('A')), title: const Text('Aina Rahman'), subtitle: Text(widget.state.memberMuted ? 'Trip member • Muted' : 'Trip member'), trailing: PopupMenuButton<String>(
       tooltip: 'Member options', icon: const Icon(Icons.more_vert),
-      onSelected: (choice) { if (choice == 'mute') _showMuteDialog(context, widget.viewModel); if (choice == 'unmute') widget.viewModel.unmuteMember(); if (choice == 'remove') _showRemoveDialog(context, widget.viewModel); },
-      itemBuilder: (_) => [PopupMenuItem(value: widget.state.memberMuted ? 'unmute' : 'mute', child: Text(widget.state.memberMuted ? 'Unmute member' : 'Mute member')), const PopupMenuItem(value: 'remove', child: Text('Remove member'))],
+      onSelected: (choice) { if (choice == 'mute') _showMuteDialog(context, widget.viewModel, widget.state.members.first); if (choice == 'unmute') widget.viewModel.unmuteMember(widget.state.members.first.id); if (choice == 'remove') _showRemoveDialog(context, widget.viewModel, widget.state.members.first); },
+      itemBuilder: (_) => [PopupMenuItem(value: widget.state.members.first.isMuted ? 'unmute' : 'mute', child: Text(widget.state.members.first.isMuted ? 'Unmute member' : 'Mute member')), const PopupMenuItem(value: 'remove', child: Text('Remove member'))],
     ))),
+    ...widget.state.members.skip(1).map((member) => Card(child: ListTile(leading: CircleAvatar(child: Text(member.name.substring(0, 1).toUpperCase())), title: Text(member.name), subtitle: Text(member.isMuted ? '${member.email} • Muted' : member.email), trailing: PopupMenuButton<String>(icon: const Icon(Icons.more_vert), onSelected: (choice) { if (choice == 'mute') _showMuteDialog(context, widget.viewModel, member); if (choice == 'unmute') widget.viewModel.unmuteMember(member.id); if (choice == 'remove') _showRemoveDialog(context, widget.viewModel, member); }, itemBuilder: (_) => [PopupMenuItem(value: member.isMuted ? 'unmute' : 'mute', child: Text(member.isMuted ? 'Unmute member' : 'Mute member')), const PopupMenuItem(value: 'remove', child: Text('Remove member'))])))),
     const SizedBox(height: 14), const Text('Group Chat', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 8),
     ...widget.state.chatMessages.map((message) => Card(child: ListTile(title: Text(message.sender), subtitle: Text(message.body)))),
     TextField(
@@ -82,11 +84,14 @@ class _TimelineTab extends StatelessWidget {
   final CollaborationPreviewViewModel viewModel;
   @override
   Widget build(BuildContext context) => ListView(padding: const EdgeInsets.all(16), children: [
-    Row(children: [const Expanded(child: Text('Shared Timeline', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold))), FilledButton.icon(onPressed: () => _showActivityForm(context, viewModel, proposal: true), icon: const Icon(Icons.add), label: const Text('Propose activity'))]),
-    const SizedBox(height: 10),
-    SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [for (var day = 1; day <= 3; day++) Padding(padding: const EdgeInsets.only(right: 8), child: ChoiceChip(label: Text('Day $day'), selected: state.selectedDay == day, onSelected: (_) => viewModel.selectDay(day)))])),
-    const SizedBox(height: 10), DropdownButtonFormField<String>(value: 'All categories', decoration: const InputDecoration(labelText: 'Filter timeline', border: OutlineInputBorder()), items: const [DropdownMenuItem(value: 'All categories', child: Text('All categories / statuses')), DropdownMenuItem(value: 'Dining', child: Text('Dining')), DropdownMenuItem(value: 'Confirmed', child: Text('Confirmed'))], onChanged: (_) {}),
-    const SizedBox(height: 12), Text(_dayTitle(state.selectedDay), style: const TextStyle(fontWeight: FontWeight.bold)), const SizedBox(height: 6),
+    const _TripSummaryCard(),
+    const SizedBox(height: 16),
+    Row(children: [const Expanded(child: Text('Itinerary', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800))), TextButton.icon(onPressed: () => _showActivityForm(context, viewModel, proposal: true), icon: const Icon(Icons.add, size: 18), label: const Text('Add activity'))]),
+    const SizedBox(height: 6),
+    SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [for (var day = 1; day <= 3; day++) Padding(padding: const EdgeInsets.only(right: 8), child: ChoiceChip(label: Column(mainAxisSize: MainAxisSize.min, children: [Text('Day $day', style: const TextStyle(fontWeight: FontWeight.bold)), Text(day == 1 ? 'Aug 10' : day == 2 ? 'Aug 11' : 'Aug 12', style: const TextStyle(fontSize: 11))]), selected: state.selectedDay == day, selectedColor: const Color(0xFF149B8A), labelStyle: TextStyle(color: state.selectedDay == day ? Colors.white : const Color(0xFF293840)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), onSelected: (_) => viewModel.selectDay(day)))])),
+    const SizedBox(height: 12),
+    Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10), decoration: BoxDecoration(color: const Color(0xFFF3F7F6), borderRadius: BorderRadius.circular(12)), child: Row(children: [Expanded(child: Text(_dayTitle(state.selectedDay), style: const TextStyle(fontWeight: FontWeight.w800))), TextButton.icon(onPressed: () => _showActivityForm(context, viewModel, proposal: true), icon: const Icon(Icons.add, size: 16), label: const Text('Add activity'))])),
+    const SizedBox(height: 8),
     ..._dayActivities(state).map((activity) => _activityCard(context, activity, state.selectedDay == 1 && activity.title == state.activity.title ? state.isPinned : false, viewModel, editable: state.selectedDay == 1 && activity.title == state.activity.title)),
     if (state.selectedDay == 1) ...state.proposals.map((activity) => _activityCard(context, activity, false, viewModel, editable: false)),
     const SizedBox(height: 16), Row(children: [const Expanded(child: Text('Activity Poll', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))), TextButton.icon(onPressed: () => _showPollForm(context, viewModel), icon: const Icon(Icons.add_chart), label: const Text('Create poll'))]),
@@ -112,6 +117,27 @@ class _TimelineTab extends StatelessWidget {
     2 => const [PreviewActivity(title: 'Senso-ji Temple', category: 'Sightseeing', location: 'Asakusa', time: '9:30 AM', budget: 0, notes: 'Meet at hotel lobby.', status: 'Confirmed'), PreviewActivity(title: 'Ramen lunch', category: 'Dining', location: 'Shibuya', time: '1:00 PM', budget: 45, notes: 'Group reservation for four.', status: 'Proposed'), PreviewActivity(title: 'Shibuya Crossing walk', category: 'Sightseeing', location: 'Shibuya', time: '4:00 PM', budget: 0, notes: 'Bring a camera.', status: 'Confirmed')],
     _ => const [PreviewActivity(title: 'Hotel check-out', category: 'Accommodation', location: 'Shinjuku', time: '10:00 AM', budget: 0, notes: 'Leave luggage at reception.', status: 'Confirmed'), PreviewActivity(title: 'Narita Express', category: 'Transport', location: 'Tokyo Station', time: '12:30 PM', budget: 95, notes: 'Arrive 30 minutes early.', status: 'Confirmed'), PreviewActivity(title: 'Flight home', category: 'Flight', location: 'Narita Airport', time: '4:45 PM', budget: 0, notes: 'Check passport and boarding pass.', status: 'Confirmed')],
   };
+}
+
+class _TripSummaryCard extends StatelessWidget {
+  const _TripSummaryCard();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(color: const Color(0xFF149B8A), borderRadius: BorderRadius.circular(18)),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [const Icon(Icons.flight_takeoff, color: Colors.white), const SizedBox(width: 8), const Expanded(child: Text('Tokyo Adventure', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800))), FilledButton.tonal(onPressed: () {}, style: FilledButton.styleFrom(backgroundColor: Colors.white24, foregroundColor: Colors.white), child: const Text('Share'))]),
+      const SizedBox(height: 4),
+      const Text('Aug 10–12, 2026 • 3 days', style: TextStyle(color: Colors.white70)),
+      const SizedBox(height: 12),
+      const Row(children: [CircleAvatar(radius: 13, child: Text('T')), SizedBox(width: 4), CircleAvatar(radius: 13, child: Text('A')), SizedBox(width: 8), Text('3 travellers • Planning together', style: TextStyle(color: Colors.white70, fontSize: 12))]),
+      const SizedBox(height: 12),
+      const Row(children: [Expanded(child: Text('Planning progress', style: TextStyle(color: Colors.white70, fontSize: 12))), Text('60%', style: TextStyle(color: Colors.white70, fontSize: 12))]),
+      const SizedBox(height: 5),
+      const LinearProgressIndicator(value: .6, minHeight: 5, borderRadius: BorderRadius.all(Radius.circular(6)), color: Colors.white, backgroundColor: Colors.white30),
+    ]),
+  );
 }
 
 class _FilesTab extends StatelessWidget {
@@ -157,7 +183,8 @@ Future<void> _chooseFile(BuildContext context, CollaborationPreviewViewModel vie
 }
 
 Future<void> _confirmPin(BuildContext context, CollaborationPreviewViewModel viewModel) => showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(title: const Text('Pin activity'), content: const Text('Pin to top of itinerary?'), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('No')), FilledButton(onPressed: () { viewModel.togglePin(); Navigator.pop(dialogContext); }, child: const Text('Yes'))]));
-Future<void> _showMuteDialog(BuildContext context, CollaborationPreviewViewModel viewModel) async { var duration = '1 Hour'; await showDialog<void>(context: context, builder: (dialogContext) => StatefulBuilder(builder: (context, setState) => AlertDialog(title: const Text('Mute member'), content: DropdownButtonFormField<String>(value: duration, decoration: const InputDecoration(labelText: 'Mute duration'), items: const ['1 Hour', '24 Hours', 'Until Unmuted'].map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(), onChanged: (value) => setState(() => duration = value!)), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')), FilledButton(onPressed: () { viewModel.muteMember(duration); Navigator.pop(dialogContext); }, child: const Text('Mute Member'))]))); }
-Future<void> _showRemoveDialog(BuildContext context, CollaborationPreviewViewModel viewModel) => showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(title: const Text('Remove member'), content: const Text('Are you sure you want to remove Aina Rahman from the group?'), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')), FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () { viewModel.removeMember(); Navigator.pop(dialogContext); }, child: const Text('Remove Member'))]));
+Future<void> _showMuteDialog(BuildContext context, CollaborationPreviewViewModel viewModel, PreviewMember member) async { var duration = '1 Hour'; await showDialog<void>(context: context, builder: (dialogContext) => StatefulBuilder(builder: (context, setState) => AlertDialog(title: Text('Mute ${member.name}'), content: DropdownButtonFormField<String>(value: duration, decoration: const InputDecoration(labelText: 'Mute duration'), items: const ['1 Hour', '24 Hours', 'Until Unmuted'].map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(), onChanged: (value) => setState(() => duration = value!)), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')), FilledButton(onPressed: () { viewModel.muteMember(member.id, duration); Navigator.pop(dialogContext); }, child: const Text('Mute Member'))]))); }
+Future<void> _showRemoveDialog(BuildContext context, CollaborationPreviewViewModel viewModel, PreviewMember member) => showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(title: const Text('Remove member'), content: Text('Are you sure you want to remove ${member.name} from the group?'), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')), FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () { viewModel.removeMember(member.id); Navigator.pop(dialogContext); }, child: const Text('Remove Member'))]));
+Future<void> _showAddFriendDialog(BuildContext context, CollaborationPreviewViewModel viewModel) async { final name = TextEditingController(); final email = TextEditingController(); await showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(title: const Text('Add Friend'), content: Column(mainAxisSize: MainAxisSize.min, children: [TextField(controller: name, decoration: const InputDecoration(labelText: 'Friend name')), TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email address'))]), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')), FilledButton(onPressed: () { if (name.text.trim().isEmpty || email.text.trim().isEmpty) return; viewModel.addFriend(name: name.text.trim(), email: email.text.trim()); Navigator.pop(dialogContext); }, child: const Text('Add Friend'))])); name.dispose(); email.dispose(); }
 void _showCallSheet(BuildContext context, CollaborationPreviewViewModel viewModel, PreviewCallType type) { viewModel.startCall(type); showModalBottomSheet<void>(context: context, builder: (_) => _CallControls(type: type, viewModel: viewModel)); }
 class _CallControls extends ConsumerWidget { const _CallControls({required this.type, required this.viewModel}); final PreviewCallType type; final CollaborationPreviewViewModel viewModel; @override Widget build(BuildContext context, WidgetRef ref) { final state = ref.watch(collaborationPreviewViewModelProvider); return SafeArea(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(type == PreviewCallType.video ? Icons.videocam : Icons.call, size: 52), const SizedBox(height: 8), Text(type == PreviewCallType.video ? 'Video Call' : 'Voice Call', style: Theme.of(context).textTheme.titleLarge), const Text('Tokyo Travel Group'), const SizedBox(height: 20), Wrap(spacing: 16, children: [IconButton.filledTonal(onPressed: viewModel.toggleMicrophone, icon: Icon(state.microphoneMuted ? Icons.mic_off : Icons.mic), tooltip: 'Mute / unmute microphone'), if (type == PreviewCallType.video) ...[IconButton.filledTonal(onPressed: viewModel.toggleCamera, icon: Icon(state.cameraOn ? Icons.videocam : Icons.videocam_off), tooltip: 'Turn camera on / off'), IconButton.filledTonal(onPressed: viewModel.switchCamera, icon: const Icon(Icons.cameraswitch), tooltip: 'Switch front / rear camera')], IconButton.filled(onPressed: () { viewModel.endCall(); Navigator.pop(context); }, icon: const Icon(Icons.call_end), color: Colors.white, style: IconButton.styleFrom(backgroundColor: Colors.red), tooltip: 'End call')])]))); } }

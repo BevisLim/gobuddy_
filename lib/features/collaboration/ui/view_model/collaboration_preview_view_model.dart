@@ -13,9 +13,22 @@ class CollaborationPreviewViewModel extends Notifier<CollaborationPreviewState> 
   void toggleMicrophone() => state = state.copyWith(microphoneMuted: !state.microphoneMuted);
   void toggleCamera() => state = state.copyWith(cameraOn: !state.cameraOn);
   void switchCamera() => state = state.copyWith(frontCamera: !state.frontCamera);
-  void muteMember(String duration) => state = state.copyWith(memberMuted: true, message: 'Aina has been muted for $duration.');
-  void unmuteMember() => state = state.copyWith(memberMuted: false, message: 'Aina has been unmuted.');
-  void removeMember() => state = state.copyWith(memberRemoved: true, message: 'Aina was removed from the group.');
+  void addFriend({required String name, required String email}) {
+    final member = PreviewMember(id: DateTime.now().microsecondsSinceEpoch.toString(), name: name, email: email);
+    state = state.copyWith(members: [...state.members, member], message: '$name was added to the group.');
+  }
+  void sendFriendRequest(String friendId) => state = state.copyWith(sentRequestIds: [...state.sentRequestIds, friendId], message: 'Friend request sent.');
+  void acceptFriendRequest(PreviewFriend friend) => state = state.copyWith(receivedRequests: state.receivedRequests.where((item) => item.id != friend.id).toList(), friendDirectory: [...state.friendDirectory, friend], message: '${friend.name} is now your friend.');
+  void declineFriendRequest(String friendId) => state = state.copyWith(receivedRequests: state.receivedRequests.where((item) => item.id != friendId).toList(), message: 'Friend request declined.');
+  void toggleFriendSelection(String friendId) { final selected = List<String>.from(state.selectedFriendIds); selected.contains(friendId) ? selected.remove(friendId) : selected.add(friendId); state = state.copyWith(selectedFriendIds: selected); }
+  void inviteSelectedFriends() {
+    final selected = state.friendDirectory.where((friend) => state.selectedFriendIds.contains(friend.id));
+    final newMembers = [for (final friend in selected) if (!state.members.any((member) => member.id == friend.id)) PreviewMember(id: friend.id, name: friend.name, email: friend.email)];
+    state = state.copyWith(members: [...state.members, ...newMembers], selectedFriendIds: const [], message: '${newMembers.length} friend(s) invited to the group.');
+  }
+  void muteMember(String memberId, String duration) => state = state.copyWith(members: [for (final member in state.members) if (member.id == memberId) member.copyWith(isMuted: true) else member], message: 'Member has been muted for $duration.');
+  void unmuteMember(String memberId) => state = state.copyWith(members: [for (final member in state.members) if (member.id == memberId) member.copyWith(isMuted: false) else member], message: 'Member has been unmuted.');
+  void removeMember(String memberId) => state = state.copyWith(members: state.members.where((member) => member.id != memberId).toList(), message: 'Member was removed from the group.');
   void sendMessage(String body) {
     if (body.trim().isEmpty) return;
     state = state.copyWith(chatMessages: [...state.chatMessages, PreviewChatMessage(sender: 'You', body: body.trim())], message: 'Message sent.');
