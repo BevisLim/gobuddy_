@@ -31,4 +31,6 @@ class Routes {
   static const blockedUsers = '/settings/blocked-users';
   static const termsOfService = '/terms-of-service';
   static const privacyPolicy = '/privacy-policy';
+  static const emergencyContacts = '/safety/emergency-contacts';
+  static const addEmergencyContact = '/safety/emergency-contacts/add';
 }

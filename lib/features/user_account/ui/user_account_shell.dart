@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
+import '../../../routing/routes.dart';
 import '../../common/ui/widgets/app_module_navigation.dart';
 import '../model/user_account_model.dart';
 import 'view_model/user_account_view_model.dart';
@@ -115,6 +115,14 @@ class _AccountDashboardView extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
           child: _ProfileStatsCard(
             onEdit: () => onNavigate(UserAccountPage.editProfile),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: _AccountMenuTile(
+            icon: Icons.health_and_safety_outlined,
+            title: 'Emergency contacts',
+            onTap: () => context.push(Routes.emergencyContacts),
           ),
         ),
         const Padding(

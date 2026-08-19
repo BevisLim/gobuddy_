@@ -1,38 +1,40 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
-import 'package:flutter_mvvm_riverpod/features/user_account/ui/otp_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/user_account/ui/welcome_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/matchmaking_shell_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/matchmaking/model/matchmaking_page.dart';
-import 'package:flutter_mvvm_riverpod/features/group_collaboration/ui/messages_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/group_expense/ui/expense_dashboard_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/group_expense/ui/create_budget_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/group_expense/ui/add_expense_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/group_expense/ui/edit_budget_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/group_expense/ui/edit_expense_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/group_expense/ui/expense_details_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/group_expense/ui/outstanding_balance_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/group_expense/ui/record_settlement_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/group_expense/ui/settlement_history_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/group_expense/ui/budget_analytics_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/user_account/ui/user_account_shell.dart';
-import 'package:flutter_mvvm_riverpod/features/onboarding/ui/onboarding_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/user_account/ui/app_launching_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/user_account/ui/forgot_password_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/user_account/ui/identity_verification_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/user_account/ui/settings/blocked_users_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/user_account/ui/settings/settings_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/user_account/ui/login_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/user_account/ui/register_account_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/user_account/ui/legal/privacy_policy_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/user_account/ui/legal/terms_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/premium/ui/premium_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/profile/model/profile.dart';
-import 'package:flutter_mvvm_riverpod/features/profile/ui/account_info_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/profile/ui/appearances_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/profile/ui/languages_screen.dart';
+import '../core/constants/constants.dart';
+import '../features/user_account/ui/otp_screen.dart';
+import '../features/user_account/ui/welcome_screen.dart';
+import '../features/matchmaking/ui/matchmaking_shell_screen.dart';
+import '../features/matchmaking/model/matchmaking_page.dart';
+import '../features/group_collaboration/ui/messages_screen.dart';
+import '../features/group_expense/ui/expense_dashboard_screen.dart';
+import '../features/group_expense/ui/create_budget_screen.dart';
+import '../features/group_expense/ui/add_expense_screen.dart';
+import '../features/group_expense/ui/edit_budget_screen.dart';
+import '../features/group_expense/ui/edit_expense_screen.dart';
+import '../features/group_expense/ui/expense_details_screen.dart';
+import '../features/group_expense/ui/outstanding_balance_screen.dart';
+import '../features/group_expense/ui/record_settlement_screen.dart';
+import '../features/group_expense/ui/settlement_history_screen.dart';
+import '../features/group_expense/ui/budget_analytics_screen.dart';
+import '../features/user_account/ui/user_account_shell.dart';
+import '../features/onboarding/ui/onboarding_screen.dart';
+import '../features/user_account/ui/app_launching_screen.dart';
+import '../features/user_account/ui/forgot_password_screen.dart';
+import '../features/user_account/ui/identity_verification_screen.dart';
+import '../features/user_account/ui/settings/blocked_users_screen.dart';
+import '../features/user_account/ui/settings/settings_screen.dart';
+import '../features/user_account/ui/login_screen.dart';
+import '../features/user_account/ui/register_account_screen.dart';
+import '../features/user_account/ui/legal/privacy_policy_screen.dart';
+import '../features/user_account/ui/legal/terms_screen.dart';
+import '../features/premium/ui/premium_screen.dart';
+import '../features/profile/model/profile.dart';
+import '../features/profile/ui/account_info_screen.dart';
+import '../features/profile/ui/appearances_screen.dart';
+import '../features/profile/ui/languages_screen.dart';
+import '../features/safety/ui/add_emergency_contact_screen.dart';
+import '../features/safety/ui/emergency_contacts_screen.dart';
 import 'routes.dart';
 
 enum SlideDirection {
@@ -281,6 +283,16 @@ final GoRouter router = GoRouter(
     GoRoute(
       path: Routes.languages,
       pageBuilder: (context, state) => state.slidePage(const LanguagesScreen()),
+    ),
+    GoRoute(
+      path: Routes.emergencyContacts,
+      pageBuilder: (context, state) =>
+          state.slidePage(const EmergencyContactsScreen()),
+    ),
+    GoRoute(
+      path: Routes.addEmergencyContact,
+      pageBuilder: (context, state) =>
+          state.slidePage(const AddEmergencyContactScreen()),
     ),
     GoRoute(
       path: Routes.premium,
