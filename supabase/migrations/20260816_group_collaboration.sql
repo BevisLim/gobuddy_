@@ -1,17 +1,13 @@
 -- GoBuddy: Group Communication and Collaboration
--- Run this in Supabase SQL Editor after the base `trips` table exists.
+-- Run this after the matchmaking schema. Collaboration deliberately reuses
+-- matchmaking trips and memberships.
 
-create table if not exists public.trip_members (
-  trip_id uuid not null references public.trips(id) on delete cascade,
-  user_id uuid not null references auth.users(id) on delete cascade,
-  muted_until timestamptz,
-  created_at timestamptz not null default now(),
-  primary key (trip_id, user_id)
-);
+alter table public.matchmaking_trip_members
+  add column if not exists muted_until timestamptz;
 
 create table if not exists public.trip_messages (
   id uuid primary key default gen_random_uuid(),
-  trip_id uuid not null references public.trips(id) on delete cascade,
+  trip_id uuid not null references public.matchmaking_trips(id) on delete cascade,
   sender_id uuid not null references auth.users(id) on delete cascade,
   body text not null check (char_length(trim(body)) between 1 and 2000),
   sent_at timestamptz not null default now()
@@ -19,7 +15,7 @@ create table if not exists public.trip_messages (
 
 create table if not exists public.trip_activities (
   id uuid primary key default gen_random_uuid(),
-  trip_id uuid not null references public.trips(id) on delete cascade,
+  trip_id uuid not null references public.matchmaking_trips(id) on delete cascade,
   title text not null check (char_length(trim(title)) between 1 and 160),
   location text,
   start_time timestamptz not null,
@@ -30,7 +26,7 @@ create table if not exists public.trip_activities (
 
 create table if not exists public.trip_polls (
   id uuid primary key default gen_random_uuid(),
-  trip_id uuid not null references public.trips(id) on delete cascade,
+  trip_id uuid not null references public.matchmaking_trips(id) on delete cascade,
   question text not null check (char_length(trim(question)) between 1 and 280),
   created_at timestamptz not null default now()
 );
@@ -52,7 +48,7 @@ create table if not exists public.trip_poll_votes (
 
 create table if not exists public.trip_files (
   id uuid primary key default gen_random_uuid(),
-  trip_id uuid not null references public.trips(id) on delete cascade,
+  trip_id uuid not null references public.matchmaking_trips(id) on delete cascade,
   file_name text not null,
   file_url text not null,
   storage_path text not null unique,
@@ -62,7 +58,7 @@ create table if not exists public.trip_files (
 
 create table if not exists public.trip_calls (
   id uuid primary key default gen_random_uuid(),
-  trip_id uuid not null references public.trips(id) on delete cascade,
+  trip_id uuid not null references public.matchmaking_trips(id) on delete cascade,
   initiated_by uuid not null default auth.uid() references auth.users(id),
   call_type text not null check (call_type in ('voice', 'video')),
   status text not null default 'ringing' check (status in ('ringing', 'active', 'ended')),
@@ -73,15 +69,24 @@ create index if not exists trip_messages_trip_sent_idx on public.trip_messages(t
 create index if not exists trip_activities_trip_time_idx on public.trip_activities(trip_id, is_pinned desc, start_time);
 create index if not exists trip_files_trip_created_idx on public.trip_files(trip_id, created_at desc);
 
--- Security helper: avoids cyclic RLS lookups on trip_members.
+-- Security helpers avoid cyclic membership-policy lookups.
 create or replace function public.is_trip_member(p_trip_id uuid)
 returns boolean language sql security definer set search_path = public stable as $$
-  select exists (select 1 from public.trip_members where trip_id = p_trip_id and user_id = auth.uid());
+  select exists (
+    select 1 from public.matchmaking_trips
+    where id = p_trip_id and owner_id = auth.uid()
+  ) or exists (
+    select 1 from public.matchmaking_trip_members
+    where trip_id = p_trip_id and user_id = auth.uid()
+  );
 $$;
 
 create or replace function public.is_trip_creator(p_trip_id uuid)
 returns boolean language sql security definer set search_path = public stable as $$
-  select exists (select 1 from public.trips where id = p_trip_id and creator_id = auth.uid());
+  select exists (
+    select 1 from public.matchmaking_trips
+    where id = p_trip_id and owner_id = auth.uid()
+  );
 $$;
 
 -- One vote per person per poll. The RPC replaces an earlier vote atomically.
@@ -101,7 +106,6 @@ begin
 end;
 $$;
 
-alter table public.trip_members enable row level security;
 alter table public.trip_messages enable row level security;
 alter table public.trip_activities enable row level security;
 alter table public.trip_polls enable row level security;
@@ -110,12 +114,18 @@ alter table public.trip_poll_votes enable row level security;
 alter table public.trip_files enable row level security;
 alter table public.trip_calls enable row level security;
 
-create policy "members can read membership" on public.trip_members for select using (public.is_trip_member(trip_id));
-create policy "creator can manage membership" on public.trip_members for all using (public.is_trip_creator(trip_id)) with check (public.is_trip_creator(trip_id));
+create policy "owners update collaboration membership" on public.matchmaking_trip_members
+for update to authenticated using (public.is_trip_creator(trip_id))
+with check (public.is_trip_creator(trip_id));
+create policy "owners remove collaboration membership" on public.matchmaking_trip_members
+for delete to authenticated using (public.is_trip_creator(trip_id));
 create policy "members read messages" on public.trip_messages for select using (public.is_trip_member(trip_id));
 create policy "unmuted members send messages" on public.trip_messages for insert with check (
   sender_id = auth.uid() and public.is_trip_member(trip_id) and not exists (
-    select 1 from public.trip_members where trip_id = trip_messages.trip_id and user_id = auth.uid() and muted_until > now()
+    select 1 from public.matchmaking_trip_members
+    where trip_id = trip_messages.trip_id
+      and user_id = auth.uid()
+      and muted_until > now()
   )
 );
 create policy "members read activities" on public.trip_activities for select using (public.is_trip_member(trip_id));
@@ -138,3 +148,24 @@ create policy "members read trip documents" on storage.objects for select to aut
 );
 
 alter publication supabase_realtime add table public.trip_messages, public.trip_activities, public.trip_files;
+
+grant update (muted_until), delete on public.matchmaking_trip_members to authenticated;
+
+grant select, insert on public.trip_messages to authenticated;
+grant select, insert, update on public.trip_activities to authenticated;
+grant select, insert on public.trip_polls to authenticated;
+grant select, insert on public.trip_poll_options to authenticated;
+grant select on public.trip_poll_votes to authenticated;
+grant select, insert on public.trip_files to authenticated;
+grant select, insert on public.trip_calls to authenticated;
+grant execute on function public.cast_trip_poll_vote(uuid, uuid) to authenticated;
+
+create policy "members create polls" on public.trip_polls
+for insert to authenticated with check (public.is_trip_member(trip_id));
+create policy "members create poll options" on public.trip_poll_options
+for insert to authenticated with check (
+  exists (
+    select 1 from public.trip_polls p
+    where p.id = poll_id and public.is_trip_member(p.trip_id)
+  )
+);
