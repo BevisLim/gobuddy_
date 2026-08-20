@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../constants/constants.dart';
+import 'package:flutter_mvvm_riverpod/features/collaboration/ui/group_collaboration_screen.dart';
 import '../../features/user_account/ui/otp_screen.dart';
 import '../../features/user_account/ui/welcome_screen.dart';
 import '../../features/matchmaking/ui/matchmaking_shell_screen.dart';
@@ -37,6 +38,7 @@ import '../../features/profile/ui/appearances_screen.dart';
 import '../../features/profile/ui/languages_screen.dart';
 import '../../features/safety/ui/add_emergency_contact_screen.dart';
 import '../../features/safety/ui/emergency_contacts_screen.dart';
+
 import 'routes.dart';
 
 enum SlideDirection {
@@ -313,6 +315,13 @@ final GoRouter router = GoRouter(
           ),
           direction: SlideDirection.up,
         );
+      },
+    ),
+    GoRoute(
+      path: Routes.groupCollaboration,
+      pageBuilder: (context, state) {
+        final tripId = state.uri.queryParameters['tripId'] ?? '';
+        return state.slidePage(GroupCollaborationScreen(tripId: tripId));
       },
     ),
   ],

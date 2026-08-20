@@ -26,11 +26,13 @@ class Routes {
   static const settlementHistory = '/expenses/settlement/history';
   static const budgetAnalytics = '/expenses/analytics';
   static const userAccount = '/user_account';
-  static const identityVerification = '/identity-verification';
+  static const groupCollaboration = '/group-collaboration';
+static const identityVerification = '/identity-verification';
   static const settings = '/settings';
   static const blockedUsers = '/settings/blocked-users';
   static const termsOfService = '/terms-of-service';
   static const privacyPolicy = '/privacy-policy';
   static const emergencyContacts = '/safety/emergency-contacts';
   static const addEmergencyContact = '/safety/emergency-contacts/add';
+
 }
