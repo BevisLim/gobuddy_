@@ -5,10 +5,10 @@ import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uuid/uuid.dart';
 
-
 import '../../common/ui/widgets/app_module_navigation.dart';
 import '../../../core/routing/routes.dart';
 import '../model/matchmaking_models.dart';
+import '../model/matchmaking_notification.dart';
 import '../model/matchmaking_page.dart';
 import 'view_model/matchmaking_view_model_v2.dart';
 
@@ -30,6 +30,18 @@ class _MatchmakingShellScreenState
     extends ConsumerState<MatchmakingShellScreen> {
   @override
   Widget build(BuildContext context) {
+    ref.listen<String?>(
+        matchmakingViewModelV2Provider.select((state) => state.successMessage),
+        (previous, next) {
+      if (next != null && next != previous) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(next)));
+        Future<void>.microtask(() => ref
+            .read(matchmakingViewModelV2Provider.notifier)
+            .clearSuccessMessage());
+      }
+    });
     final state = ref.watch(matchmakingViewModelV2Provider);
     final viewModel = ref.read(matchmakingViewModelV2Provider.notifier);
     final page = state.page;
@@ -39,6 +51,9 @@ class _MatchmakingShellScreenState
           trips: state.discoveryTrips,
           savedTripIds: state.savedTripIds,
           filters: state.availableFilters,
+          notifications: state.notifications,
+          unreadNotificationCount: state.unreadNotificationCount,
+          onNotificationsRead: viewModel.markNotificationsRead,
           onFilter: viewModel.selectFilter,
           onOpenFilters: () => viewModel.goTo(MatchmakingPage.filters),
           onDetails: (id) => viewModel.openTrip(id, MatchmakingPage.details),
@@ -148,11 +163,61 @@ class _MatchmakingShellScreenState
   }
 }
 
+class _NotificationsDialog extends StatelessWidget {
+  const _NotificationsDialog({required this.notifications});
+
+  final List<MatchmakingNotification> notifications;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Notifications'),
+        content: SizedBox(
+          width: 420,
+          child: notifications.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Text('No notifications yet.'),
+                )
+              : ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: notifications.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final notification = notifications[index];
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        notification.isUnread
+                            ? Icons.notifications_active_rounded
+                            : Icons.notifications_none_rounded,
+                        color: notification.isUnread ? _violet : _muted,
+                      ),
+                      title: Text(notification.title,
+                          style: TextStyle(
+                              fontWeight: notification.isUnread
+                                  ? FontWeight.w700
+                                  : FontWeight.w500)),
+                      subtitle: Text(notification.body),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'))
+        ],
+      );
+}
+
 class DiscoverPage extends StatelessWidget {
   final String filter;
   final List<MatchmakingTrip> trips;
   final Set<String> savedTripIds;
   final List<String> filters;
+  final List<MatchmakingNotification> notifications;
+  final int unreadNotificationCount;
+  final Future<void> Function() onNotificationsRead;
   final ValueChanged<String> onFilter;
   final VoidCallback onOpenFilters;
   final ValueChanged<String> onDetails, onRequest, onSave;
@@ -162,6 +227,9 @@ class DiscoverPage extends StatelessWidget {
       required this.trips,
       required this.savedTripIds,
       required this.filters,
+      required this.notifications,
+      required this.unreadNotificationCount,
+      required this.onNotificationsRead,
       required this.onFilter,
       required this.onOpenFilters,
       required this.onDetails,
@@ -187,10 +255,20 @@ class DiscoverPage extends StatelessWidget {
                     onPressed: onOpenFilters,
                     icon: const Icon(Icons.tune_rounded, color: _ink)),
                 IconButton(
-                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('No new notifications.'))),
-                    icon: const Icon(Icons.notifications_none_rounded,
-                        color: _ink)),
+                    onPressed: () async {
+                      await showDialog<void>(
+                          context: context,
+                          builder: (context) => _NotificationsDialog(
+                              notifications: notifications));
+                      await onNotificationsRead();
+                    },
+                    icon: Badge(
+                        isLabelVisible: unreadNotificationCount > 0,
+                        label: Text(unreadNotificationCount > 99
+                            ? '99+'
+                            : '$unreadNotificationCount'),
+                        child: const Icon(Icons.notifications_none_rounded,
+                            color: _ink))),
                 InkWell(
                     onTap: () => context.go(Routes.userAccount),
                     customBorder: const CircleBorder(),

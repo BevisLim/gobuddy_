@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../model/matchmaking_models.dart';
+import '../../model/matchmaking_notification.dart';
 import '../../model/matchmaking_page.dart';
 import '../../repository/matchmaking_repository.dart';
 import '../state/matchmaking_state_v2.dart';
@@ -36,8 +37,14 @@ class MatchmakingViewModelV2 extends Notifier<MatchmakingStateV2> {
     try {
       final trips = await _repository.fetchTrips();
       final savedIds = await _repository.fetchSavedTripIds();
+      final requests = await _repository.fetchJoinRequests();
+      final applicants = await _repository.fetchApplicants();
+      final notifications = await _repository.fetchNotifications();
       state = state.copyWith(
           trips: trips,
+          requests: requests,
+          applicants: applicants,
+          notifications: notifications,
           savedTripIds: savedIds,
           isLoading: false,
           clearError: true);
@@ -47,6 +54,30 @@ class MatchmakingViewModelV2 extends Notifier<MatchmakingStateV2> {
   }
 
   void goTo(MatchmakingPage page) => state = state.copyWith(page: page);
+  void clearSuccessMessage() => state = state.copyWith(clearSuccess: true);
+  Future<void> markNotificationsRead() async {
+    if (!_repository.hasAuthenticatedUser ||
+        state.unreadNotificationCount == 0) {
+      return;
+    }
+    try {
+      await _repository.markNotificationsRead();
+      final now = DateTime.now();
+      state = state.copyWith(notifications: [
+        for (final notification in state.notifications)
+          MatchmakingNotification(
+              id: notification.id,
+              title: notification.title,
+              body: notification.body,
+              tripId: notification.tripId,
+              createdAt: notification.createdAt,
+              readAt: notification.readAt ?? now)
+      ]);
+    } catch (error) {
+      state = state.copyWith(errorMessage: error.toString());
+    }
+  }
+
   void selectFilter(String value) {
     if (!state.availableFilters.contains(value)) {
       throw ArgumentError.value(value, 'filter');
@@ -134,7 +165,8 @@ class MatchmakingViewModelV2 extends Notifier<MatchmakingStateV2> {
     final text = message.trim();
     if (text.isEmpty || text.length > 500) return false;
     if (state.requests.any((request) =>
-        request.tripId == tripId && request.applicantId == 'current-user')) {
+        request.tripId == tripId &&
+        request.applicantId == _repository.currentUserId)) {
       return false;
     }
     final requests = [
@@ -142,11 +174,28 @@ class MatchmakingViewModelV2 extends Notifier<MatchmakingStateV2> {
       JoinRequest(
           id: 'request-${DateTime.now().microsecondsSinceEpoch}',
           tripId: tripId,
-          applicantId: 'current-user',
+          applicantId: _repository.currentUserId,
           message: text)
     ];
     state = state.copyWith(requests: requests, page: MatchmakingPage.sent);
+    if (_repository.hasAuthenticatedUser) {
+      unawaited(_persistJoinRequest(tripId, text));
+    } else {
+      state = state.copyWith(successMessage: 'Join request sent.');
+    }
     return true;
+  }
+
+  Future<void> _persistJoinRequest(String tripId, String message) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      await _repository.sendJoinRequest(tripId, message);
+      await refresh();
+      state = state.copyWith(successMessage: 'Join request sent.');
+    } catch (error) {
+      await refresh();
+      state = state.copyWith(isLoading: false, errorMessage: error.toString());
+    }
   }
 
   void decideRequest(String requestId, ApplicantDecision decision) {
@@ -157,6 +206,9 @@ class MatchmakingViewModelV2 extends Notifier<MatchmakingStateV2> {
       state = state.copyWith(
           requests:
               state.requests.where((item) => item.id != requestId).toList());
+      if (_repository.hasAuthenticatedUser) {
+        unawaited(_persistRequestDecision(requestId, decision));
+      }
       return;
     }
     final tripIndex =
@@ -185,5 +237,29 @@ class MatchmakingViewModelV2 extends Notifier<MatchmakingStateV2> {
         else
           request
     ]);
+    if (_repository.hasAuthenticatedUser) {
+      unawaited(_persistRequestDecision(requestId, decision));
+    } else {
+      state = state.copyWith(
+          successMessage: decision == ApplicantDecision.accepted
+              ? 'Request accepted. The traveller was added to the group.'
+              : 'Request updated.');
+    }
+  }
+
+  Future<void> _persistRequestDecision(
+      String requestId, ApplicantDecision decision) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      await _repository.decideJoinRequest(requestId, decision);
+      await refresh();
+      state = state.copyWith(
+          successMessage: decision == ApplicantDecision.accepted
+              ? 'Request accepted. The traveller was added to the group.'
+              : 'Request updated.');
+    } catch (error) {
+      await refresh();
+      state = state.copyWith(errorMessage: error.toString());
+    }
   }
 }
