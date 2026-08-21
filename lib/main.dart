@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:flutter_mvvm_riverpod/core/environment/env.dart';
+import 'package:flutter_mvvm_riverpod/core/notifications/push_notification_service.dart';
 import 'package:flutter_mvvm_riverpod/core/routing/router.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_theme.dart';
 import 'package:flutter_mvvm_riverpod/features/common/ui/providers/app_theme_mode_provider.dart';
@@ -26,6 +29,12 @@ Future<void> main() async {
       child: const ProviderScope(child: GoBuddyApp()),
     ),
   );
+
+  if (Env.hasSupabase) {
+    unawaited(PushNotificationService.initialize().catchError((error, stack) {
+      debugPrint('Push notification setup failed: $error');
+    }));
+  }
 }
 
 class GoBuddyApp extends ConsumerWidget {
