@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../user_account/repository/user_account_repository.dart';
+import '../../../common/remote/supabase_client.dart';
 import '../../repository/emergency_contact_repository.dart';
 import '../state/emergency_contacts_state.dart';
 
@@ -21,11 +21,11 @@ class EmergencyContactsViewModel extends Notifier<EmergencyContactsState> {
   Future<void> loadContacts() async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
-      final account = await ref.read(userAccountRepositoryProvider).fetchCurrentAccount();
-      _userId = account.uid;
+      final userId = _authenticatedUserId();
+      _userId = userId;
       final contacts = await ref
           .read(emergencyContactRepositoryProvider)
-          .getContacts(account.uid);
+          .getContacts(userId);
       state = state.copyWith(contacts: contacts, isLoading: false);
     } catch (error) {
       state = state.copyWith(isLoading: false, error: error.toString());
@@ -39,15 +39,15 @@ class EmergencyContactsViewModel extends Notifier<EmergencyContactsState> {
   }) async {
     state = state.copyWith(isSaving: true, clearError: true);
     try {
-      final userId = _userId ??
-          (await ref.read(userAccountRepositoryProvider).fetchCurrentAccount()).uid;
+      final userId = _userId ?? _authenticatedUserId();
       _userId = userId;
-      final contact = await ref.read(emergencyContactRepositoryProvider).addContact(
-            userId: userId,
-            name: name,
-            phoneNumber: phoneNumber,
-            email: email,
-          );
+      final contact =
+          await ref.read(emergencyContactRepositoryProvider).addContact(
+                userId: userId,
+                name: name,
+                phoneNumber: phoneNumber,
+                email: email,
+              );
       state = state.copyWith(
         contacts: [...state.contacts, contact],
         isSaving: false,
@@ -79,4 +79,14 @@ class EmergencyContactsViewModel extends Notifier<EmergencyContactsState> {
   }
 
   void clearError() => state = state.copyWith(clearError: true);
+
+  String _authenticatedUserId() {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw const EmergencyContactValidationException(
+        'Sign in to manage emergency contacts.',
+      );
+    }
+    return userId;
+  }
 }

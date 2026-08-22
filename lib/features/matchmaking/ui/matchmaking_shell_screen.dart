@@ -5,12 +5,13 @@ import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uuid/uuid.dart';
 
-
 import '../../common/ui/widgets/app_module_navigation.dart';
 import '../../../core/routing/routes.dart';
 import '../model/matchmaking_models.dart';
+import '../model/matchmaking_notification.dart';
 import '../model/matchmaking_page.dart';
 import 'view_model/matchmaking_view_model_v2.dart';
+import '../../safety/ui/widgets/user_safety_actions.dart';
 
 const _ink = Color(0xFF281950);
 const _violet = Color(0xFF7C3AED);
@@ -30,6 +31,18 @@ class _MatchmakingShellScreenState
     extends ConsumerState<MatchmakingShellScreen> {
   @override
   Widget build(BuildContext context) {
+    ref.listen<String?>(
+        matchmakingViewModelV2Provider.select((state) => state.successMessage),
+        (previous, next) {
+      if (next != null && next != previous) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(next)));
+        Future<void>.microtask(() => ref
+            .read(matchmakingViewModelV2Provider.notifier)
+            .clearSuccessMessage());
+      }
+    });
     final state = ref.watch(matchmakingViewModelV2Provider);
     final viewModel = ref.read(matchmakingViewModelV2Provider.notifier);
     final page = state.page;
@@ -39,6 +52,9 @@ class _MatchmakingShellScreenState
           trips: state.discoveryTrips,
           savedTripIds: state.savedTripIds,
           filters: state.availableFilters,
+          notifications: state.notifications,
+          unreadNotificationCount: state.unreadNotificationCount,
+          onNotificationsRead: viewModel.markNotificationsRead,
           onFilter: viewModel.selectFilter,
           onOpenFilters: () => viewModel.goTo(MatchmakingPage.filters),
           onDetails: (id) => viewModel.openTrip(id, MatchmakingPage.details),
@@ -148,11 +164,61 @@ class _MatchmakingShellScreenState
   }
 }
 
+class _NotificationsDialog extends StatelessWidget {
+  const _NotificationsDialog({required this.notifications});
+
+  final List<MatchmakingNotification> notifications;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Notifications'),
+        content: SizedBox(
+          width: 420,
+          child: notifications.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Text('No notifications yet.'),
+                )
+              : ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: notifications.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final notification = notifications[index];
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        notification.isUnread
+                            ? Icons.notifications_active_rounded
+                            : Icons.notifications_none_rounded,
+                        color: notification.isUnread ? _violet : _muted,
+                      ),
+                      title: Text(notification.title,
+                          style: TextStyle(
+                              fontWeight: notification.isUnread
+                                  ? FontWeight.w700
+                                  : FontWeight.w500)),
+                      subtitle: Text(notification.body),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'))
+        ],
+      );
+}
+
 class DiscoverPage extends StatelessWidget {
   final String filter;
   final List<MatchmakingTrip> trips;
   final Set<String> savedTripIds;
   final List<String> filters;
+  final List<MatchmakingNotification> notifications;
+  final int unreadNotificationCount;
+  final Future<void> Function() onNotificationsRead;
   final ValueChanged<String> onFilter;
   final VoidCallback onOpenFilters;
   final ValueChanged<String> onDetails, onRequest, onSave;
@@ -162,6 +228,9 @@ class DiscoverPage extends StatelessWidget {
       required this.trips,
       required this.savedTripIds,
       required this.filters,
+      required this.notifications,
+      required this.unreadNotificationCount,
+      required this.onNotificationsRead,
       required this.onFilter,
       required this.onOpenFilters,
       required this.onDetails,
@@ -187,10 +256,20 @@ class DiscoverPage extends StatelessWidget {
                     onPressed: onOpenFilters,
                     icon: const Icon(Icons.tune_rounded, color: _ink)),
                 IconButton(
-                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('No new notifications.'))),
-                    icon: const Icon(Icons.notifications_none_rounded,
-                        color: _ink)),
+                    onPressed: () async {
+                      await showDialog<void>(
+                          context: context,
+                          builder: (context) => _NotificationsDialog(
+                              notifications: notifications));
+                      await onNotificationsRead();
+                    },
+                    icon: Badge(
+                        isLabelVisible: unreadNotificationCount > 0,
+                        label: Text(unreadNotificationCount > 99
+                            ? '99+'
+                            : '$unreadNotificationCount'),
+                        child: const Icon(Icons.notifications_none_rounded,
+                            color: _ink))),
                 InkWell(
                     onTap: () => context.go(Routes.userAccount),
                     customBorder: const CircleBorder(),
@@ -591,7 +670,21 @@ class TripDetailsPage extends StatelessWidget {
               height: 240,
               child: Stack(fit: StackFit.expand, children: [
                 TravelImage(url: trip.imageUrl),
-                Positioned(top: 16, left: 16, child: RoundBack(onTap: onBack))
+                Positioned(top: 16, left: 16, child: RoundBack(onTap: onBack)),
+                if (!trip.isOwned)
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: Material(
+                      color: Colors.white,
+                      shape: const CircleBorder(),
+                      child: UserSafetyActionsButton(
+                        targetUserId: trip.hostId,
+                        targetDisplayName: trip.hostName,
+                        onBlocked: onBack,
+                      ),
+                    ),
+                  ),
               ])),
           Padding(
               padding: const EdgeInsets.fromLTRB(20, 22, 20, 100),
@@ -641,7 +734,10 @@ class TripDetailsPage extends StatelessWidget {
             bottom: 16,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               OutlinedButton.icon(
-                onPressed: () => context.push(Routes.groupCollaboration),
+                onPressed: () => context.push(
+                  '${Routes.groupCollaboration}?tripId='
+                  '${Uri.encodeQueryComponent(trip.id)}',
+                ),
                 icon: const Icon(Icons.groups_outlined),
                 label: const Text('Open group workspace'),
               ),
@@ -1180,7 +1276,15 @@ class ApplicantPage extends StatelessWidget {
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    RoundBack(onTap: onBack),
+                    Row(children: [
+                      RoundBack(onTap: onBack),
+                      const Spacer(),
+                      UserSafetyActionsButton(
+                        targetUserId: applicant.id,
+                        targetDisplayName: applicant.name,
+                        onBlocked: onBack,
+                      ),
+                    ]),
                     const SizedBox(height: 22),
                     Center(
                         child: Avatar(

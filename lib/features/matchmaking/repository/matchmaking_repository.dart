@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../common/remote/supabase_client.dart';
 import '../model/matchmaking_models.dart';
+import '../model/matchmaking_notification.dart';
 
 final matchmakingRepositoryProvider = Provider<MatchmakingRepository>(
   (ref) => const MatchmakingRepository(),
@@ -10,6 +11,14 @@ final matchmakingRepositoryProvider = Provider<MatchmakingRepository>(
 
 class MatchmakingRepository {
   const MatchmakingRepository();
+
+  String get currentUserId {
+    try {
+      return supabase.auth.currentUser?.id ?? 'current-user';
+    } catch (_) {
+      return 'current-user';
+    }
+  }
 
   bool get hasAuthenticatedUser {
     try {
@@ -21,6 +30,13 @@ class MatchmakingRepository {
 
   Future<List<MatchmakingTrip>> fetchTrips() async {
     final user = _requireUser();
+    final blockRows = await supabase
+        .from('user_blocks')
+        .select('blocked_id')
+        .eq('blocker_id', user.id);
+    final blockedUserIds = {
+      for (final row in blockRows) row['blocked_id'] as String,
+    };
     final tripRows =
         await supabase.from('matchmaking_trips').select().order('created_at');
     final styleRows = await supabase.from('matchmaking_trip_styles').select();
@@ -41,7 +57,9 @@ class MatchmakingRepository {
       for (final row in profileRows)
         row['id'] as String: Map<String, dynamic>.from(row),
     };
-    return tripRows.map((row) {
+    return tripRows.where((row) {
+      return !blockedUserIds.contains(row['owner_id'] as String);
+    }).map((row) {
       final data = Map<String, dynamic>.from(row);
       final ownerId = data['owner_id'] as String;
       final profile = profiles[ownerId];
@@ -76,6 +94,98 @@ class MatchmakingRepository {
         .select('trip_id')
         .eq('user_id', user.id);
     return {for (final row in rows) row['trip_id'] as String};
+  }
+
+  Future<List<JoinRequest>> fetchJoinRequests() async {
+    _requireUser();
+    final rows = await supabase
+        .from('matchmaking_join_requests')
+        .select()
+        .order('created_at');
+    return rows
+        .map((row) => JoinRequest(
+              id: row['id'] as String,
+              tripId: row['trip_id'] as String,
+              applicantId: row['applicant_id'] as String,
+              message: row['message'] as String,
+              decision:
+                  ApplicantDecision.values.byName(row['status'] as String),
+            ))
+        .toList(growable: false);
+  }
+
+  Future<List<MatchmakingApplicant>> fetchApplicants() async {
+    final user = _requireUser();
+    final blockRows = await supabase
+        .from('user_blocks')
+        .select('blocked_id')
+        .eq('blocker_id', user.id);
+    final blockedUserIds = {
+      for (final row in blockRows) row['blocked_id'] as String,
+    };
+    final rows = await supabase.from('matchmaking_profiles').select();
+    return rows.where((row) {
+      return !blockedUserIds.contains(row['id'] as String);
+    }).map((row) {
+      final name = row['display_name'] as String;
+      final dateOfBirth = row['date_of_birth'] == null
+          ? null
+          : DateTime.parse(row['date_of_birth'] as String);
+      return MatchmakingApplicant(
+        id: row['id'] as String,
+        name: name,
+        initials: _initials(name),
+        age: dateOfBirth == null ? 18 : _age(dateOfBirth),
+        gender: row['gender'] as String? ?? 'Prefer not to say',
+        languages: const {},
+        styles: const {},
+        bio: row['bio'] as String? ?? '',
+        introduction: '',
+        trips: 0,
+        rating: 0,
+        verified: row['verification_status'] == 'verified',
+      );
+    }).toList(growable: false);
+  }
+
+  Future<void> decideJoinRequest(
+      String requestId, ApplicantDecision decision) async {
+    _requireUser();
+    await supabase.rpc('decide_matchmaking_join_request', params: {
+      'p_request_id': requestId,
+      'p_status': decision.name,
+    });
+  }
+
+  Future<void> sendJoinRequest(String tripId, String message) async {
+    _requireUser();
+    await supabase.rpc('send_matchmaking_join_request', params: {
+      'p_trip_id': tripId,
+      'p_message': message,
+    });
+  }
+
+  Future<List<MatchmakingNotification>> fetchNotifications() async {
+    final user = _requireUser();
+    final rows = await supabase
+        .from('matchmaking_notifications')
+        .select()
+        .eq('user_id', user.id)
+        .order('created_at', ascending: false)
+        .limit(50);
+    return rows
+        .map((row) =>
+            MatchmakingNotification.fromMap(Map<String, dynamic>.from(row)))
+        .toList(growable: false);
+  }
+
+  Future<void> markNotificationsRead() async {
+    final user = _requireUser();
+    await supabase
+        .from('matchmaking_notifications')
+        .update({'read_at': DateTime.now().toUtc().toIso8601String()})
+        .eq('user_id', user.id)
+        .filter('read_at', 'is', null);
   }
 
   Future<void> saveTrip(MatchmakingTrip trip) async {
@@ -135,6 +245,17 @@ class MatchmakingRepository {
 
   static String _date(DateTime value) =>
       value.toIso8601String().substring(0, 10);
+  static int _age(DateTime dateOfBirth) {
+    final today = DateTime.now();
+    return today.year -
+        dateOfBirth.year -
+        ((today.month < dateOfBirth.month ||
+                (today.month == dateOfBirth.month &&
+                    today.day < dateOfBirth.day))
+            ? 1
+            : 0);
+  }
+
   static String _initials(String name) => name
       .trim()
       .split(RegExp(r'\s+'))

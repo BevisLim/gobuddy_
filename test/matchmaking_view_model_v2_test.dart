@@ -73,6 +73,8 @@ void main() {
         contains('kyoto'));
     expect(notifier.sendRequest('kyoto', 'I would love to join.'), isTrue);
     expect(notifier.sendRequest('kyoto', 'A duplicate'), isFalse);
+    expect(container.read(matchmakingViewModelV2Provider).successMessage,
+        'Join request sent.');
   });
 
   test('request decisions update capacity and delete declined requests', () {
@@ -89,6 +91,8 @@ void main() {
             .firstWhere((trip) => trip.id == 'bali')
             .joined,
         before + 1);
+    expect(container.read(matchmakingViewModelV2Provider).successMessage,
+        contains('added to the group'));
     notifier.decideRequest('request-yuki', ApplicantDecision.declined);
     expect(
         container
@@ -96,6 +100,25 @@ void main() {
             .requests
             .any((request) => request.id == 'request-yuki'),
         isFalse);
+  });
+
+  test('cannot accept a request when the trip has no spots left', () {
+    final fullTrip = container
+        .read(matchmakingViewModelV2Provider)
+        .trips
+        .firstWhere((trip) => trip.id == 'bali')
+        .copyWith(joined: 5);
+    notifier.saveTrip(fullTrip);
+
+    notifier.decideRequest('request-priya', ApplicantDecision.accepted);
+
+    final state = container.read(matchmakingViewModelV2Provider);
+    expect(
+        state.requests
+            .firstWhere((request) => request.id == 'request-priya')
+            .decision,
+        ApplicantDecision.pending);
+    expect(state.trips.firstWhere((trip) => trip.id == 'bali').joined, 5);
   });
 
   test('advanced filters are retained and reset', () {

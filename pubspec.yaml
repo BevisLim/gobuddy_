@@ -75,6 +75,8 @@ dependencies:
   supabase_flutter: ^2.10.3
   url_launcher: ^6.3.2
   uuid: ^4.4.0
+  firebase_messaging: ^16.5.0
+  flutter_local_notifications: ^22.3.0
 
 dev_dependencies:
   build_runner: ^2.4.13
