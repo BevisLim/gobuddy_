@@ -21,7 +21,6 @@ import '../../features/group_expense/ui/record_settlement_screen.dart';
 import '../../features/group_expense/ui/settlement_history_screen.dart';
 import '../../features/group_expense/ui/budget_analytics_screen.dart';
 import '../../features/user_account/ui/user_account_shell.dart';
-import '../../features/onboarding/ui/onboarding_screen.dart';
 import '../../features/user_account/ui/app_launching_screen.dart';
 import '../../features/user_account/ui/forgot_password_screen.dart';
 import '../../features/user_account/ui/identity_verification_screen.dart';
@@ -31,11 +30,6 @@ import '../../features/user_account/ui/login_screen.dart';
 import '../../features/user_account/ui/register_account_screen.dart';
 import '../../features/user_account/ui/legal/privacy_policy_screen.dart';
 import '../../features/user_account/ui/legal/terms_screen.dart';
-import '../../features/premium/ui/premium_screen.dart';
-import '../../features/profile/model/profile.dart';
-import '../../features/profile/ui/account_info_screen.dart';
-import '../../features/profile/ui/appearances_screen.dart';
-import '../../features/profile/ui/languages_screen.dart';
 import '../../features/safety/ui/add_emergency_contact_screen.dart';
 import '../../features/safety/ui/emergency_contacts_screen.dart';
 
@@ -138,11 +132,6 @@ final GoRouter router = GoRouter(
             ),
           );
         }),
-    GoRoute(
-      path: Routes.onboarding,
-      pageBuilder: (context, state) =>
-          state.slidePage(const OnboardingScreen()),
-    ),
     GoRoute(
       path: Routes.main,
       pageBuilder: (context, state) =>
@@ -280,22 +269,6 @@ final GoRouter router = GoRouter(
           state.slidePage(const PrivacyPolicyScreen()),
     ),
     GoRoute(
-      path: Routes.accountInformation,
-      pageBuilder: (context, state) {
-        final profile = state.extra as Profile;
-        return state.slidePage(AccountInfoScreen(originalProfile: profile));
-      },
-    ),
-    GoRoute(
-      path: Routes.appearances,
-      pageBuilder: (context, state) =>
-          state.slidePage(const AppearancesScreen()),
-    ),
-    GoRoute(
-      path: Routes.languages,
-      pageBuilder: (context, state) => state.slidePage(const LanguagesScreen()),
-    ),
-    GoRoute(
       path: Routes.emergencyContacts,
       pageBuilder: (context, state) =>
           state.slidePage(const EmergencyContactsScreen()),
@@ -304,18 +277,6 @@ final GoRouter router = GoRouter(
       path: Routes.addEmergencyContact,
       pageBuilder: (context, state) =>
           state.slidePage(const AddEmergencyContactScreen()),
-    ),
-    GoRoute(
-      path: Routes.premium,
-      pageBuilder: (context, state) {
-        final map = state.extra as Map?;
-        return state.slidePage(
-          PremiumScreen(
-            isGoToMain: map?[Constants.isGoToMain] as bool?,
-          ),
-          direction: SlideDirection.up,
-        );
-      },
     ),
     GoRoute(
       path: Routes.groupCollaboration,

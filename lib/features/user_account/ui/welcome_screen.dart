@@ -15,7 +15,6 @@ import 'package:flutter_mvvm_riverpod/generated/locale_keys.g.dart';
 import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_theme.dart';
 import 'package:flutter_mvvm_riverpod/core/utils/global_loading.dart';
-import 'package:flutter_mvvm_riverpod/features/profile/ui/view_model/profile_view_model.dart';
 import 'view_model/authentication_view_model.dart';
 import 'widgets/continue_as_guest.dart';
 import 'widgets/sign_in_agreement.dart';
@@ -51,9 +50,6 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
         '${Constants.tag} [WelcomeScreen._onAuthStateChange] Auth change: $event, session: $session');
 
     if (event == AuthChangeEvent.signedIn && session != null) {
-      await ref
-          .read(authenticationViewModelProvider.notifier)
-          .updateProfile(session.user);
       _goToNextScreen();
     }
   }
@@ -63,27 +59,8 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
     _goToNextScreen();
   }
 
-  void _goToNextScreen() async {
+  void _goToNextScreen() {
     Global.hideLoading();
-
-    final wasShowOnboarding =
-        await ref.read(profileViewModelProvider.notifier).wasShowOnboarding();
-    if (!wasShowOnboarding) {
-      if (mounted) context.go(Routes.onboarding);
-      return;
-    }
-
-    final isShowPremium =
-        await ref.read(profileViewModelProvider.notifier).isShowPremium();
-    if (isShowPremium) {
-      if (mounted) {
-        context.go(
-          Routes.premium,
-          extra: {Constants.isGoToMain: true},
-        );
-      }
-      return;
-    }
 
     if (mounted) context.go(Routes.main);
   }

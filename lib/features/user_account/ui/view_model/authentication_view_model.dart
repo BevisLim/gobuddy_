@@ -4,7 +4,6 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
-import 'package:flutter_mvvm_riverpod/features/profile/ui/view_model/profile_view_model.dart';
 import 'package:flutter_mvvm_riverpod/generated/locale_keys.g.dart';
 import '../../repository/authentication_repository.dart';
 import '../state/authentication_state.dart';
@@ -109,9 +108,6 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
     if (!isExistAccount) {
       _repository.setIsExistAccount(true);
     }
-    if (authResponse.user != null) {
-      updateProfile(authResponse.user!);
-    }
     _repository.setIsLogin(true);
     // END TODO
 
@@ -122,21 +118,6 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
         isSignInSuccessfully: true,
       ),
     );
-  }
-
-  Future<void> updateProfile(User user) async {
-    String? name;
-    String? avatar;
-    final metaData = user.userMetadata;
-    if (metaData != null) {
-      name = metaData['full_name'];
-      avatar = metaData['avatar_url'];
-    }
-    ref.read(profileViewModelProvider.notifier).updateProfile(
-          email: user.email,
-          name: name,
-          avatar: avatar,
-        );
   }
 
   Future<bool> isLogin() async {

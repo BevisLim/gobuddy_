@@ -7,14 +7,9 @@ class Routes {
   static const login = '/login';
   static const forgotPassword = '/forgot-password';
   static const otp = '/otp';
-  static const onboarding = '/onboarding';
   static const main = '/main';
   static const myTrips = '/my-trips';
   static const messages = '/messages';
-  static const accountInformation = '/accountInformation';
-  static const appearances = '/appearances';
-  static const languages = '/languages';
-  static const premium = '/premium';
   static const expenseDashboard = '/expenses';
   static const createBudget = '/expenses/budget/create';
   static const editBudget = '/expenses/budget/edit';
