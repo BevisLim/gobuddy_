@@ -11,6 +11,7 @@ import '../model/matchmaking_models.dart';
 import '../model/matchmaking_notification.dart';
 import '../model/matchmaking_page.dart';
 import 'view_model/matchmaking_view_model_v2.dart';
+import '../../safety/ui/widgets/user_safety_actions.dart';
 
 const _ink = Color(0xFF281950);
 const _violet = Color(0xFF7C3AED);
@@ -669,7 +670,21 @@ class TripDetailsPage extends StatelessWidget {
               height: 240,
               child: Stack(fit: StackFit.expand, children: [
                 TravelImage(url: trip.imageUrl),
-                Positioned(top: 16, left: 16, child: RoundBack(onTap: onBack))
+                Positioned(top: 16, left: 16, child: RoundBack(onTap: onBack)),
+                if (!trip.isOwned)
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: Material(
+                      color: Colors.white,
+                      shape: const CircleBorder(),
+                      child: UserSafetyActionsButton(
+                        targetUserId: trip.hostId,
+                        targetDisplayName: trip.hostName,
+                        onBlocked: onBack,
+                      ),
+                    ),
+                  ),
               ])),
           Padding(
               padding: const EdgeInsets.fromLTRB(20, 22, 20, 100),
@@ -719,7 +734,10 @@ class TripDetailsPage extends StatelessWidget {
             bottom: 16,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               OutlinedButton.icon(
-                onPressed: () => context.push(Routes.groupCollaboration),
+                onPressed: () => context.push(
+                  '${Routes.groupCollaboration}?tripId='
+                  '${Uri.encodeQueryComponent(trip.id)}',
+                ),
                 icon: const Icon(Icons.groups_outlined),
                 label: const Text('Open group workspace'),
               ),
@@ -1258,7 +1276,15 @@ class ApplicantPage extends StatelessWidget {
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    RoundBack(onTap: onBack),
+                    Row(children: [
+                      RoundBack(onTap: onBack),
+                      const Spacer(),
+                      UserSafetyActionsButton(
+                        targetUserId: applicant.id,
+                        targetDisplayName: applicant.name,
+                        onBlocked: onBack,
+                      ),
+                    ]),
                     const SizedBox(height: 22),
                     Center(
                         child: Avatar(

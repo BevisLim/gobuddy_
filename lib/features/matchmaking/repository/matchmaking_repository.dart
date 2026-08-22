@@ -30,6 +30,13 @@ class MatchmakingRepository {
 
   Future<List<MatchmakingTrip>> fetchTrips() async {
     final user = _requireUser();
+    final blockRows = await supabase
+        .from('user_blocks')
+        .select('blocked_id')
+        .eq('blocker_id', user.id);
+    final blockedUserIds = {
+      for (final row in blockRows) row['blocked_id'] as String,
+    };
     final tripRows =
         await supabase.from('matchmaking_trips').select().order('created_at');
     final styleRows = await supabase.from('matchmaking_trip_styles').select();
@@ -50,7 +57,9 @@ class MatchmakingRepository {
       for (final row in profileRows)
         row['id'] as String: Map<String, dynamic>.from(row),
     };
-    return tripRows.map((row) {
+    return tripRows.where((row) {
+      return !blockedUserIds.contains(row['owner_id'] as String);
+    }).map((row) {
       final data = Map<String, dynamic>.from(row);
       final ownerId = data['owner_id'] as String;
       final profile = profiles[ownerId];
@@ -106,9 +115,18 @@ class MatchmakingRepository {
   }
 
   Future<List<MatchmakingApplicant>> fetchApplicants() async {
-    _requireUser();
+    final user = _requireUser();
+    final blockRows = await supabase
+        .from('user_blocks')
+        .select('blocked_id')
+        .eq('blocker_id', user.id);
+    final blockedUserIds = {
+      for (final row in blockRows) row['blocked_id'] as String,
+    };
     final rows = await supabase.from('matchmaking_profiles').select();
-    return rows.map((row) {
+    return rows.where((row) {
+      return !blockedUserIds.contains(row['id'] as String);
+    }).map((row) {
       final name = row['display_name'] as String;
       final dateOfBirth = row['date_of_birth'] == null
           ? null

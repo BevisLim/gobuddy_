@@ -71,14 +71,19 @@ class CollaborationRepository {
         }).toList(),
       ));
     }
+    final members = (results[0] as List<dynamic>)
+        .map((member) =>
+            CollaborationMember.fromMap(member as Map<String, dynamic>))
+        .toList();
+    final creatorId = trip['owner_id'] as String;
+    if (!members.any((member) => member.userId == creatorId)) {
+      members.insert(0, CollaborationMember(userId: creatorId));
+    }
     return GroupCollaborationState(
       tripId: tripId,
       currentUserId: currentUserId,
-      creatorId: trip['owner_id'] as String,
-      members: (results[0] as List<dynamic>)
-          .map((member) =>
-              CollaborationMember.fromMap(member as Map<String, dynamic>))
-          .toList(),
+      creatorId: creatorId,
+      members: members,
       messages: (results[1] as List<dynamic>)
           .map(
               (message) => TripMessage.fromMap(message as Map<String, dynamic>))

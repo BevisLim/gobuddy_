@@ -7,6 +7,7 @@ import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/group_collaboration_preview_screen.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/view_model/group_collaboration_view_model.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/activity_proposal_dialog.dart';
+import 'package:flutter_mvvm_riverpod/features/safety/ui/widgets/user_safety_actions.dart';
 
 class GroupCollaborationScreen extends ConsumerWidget {
   const GroupCollaborationScreen({required this.tripId, super.key});
@@ -90,9 +91,10 @@ class _Workspace extends ConsumerWidget {
     try {
       await action();
     } catch (error) {
-      if (context.mounted)
+      if (context.mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('$error')));
+      }
     }
   }
 }
@@ -118,6 +120,9 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
   Widget build(BuildContext context) {
     final viewModel = ref.read(
         groupCollaborationViewModelProvider(widget.state.tripId).notifier);
+    final otherMembers = widget.state.members
+        .where((member) => member.userId != widget.state.currentUserId)
+        .toList(growable: false);
     return Column(children: [
       Expanded(
           child: ListView(padding: const EdgeInsets.all(16), children: [
@@ -126,23 +131,38 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
                 title: Text(message.senderId), subtitle: Text(message.body)))),
         const Text('Member Management',
             style: TextStyle(fontWeight: FontWeight.bold)),
-        ...widget.state.members
-            .where((member) => member.userId != widget.state.currentUserId)
-            .map((member) => ListTile(
-                  title: Text(member.userId),
-                  trailing: widget.state.isCreator
-                      ? Wrap(children: [
-                          TextButton(
-                              onPressed: () => viewModel.muteMember(
-                                  member.userId, const Duration(minutes: 30)),
-                              child: const Text('Mute')),
-                          TextButton(
-                              onPressed: () =>
-                                  viewModel.removeMember(member.userId),
-                              child: const Text('Remove')),
-                        ])
-                      : null,
-                )),
+        if (otherMembers.isEmpty)
+          const Card(
+            child: ListTile(
+              leading: Icon(Icons.group_outlined),
+              title: Text('No other members yet'),
+              subtitle: Text(
+                'Accepted trip participants will appear here.',
+              ),
+            ),
+          )
+        else
+          ...otherMembers.map((member) => ListTile(
+                title: Text(member.userId),
+                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                  if (widget.state.isCreator) ...[
+                    TextButton(
+                        onPressed: () => viewModel.muteMember(
+                            member.userId, const Duration(minutes: 30)),
+                        child: const Text('Mute')),
+                    TextButton(
+                        onPressed: () => viewModel.removeMember(member.userId),
+                        child: const Text('Remove')),
+                  ],
+                  UserSafetyActionsButton(
+                    targetUserId: member.userId,
+                    targetDisplayName: member.userId,
+                    onBlocked: () => ref.invalidate(
+                      groupCollaborationViewModelProvider(widget.state.tripId),
+                    ),
+                  ),
+                ]),
+              )),
       ])),
       SafeArea(
           top: false,
