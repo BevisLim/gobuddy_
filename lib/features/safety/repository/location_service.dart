@@ -9,6 +9,7 @@ final locationServiceProvider = Provider<LocationService>(
 
 abstract interface class LocationService {
   Future<void> requestPermission();
+  Future<LocationData> getCurrentLocation();
   Stream<LocationData> watchLocation();
 }
 
@@ -50,17 +51,39 @@ class GeolocatorLocationService implements LocationService {
   }
 
   @override
+  Future<LocationData> getCurrentLocation() async {
+    await requestPermission();
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 12),
+        ),
+      );
+      return _toLocationData(position);
+    } catch (_) {
+      final position = await Geolocator.getLastKnownPosition();
+      if (position == null) {
+        throw const LocationServiceException(
+          'Your location is unavailable. Emergency calling is still available.',
+        );
+      }
+      return _toLocationData(position);
+    }
+  }
+
+  @override
   Stream<LocationData> watchLocation() => Geolocator.getPositionStream(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
           distanceFilter: 10,
         ),
-      ).map(
-        (position) => LocationData(
-          latitude: position.latitude,
-          longitude: position.longitude,
-          accuracy: position.accuracy,
-          timestamp: position.timestamp,
-        ),
+      ).map(_toLocationData);
+
+  LocationData _toLocationData(Position position) => LocationData(
+        latitude: position.latitude,
+        longitude: position.longitude,
+        accuracy: position.accuracy,
+        timestamp: position.timestamp,
       );
 }
