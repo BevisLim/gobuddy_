@@ -77,7 +77,7 @@ class MatchmakingRepository {
           .from('matchmaking_trip_members')
           .select()
           .inFilter('trip_id', tripIds),
-      supabase.from('matchmaking_profiles').select().inFilter('id', ownerIds),
+      supabase.from('user_accounts').select().inFilter('id', ownerIds),
     ]);
     final styleRows = relatedRows[0];
     final memberRows = relatedRows[1];
@@ -172,7 +172,7 @@ class MatchmakingRepository {
     final blockedUserIds = {
       for (final row in blockRows) row['blocked_id'] as String,
     };
-    final rows = await supabase.from('matchmaking_profiles').select();
+    final rows = await supabase.from('user_accounts').select();
     return rows.where((row) {
       return !blockedUserIds.contains(row['id'] as String);
     }).map((row) {
