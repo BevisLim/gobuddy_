@@ -31,6 +31,7 @@ import '../../features/user_account/ui/legal/privacy_policy_screen.dart';
 import '../../features/user_account/ui/legal/terms_screen.dart';
 import '../../features/safety/ui/add_emergency_contact_screen.dart';
 import '../../features/safety/ui/emergency_contacts_screen.dart';
+import '../../features/safety/ui/live_location_screen.dart';
 
 import 'routes.dart';
 
@@ -276,6 +277,11 @@ final GoRouter router = GoRouter(
       path: Routes.addEmergencyContact,
       pageBuilder: (context, state) =>
           state.slidePage(const AddEmergencyContactScreen()),
+    ),
+    GoRoute(
+      path: Routes.liveLocation,
+      pageBuilder: (context, state) =>
+          state.slidePage(const LiveLocationScreen()),
     ),
     GoRoute(
       path: Routes.groupCollaboration,
