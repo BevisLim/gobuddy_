@@ -1,6 +1,6 @@
 enum TripStatus { active, closed, draft }
 
-enum ApplicantDecision { pending, accepted, held, declined }
+enum ApplicantDecision { pending, accepted, held, declined, cancelled }
 
 class MatchmakingTrip {
   const MatchmakingTrip({
@@ -34,6 +34,14 @@ class MatchmakingTrip {
   final TripStatus status;
 
   int get spotsLeft => (vacancies - joined).clamp(0, vacancies);
+  bool get isDiscoverable {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final startDay = DateTime(startDate.year, startDate.month, startDate.day);
+    return status == TripStatus.active &&
+        !startDay.isBefore(today) &&
+        spotsLeft > 0;
+  }
 
   MatchmakingTrip copyWith(
           {String? destination,

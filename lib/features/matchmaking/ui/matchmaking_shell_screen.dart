@@ -10,7 +10,7 @@ import '../../../core/routing/routes.dart';
 import '../model/matchmaking_models.dart';
 import '../model/matchmaking_notification.dart';
 import '../model/matchmaking_page.dart';
-import 'view_model/matchmaking_view_model_v2.dart';
+import 'view_model/matchmaking_view_model.dart';
 import '../../safety/ui/widgets/user_safety_actions.dart';
 
 const _ink = Color(0xFF281950);
@@ -32,22 +32,25 @@ class _MatchmakingShellScreenState
   @override
   Widget build(BuildContext context) {
     ref.listen<String?>(
-        matchmakingViewModelV2Provider.select((state) => state.successMessage),
+        matchmakingViewModelProvider.select((state) => state.successMessage),
         (previous, next) {
       if (next != null && next != previous) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(SnackBar(content: Text(next)));
         Future<void>.microtask(() => ref
-            .read(matchmakingViewModelV2Provider.notifier)
+            .read(matchmakingViewModelProvider.notifier)
             .clearSuccessMessage());
       }
     });
-    final state = ref.watch(matchmakingViewModelV2Provider);
-    final viewModel = ref.read(matchmakingViewModelV2Provider.notifier);
+    final state = ref.watch(matchmakingViewModelProvider);
+    final viewModel = ref.read(matchmakingViewModelProvider.notifier);
     final page = state.page;
     final content = switch (page) {
       MatchmakingPage.discover => DiscoverPage(
+          isAuthenticated: state.isAuthenticated,
+          isLoading: state.isLoading,
+          errorMessage: state.errorMessage,
           filter: state.selectedFilter,
           trips: state.discoveryTrips,
           savedTripIds: state.savedTripIds,
@@ -55,6 +58,7 @@ class _MatchmakingShellScreenState
           notifications: state.notifications,
           unreadNotificationCount: state.unreadNotificationCount,
           onNotificationsRead: viewModel.markNotificationsRead,
+          onRetry: viewModel.refresh,
           onFilter: viewModel.selectFilter,
           onOpenFilters: () => viewModel.goTo(MatchmakingPage.filters),
           onDetails: (id) => viewModel.openTrip(id, MatchmakingPage.details),
@@ -80,11 +84,15 @@ class _MatchmakingShellScreenState
           onDelete: () => viewModel.deleteTrip(state.selectedTrip!.id)),
       MatchmakingPage.myTrips => MyTripsPage(
           trips: state.ownedTrips,
+          joinedTrips: state.joinedTrips,
+          allTrips: state.trips,
+          requests: state.myRequests,
           onBack: () => viewModel.goTo(MatchmakingPage.discover),
           onCreate: () => viewModel.goTo(MatchmakingPage.create),
           onManage: viewModel.openRequests,
           onEdit: (id) => viewModel.openTrip(id, MatchmakingPage.edit),
-          onDelete: viewModel.deleteTrip),
+          onDelete: viewModel.deleteTrip,
+          onCancelRequest: viewModel.cancelRequest),
       MatchmakingPage.request => RequestPage(
           trip: state.selectedTrip!,
           onCancel: () => viewModel.goTo(MatchmakingPage.details),
@@ -151,15 +159,16 @@ class _MatchmakingShellScreenState
                   },
                 )
               : null,
-      floatingActionButton: page == MatchmakingPage.discover
-          ? FloatingActionButton(
-              onPressed: () => viewModel.goTo(MatchmakingPage.create),
-              backgroundColor: _violet,
-              foregroundColor: Colors.white,
-              shape: const CircleBorder(),
-              child: const Icon(Icons.add),
-            )
-          : null,
+      floatingActionButton:
+          page == MatchmakingPage.discover && state.isAuthenticated
+              ? FloatingActionButton(
+                  onPressed: () => viewModel.goTo(MatchmakingPage.create),
+                  backgroundColor: _violet,
+                  foregroundColor: Colors.white,
+                  shape: const CircleBorder(),
+                  child: const Icon(Icons.add),
+                )
+              : null,
     );
   }
 }
@@ -212,6 +221,8 @@ class _NotificationsDialog extends StatelessWidget {
 }
 
 class DiscoverPage extends StatelessWidget {
+  final bool isAuthenticated, isLoading;
+  final String? errorMessage;
   final String filter;
   final List<MatchmakingTrip> trips;
   final Set<String> savedTripIds;
@@ -219,11 +230,15 @@ class DiscoverPage extends StatelessWidget {
   final List<MatchmakingNotification> notifications;
   final int unreadNotificationCount;
   final Future<void> Function() onNotificationsRead;
+  final Future<void> Function() onRetry;
   final ValueChanged<String> onFilter;
   final VoidCallback onOpenFilters;
   final ValueChanged<String> onDetails, onRequest, onSave;
   const DiscoverPage(
       {super.key,
+      required this.isAuthenticated,
+      required this.isLoading,
+      required this.errorMessage,
       required this.filter,
       required this.trips,
       required this.savedTripIds,
@@ -231,6 +246,7 @@ class DiscoverPage extends StatelessWidget {
       required this.notifications,
       required this.unreadNotificationCount,
       required this.onNotificationsRead,
+      required this.onRetry,
       required this.onFilter,
       required this.onOpenFilters,
       required this.onDetails,
@@ -307,7 +323,25 @@ class DiscoverPage extends StatelessWidget {
                       onRequest: () => onRequest(trip.id)),
                   const SizedBox(height: 18),
                 ],
-                if (trips.isEmpty) const _NoTripsFound(),
+                if (!isAuthenticated)
+                  const _DiscoveryMessage(
+                    icon: Icons.lock_outline_rounded,
+                    title: 'Sign in to discover trips',
+                    message:
+                        'Matchmaking uses your account to keep requests and memberships separate.',
+                  )
+                else if (isLoading && trips.isEmpty)
+                  const _DiscoveryLoading()
+                else if (errorMessage != null && trips.isEmpty)
+                  _DiscoveryMessage(
+                    icon: Icons.cloud_off_rounded,
+                    title: 'Could not load trips',
+                    message: 'Check your connection and try again.',
+                    actionLabel: 'Retry',
+                    onAction: onRetry,
+                  )
+                else if (trips.isEmpty)
+                  const _NoTripsFound(),
               ])),
         ]),
       );
@@ -323,10 +357,56 @@ class _NoTripsFound extends StatelessWidget {
         const SizedBox(height: 14),
         const Text('No trips found', style: _heading),
         const SizedBox(height: 7),
-        Text('Try another travel style.',
+        Text('No active trips match your current filters.',
             textAlign: TextAlign.center,
             style: TextStyle(color: _muted.withValues(alpha: .9))),
       ]));
+}
+
+class _DiscoveryLoading extends StatelessWidget {
+  const _DiscoveryLoading();
+
+  @override
+  Widget build(BuildContext context) => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 80),
+        child: Center(child: CircularProgressIndicator()),
+      );
+}
+
+class _DiscoveryMessage extends StatelessWidget {
+  const _DiscoveryMessage({
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final IconData icon;
+  final String title, message;
+  final String? actionLabel;
+  final Future<void> Function()? onAction;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 80, horizontal: 24),
+        child: Column(children: [
+          Icon(icon, size: 48, color: _muted),
+          const SizedBox(height: 14),
+          Text(title, style: _heading, textAlign: TextAlign.center),
+          const SizedBox(height: 7),
+          Text(message,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: _muted.withValues(alpha: .9))),
+          if (actionLabel != null && onAction != null) ...[
+            const SizedBox(height: 16),
+            OutlinedButton(
+              onPressed: onAction,
+              child: Text(actionLabel!),
+            ),
+          ],
+        ]),
+      );
 }
 
 class TripCard extends StatelessWidget {
@@ -1063,16 +1143,22 @@ class _DateInputFormatter extends TextInputFormatter {
 
 class MyTripsPage extends StatelessWidget {
   final VoidCallback onBack, onCreate;
-  final List<MatchmakingTrip> trips;
+  final List<MatchmakingTrip> trips, joinedTrips, allTrips;
+  final List<JoinRequest> requests;
   final ValueChanged<String> onManage, onEdit, onDelete;
+  final Future<void> Function(String) onCancelRequest;
   const MyTripsPage(
       {super.key,
       required this.trips,
+      required this.joinedTrips,
+      required this.allTrips,
+      required this.requests,
       required this.onBack,
       required this.onCreate,
       required this.onManage,
       required this.onDelete,
-      required this.onEdit});
+      required this.onEdit,
+      required this.onCancelRequest});
   @override
   Widget build(BuildContext context) =>
       ListView(padding: const EdgeInsets.fromLTRB(20, 18, 20, 100), children: [
@@ -1087,7 +1173,8 @@ class MyTripsPage extends StatelessWidget {
         const SizedBox(height: 16),
         OutlineButton(label: '+ Create a new trip', onTap: onCreate),
         const SizedBox(height: 24),
-        if (trips.isEmpty) const _NoTripsFound(),
+        if (trips.isEmpty && joinedTrips.isEmpty && requests.isEmpty)
+          const _NoTripsFound(),
         for (final trip in trips) ...[
           CompactTrip(
               destination: trip.destination,
@@ -1099,6 +1186,43 @@ class MyTripsPage extends StatelessWidget {
               onManage: () => onManage(trip.id),
               onDelete: () => onDelete(trip.id)),
           const SizedBox(height: 14),
+        ],
+        if (joinedTrips.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          const Text('Joined trips', style: _heading),
+          const SizedBox(height: 12),
+          for (final trip in joinedTrips)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.group_outlined, color: _violet),
+                title: Text(trip.destination),
+                subtitle: Text(_dateRange(trip.startDate, trip.endDate)),
+                trailing: const Chip(label: Text('Joined')),
+              ),
+            ),
+        ],
+        if (requests.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          const Text('Join requests', style: _heading),
+          const SizedBox(height: 12),
+          for (final request in requests)
+            if (allTrips.where((trip) => trip.id == request.tripId).firstOrNull
+                case final trip?)
+              Card(
+                child: ListTile(
+                  title: Text(trip.destination),
+                  subtitle: Text(_decisionLabel(request.decision)),
+                  trailing: const {
+                    ApplicantDecision.pending,
+                    ApplicantDecision.held,
+                  }.contains(request.decision)
+                      ? TextButton(
+                          onPressed: () => onCancelRequest(request.id),
+                          child: const Text('Cancel'),
+                        )
+                      : null,
+                ),
+              ),
         ],
       ]);
 }
@@ -2026,5 +2150,6 @@ String _decisionLabel(ApplicantDecision? decision) => switch (decision) {
       ApplicantDecision.accepted => 'Accepted',
       ApplicantDecision.held => 'Held',
       ApplicantDecision.declined => 'Declined',
+      ApplicantDecision.cancelled => 'Cancelled',
       _ => 'Pending',
     };

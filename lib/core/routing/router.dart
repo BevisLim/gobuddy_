@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../constants/constants.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/group_collaboration_screen.dart';
 import '../../features/user_account/ui/otp_screen.dart';
 import '../../features/user_account/ui/welcome_screen.dart';
 import '../../features/matchmaking/ui/matchmaking_shell_screen.dart';
-import '../../features/matchmaking/ui/view_model/matchmaking_view_model_v2.dart';
+import '../../features/matchmaking/ui/view_model/matchmaking_view_model.dart';
 import '../../features/matchmaking/model/matchmaking_page.dart';
 import '../../features/group_collaboration/ui/messages_screen.dart';
 import '../../features/group_expense/ui/expense_dashboard_screen.dart';
