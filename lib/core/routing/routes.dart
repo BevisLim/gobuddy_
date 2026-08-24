@@ -30,5 +30,6 @@ static const identityVerification = '/identity-verification';
   static const emergencyContacts = '/safety/emergency-contacts';
   static const addEmergencyContact = '/safety/emergency-contacts/add';
   static const liveLocation = '/safety/live-location';
+  static const sos = '/safety/sos';
 
 }
