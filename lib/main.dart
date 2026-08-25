@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:flutter_mvvm_riverpod/core/environment/env.dart';
 import 'package:flutter_mvvm_riverpod/core/notifications/push_notification_service.dart';
+import 'package:flutter_mvvm_riverpod/core/permissions/app_permission_service.dart';
 import 'package:flutter_mvvm_riverpod/core/routing/router.dart';
 import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_theme.dart';
@@ -33,9 +34,23 @@ Future<void> main() async {
     ),
   );
 
-  unawaited(PushNotificationService.initialize().catchError((error, stack) {
-    debugPrint('Notification setup failed: $error');
-  }));
+  unawaited(_initializeAppServices());
+}
+
+Future<void> _initializeAppServices() async {
+  try {
+    // Keep native permission dialogs sequential so one request cannot obscure
+    // another during startup.
+    await PushNotificationService.initialize();
+  } catch (error, stack) {
+    debugPrint('Notification setup failed: $error\n$stack');
+  }
+
+  try {
+    await const AppPermissionService().requestStartupPermissions();
+  } catch (error, stack) {
+    debugPrint('Startup permission setup failed: $error\n$stack');
+  }
 }
 
 class _ConfigurationErrorApp extends StatelessWidget {
