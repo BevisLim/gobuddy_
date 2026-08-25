@@ -10,6 +10,7 @@ class UserAccount {
   final String? fullName;
   final String? gender;
   final DateTime? dateOfBirth;
+  final DateTime? joinedAt;
   final String? country;
   final String bio;
   final bool isVerified;
@@ -24,6 +25,7 @@ class UserAccount {
     this.fullName,
     this.gender,
     this.dateOfBirth,
+    this.joinedAt,
     this.country,
     this.bio = '',
     this.isVerified = false,
@@ -39,6 +41,7 @@ class UserAccount {
     String? fullName,
     String? gender,
     DateTime? dateOfBirth,
+    DateTime? joinedAt,
     String? country,
     String? bio,
     bool? isVerified,
@@ -53,6 +56,7 @@ class UserAccount {
       fullName: fullName ?? this.fullName,
       gender: gender ?? this.gender,
       dateOfBirth: dateOfBirth ?? this.dateOfBirth,
+      joinedAt: joinedAt ?? this.joinedAt,
       country: country ?? this.country,
       bio: bio ?? this.bio,
       isVerified: isVerified ?? this.isVerified,

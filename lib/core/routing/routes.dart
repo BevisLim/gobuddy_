@@ -6,7 +6,9 @@ class Routes {
   static const register = '/register';
   static const login = '/login';
   static const forgotPassword = '/forgot-password';
+  static const resetPassword = '/reset-password';
   static const otp = '/otp';
+  static const setPassword = '/set-password';
   static const main = '/main';
   static const myTrips = '/my-trips';
   static const messages = '/messages';
@@ -22,7 +24,7 @@ class Routes {
   static const budgetAnalytics = '/expenses/analytics';
   static const userAccount = '/user_account';
   static const groupCollaboration = '/group-collaboration';
-static const identityVerification = '/identity-verification';
+  static const identityVerification = '/identity-verification';
   static const settings = '/settings';
   static const blockedUsers = '/settings/blocked-users';
   static const termsOfService = '/terms-of-service';
@@ -31,5 +33,4 @@ static const identityVerification = '/identity-verification';
   static const addEmergencyContact = '/safety/emergency-contacts/add';
   static const liveLocation = '/safety/live-location';
   static const sos = '/safety/sos';
-
 }

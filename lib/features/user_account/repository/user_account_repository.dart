@@ -1,26 +1,58 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../common/remote/supabase_client.dart';
 import '../model/user_account_model.dart';
 
 class UserAccountRepository {
   const UserAccountRepository();
 
-  /// Simulates fetching a profile from Supabase with local mock data.
   Future<UserAccount> fetchCurrentAccount() async {
-    // Simulates network latency (400ms) so you can test loading spinners!
-    await Future.delayed(const Duration(milliseconds: 400));
+    final authUser = supabase.auth.currentUser;
+    if (authUser == null) {
+      throw const UserAccountLoadException(
+        'Your session has expired. Please sign in again.',
+      );
+    }
 
-    return const UserAccount(
-      uid: 'mock_supabase_user_101',
-      email: 'alex.morgan@gobuddy.app',
-      phoneNumber: '+1 (555) 019-2834',
-      username: 'alex.morgan',
-      backgroundPhoto:
-          'https://images.unsplash.com/photo-1498307833015-e7b400441eb8?auto=format&fit=crop&w=1200&q=85',
-      profilePhoto: 'assets/images/avatar.webp',
-      gender: 'Male',
-      country: 'United States',
-      bio: 'Curious traveller who enjoys meaningful journeys and new places.',
-    );
+    try {
+      final row = await supabase
+          .from('user_accounts')
+          .select(
+            'id, display_name, date_of_birth, gender, bio, '
+            'profile_photo_url, verification_status, created_at',
+          )
+          .eq('id', authUser.id)
+          .maybeSingle();
+      if (row == null) {
+        throw const UserAccountLoadException(
+          'Your profile is not set up yet.',
+        );
+      }
+
+      return UserAccount(
+        uid: row['id'] as String,
+        email: authUser.email ?? '',
+        phoneNumber: authUser.phone ?? '',
+        username: (row['display_name'] as String?)?.trim() ?? '',
+        profilePhoto: row['profile_photo_url'] as String?,
+        gender: row['gender'] as String?,
+        dateOfBirth: _parseDate(row['date_of_birth']),
+        joinedAt: _parseDate(row['created_at']),
+        bio: (row['bio'] as String?)?.trim() ?? '',
+        isVerified: row['verification_status'] == 'verified',
+      );
+    } on UserAccountLoadException {
+      rethrow;
+    } on PostgrestException {
+      throw const UserAccountLoadException(
+        'Unable to load your profile. Check your connection and try again.',
+      );
+    } catch (_) {
+      throw const UserAccountLoadException(
+        'Unable to load your profile. Please try again.',
+      );
+    }
   }
 
   Future<void> updateProfile(
@@ -42,8 +74,20 @@ class UserAccountRepository {
   }
 }
 
-/// Exposes the mock repository layer.
-/// Later, we will only change this internal implementation to use SupabaseClient.
+DateTime? _parseDate(Object? value) {
+  if (value is! String || value.isEmpty) return null;
+  return DateTime.tryParse(value);
+}
+
+class UserAccountLoadException implements Exception {
+  const UserAccountLoadException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 final userAccountRepositoryProvider = Provider<UserAccountRepository>((ref) {
   return const UserAccountRepository();
 });
