@@ -312,14 +312,14 @@ class CollaborationRepository {
       .from('trip_messages')
       .insert({'trip_id': tripId, 'sender_id': userId, 'body': body});
 
-  Future<void> setMute({
+  Future<void> setMutedUntil({
     required String tripId,
     required String memberId,
-    required Duration duration,
+    required DateTime? mutedUntil,
   }) => _client
       .from('trip_members')
       .update({
-        'muted_until': DateTime.now().add(duration).toUtc().toIso8601String(),
+        'muted_until': mutedUntil?.toUtc().toIso8601String(),
       })
       .eq('trip_id', tripId)
       .eq('user_id', memberId);

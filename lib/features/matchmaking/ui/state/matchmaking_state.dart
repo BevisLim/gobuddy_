@@ -49,6 +49,9 @@ class MatchmakingState {
   List<MatchmakingTrip> get joinedTrips => trips
       .where((trip) => joinedTripIds.contains(trip.id))
       .toList(growable: false);
+  List<MatchmakingTrip> get groupTrips => trips
+      .where((trip) => trip.isOwned || joinedTripIds.contains(trip.id))
+      .toList(growable: false);
   List<JoinRequest> get myRequests => requests
       .where((request) => request.applicantId == currentUserId)
       .toList(growable: false);

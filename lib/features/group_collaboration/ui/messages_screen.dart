@@ -1,22 +1,66 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_colors.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_theme.dart';
+import 'package:flutter_mvvm_riverpod/features/common/remote/supabase_client.dart';
 import 'package:flutter_mvvm_riverpod/features/common/ui/widgets/app_module_navigation.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/model/matchmaking_models.dart';
-import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/state/matchmaking_state.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/view_model/matchmaking_view_model.dart';
 
-class MessagesScreen extends ConsumerWidget {
+class MessagesScreen extends ConsumerStatefulWidget {
   const MessagesScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MessagesScreen> createState() => _MessagesScreenState();
+}
+
+class _MessagesScreenState extends ConsumerState<MessagesScreen> {
+  RealtimeChannel? _membershipChannel;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(matchmakingViewModelProvider.notifier).refresh();
+    });
+    final userId = supabase.auth.currentUser?.id;
+    if (userId != null) {
+      _membershipChannel = supabase
+          .channel('message-groups-$userId')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'matchmaking_trip_members',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'user_id',
+              value: userId,
+            ),
+            callback: (_) {
+              if (mounted) {
+                ref.read(matchmakingViewModelProvider.notifier).refresh();
+              }
+            },
+          )
+          .subscribe();
+    }
+  }
+
+  @override
+  void dispose() {
+    final channel = _membershipChannel;
+    if (channel != null) supabase.removeChannel(channel);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(matchmakingViewModelProvider);
-    final trips = _groupTrips(state);
+    final trips = state.groupTrips;
     return Scaffold(
       appBar: AppBar(title: Text('Messages', style: AppTheme.title20)),
       body: trips.isEmpty
@@ -46,19 +90,6 @@ class MessagesScreen extends ConsumerWidget {
     );
   }
 
-  List<MatchmakingTrip> _groupTrips(MatchmakingState state) {
-    final acceptedIds = state.requests
-        .where(
-          (request) =>
-              request.applicantId == 'current-user' &&
-              request.decision == ApplicantDecision.accepted,
-        )
-        .map((request) => request.tripId)
-        .toSet();
-    return state.trips
-        .where((trip) => trip.isOwned || acceptedIds.contains(trip.id))
-        .toList(growable: false);
-  }
 }
 
 class _TripConversationCard extends StatelessWidget {

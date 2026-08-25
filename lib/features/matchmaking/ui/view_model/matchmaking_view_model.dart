@@ -35,15 +35,59 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
 
   Future<void> refresh() async {
     if (!_repository.hasAuthenticatedUser) return;
-    state = state.copyWith(isLoading: true, clearError: true);
+    final userId = _repository.currentUserId;
+    if (userId.isEmpty) return;
+
+    // Clear account-scoped state if Supabase changed users while this provider
+    // remained alive in the root ProviderScope.
+    if (state.currentUserId != userId) {
+      state = MatchmakingState(
+          page: state.page,
+          selectedFilter: state.selectedFilter,
+          availableFilters: _repository.discoveryFilters,
+          filters: state.filters,
+          currentUserId: userId,
+          isLoading: true);
+    } else {
+      state = state.copyWith(isLoading: true, clearError: true);
+    }
     try {
       final trips = await _repository.fetchTrips();
       final savedIds = await _repository.fetchSavedTripIds();
       final requests = await _repository.fetchJoinRequests();
       final joinedTripIds = await _repository.fetchJoinedTripIds();
-      final applicants = await _repository.fetchApplicants();
+      final loadedApplicants = await _repository.fetchApplicants();
+      final applicantsById = {
+        for (final applicant in loadedApplicants) applicant.id: applicant,
+      };
+      // Legacy/auth-only users can have a request without a readable public
+      // profile. Keep the owner's request inbox usable instead of crashing.
+      for (final request in requests) {
+        applicantsById.putIfAbsent(
+          request.applicantId,
+          () => MatchmakingApplicant(
+            id: request.applicantId,
+            name: 'Profile unavailable',
+            initials: '?',
+            age: 18,
+            gender: 'Prefer not to say',
+            languages: const {},
+            styles: const {},
+            bio: 'This traveller has not completed a public profile.',
+            introduction: request.message,
+            trips: 0,
+            rating: 0,
+            verified: false,
+          ),
+        );
+      }
+      final applicants = applicantsById.values.toList(growable: false);
       final notifications = await _repository.fetchNotifications();
+      // Do not publish results belonging to a session that has since ended or
+      // been replaced by another account.
+      if (_repository.currentUserId != userId) return;
       state = state.copyWith(
+          currentUserId: userId,
           trips: trips,
           requests: requests,
           joinedTripIds: joinedTripIds,
@@ -53,6 +97,7 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
           isLoading: false,
           clearError: true);
     } catch (error) {
+      if (_repository.currentUserId != userId) return;
       state = state.copyWith(isLoading: false, errorMessage: error.toString());
     }
   }

@@ -11,6 +11,7 @@ void main() {
     int vacancies = 3,
     int joined = 0,
     TripStatus status = TripStatus.active,
+    bool isOwned = false,
   }) {
     final start = startDate ?? DateTime(2030, 1, 10);
     return MatchmakingTrip(
@@ -31,6 +32,7 @@ void main() {
       joined: joined,
       description: 'A relaxed food and culture trip.',
       status: status,
+      isOwned: isOwned,
     );
   }
 
@@ -112,5 +114,18 @@ void main() {
     );
 
     expect(state.discoveryTrips.map((item) => item.id), ['trip']);
+  });
+
+  test('group chats include owned and joined trips for the current account', () {
+    final state = MatchmakingState(
+      trips: [
+        trip(id: 'owned', isOwned: true),
+        trip(id: 'joined'),
+        trip(id: 'unrelated'),
+      ],
+      joinedTripIds: const {'joined'},
+    );
+
+    expect(state.groupTrips.map((item) => item.id), ['owned', 'joined']);
   });
 }

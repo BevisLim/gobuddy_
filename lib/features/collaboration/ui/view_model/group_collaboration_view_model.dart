@@ -59,6 +59,18 @@ class GroupCollaborationViewModel
     if (current == null || body.trim().isEmpty) {
       return;
     }
+    final activeUserId = supabase.auth.currentUser?.id;
+    if (activeUserId == null) {
+      throw StateError('Please sign in before sending a message.');
+    }
+    if (activeUserId != current.currentUserId) {
+      // Never send with identity cached from a previous account. Rebuilding
+      // also fixes which messages are labelled as "You".
+      ref.invalidateSelf();
+      throw StateError(
+        'Your account changed. The group was refreshed; please send again.',
+      );
+    }
     if (current.isMuted) {
       throw StateError(
         'You are muted until the trip creator enables chat again.',
@@ -66,7 +78,7 @@ class GroupCollaborationViewModel
     }
     await _repository.sendMessage(
       current.tripId,
-      current.currentUserId,
+      activeUserId,
       body.trim(),
     );
     await _repository.setTyping(
@@ -74,14 +86,20 @@ class GroupCollaborationViewModel
       userId: current.currentUserId,
       isTyping: false,
     );
+    // Refresh immediately after a successful insert. Realtime remains useful
+    // for messages from other members, but the sender must not depend on it.
+    ref.invalidateSelf();
   }
 
   Future<void> muteMember(String memberId, Duration duration) async {
     final current = _requireMemberManager();
-    await _repository.setMute(
+    final member = current.members.firstWhere(
+      (item) => item.userId == memberId,
+    );
+    await _repository.setMutedUntil(
       tripId: current.tripId,
       memberId: memberId,
-      duration: duration,
+      mutedUntil: DateTime.now().add(duration),
     );
     await _repository.recordEvent(
       tripId: current.tripId,
@@ -95,7 +113,14 @@ class GroupCollaborationViewModel
 
   Future<void> unmuteMember(String memberId) async {
     final current = _requireMemberManager();
-    await _repository.unmuteMember(tripId: current.tripId, memberId: memberId);
+    final member = current.members.firstWhere(
+      (item) => item.userId == memberId,
+    );
+    await _repository.setMutedUntil(
+      tripId: current.tripId,
+      memberId: memberId,
+      mutedUntil: null,
+    );
     await _repository.recordEvent(
       tripId: current.tripId,
       actorId: current.currentUserId,
@@ -111,6 +136,9 @@ class GroupCollaborationViewModel
     if (memberId == current.creatorId) {
       throw StateError('The trip creator cannot be removed.');
     }
+    final member = current.members.firstWhere(
+      (item) => item.userId == memberId,
+    );
     await _repository.removeMember(current.tripId, memberId);
     await _repository.recordEvent(
       tripId: current.tripId,

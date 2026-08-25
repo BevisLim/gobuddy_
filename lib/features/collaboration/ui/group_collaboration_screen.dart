@@ -469,9 +469,24 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
                   onPressed: widget.state.isMuted
                       ? null
                       : () async {
-                          await viewModel.sendMessage(_messageController.text);
-                          _messageController.clear();
-                          _isTyping = false;
+                          try {
+                            await viewModel.sendMessage(
+                              _messageController.text,
+                            );
+                            _messageController.clear();
+                            _isTyping = false;
+                          } catch (error) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context)
+                              ..hideCurrentSnackBar()
+                              ..showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Could not send message: $error',
+                                  ),
+                                ),
+                              );
+                          }
                         },
                   icon: const Icon(Icons.send),
                 ),

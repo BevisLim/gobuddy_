@@ -92,6 +92,8 @@ class _MatchmakingShellScreenState
           onManage: viewModel.openRequests,
           onEdit: (id) => viewModel.openTrip(id, MatchmakingPage.edit),
           onDelete: viewModel.deleteTrip,
+          onOpenGroup: (id) => context.push(
+              '${Routes.groupCollaboration}?tripId=${Uri.encodeQueryComponent(id)}'),
           onCancelRequest: viewModel.cancelRequest),
       MatchmakingPage.request => RequestPage(
           trip: state.selectedTrip!,
@@ -1146,6 +1148,7 @@ class MyTripsPage extends StatelessWidget {
   final List<MatchmakingTrip> trips, joinedTrips, allTrips;
   final List<JoinRequest> requests;
   final ValueChanged<String> onManage, onEdit, onDelete;
+  final ValueChanged<String> onOpenGroup;
   final Future<void> Function(String) onCancelRequest;
   const MyTripsPage(
       {super.key,
@@ -1158,6 +1161,7 @@ class MyTripsPage extends StatelessWidget {
       required this.onManage,
       required this.onDelete,
       required this.onEdit,
+      required this.onOpenGroup,
       required this.onCancelRequest});
   @override
   Widget build(BuildContext context) =>
@@ -1175,6 +1179,10 @@ class MyTripsPage extends StatelessWidget {
         const SizedBox(height: 24),
         if (trips.isEmpty && joinedTrips.isEmpty && requests.isEmpty)
           const _NoTripsFound(),
+        if (trips.isNotEmpty) ...[
+          const Text('Hosting', style: _heading),
+          const SizedBox(height: 12),
+        ],
         for (final trip in trips) ...[
           CompactTrip(
               destination: trip.destination,
@@ -1197,7 +1205,12 @@ class MyTripsPage extends StatelessWidget {
                 leading: const Icon(Icons.group_outlined, color: _violet),
                 title: Text(trip.destination),
                 subtitle: Text(_dateRange(trip.startDate, trip.endDate)),
-                trailing: const Chip(label: Text('Joined')),
+                trailing: FilledButton.tonalIcon(
+                  onPressed: () => onOpenGroup(trip.id),
+                  icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
+                  label: const Text('Group'),
+                ),
+                onTap: () => onOpenGroup(trip.id),
               ),
             ),
         ],
