@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +9,7 @@ import '../../../core/constants/assets.dart';
 import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../common/remote/supabase_client.dart';
+import '../repository/authentication_repository.dart';
 
 const _purple = AppColors.brandSurface;
 const _ink = AppColors.brandPrimary;
@@ -38,12 +41,33 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isSigningIn = false;
+  late final StreamSubscription<AuthState> _authSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _authSubscription = supabase.auth.onAuthStateChange.listen((state) {
+      if (state.session != null) _continuePendingRegistration();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (supabase.auth.currentSession != null) {
+        _continuePendingRegistration();
+      }
+    });
+  }
 
   @override
   void dispose() {
+    _authSubscription.cancel();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _continuePendingRegistration() async {
+    final pending =
+        await const AuthenticationRepository().isRegistrationPending();
+    if (mounted && pending) context.go(Routes.setPassword);
   }
 
   Future<void> _submit() async {
@@ -57,11 +81,15 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _passwordController.text,
       );
       widget.onContinue?.call(email);
-      if (mounted) context.go(Routes.main);
+      final pending =
+          await const AuthenticationRepository().isRegistrationPending();
+      if (mounted) {
+        context.go(pending ? Routes.setPassword : Routes.main);
+      }
     } on AuthException catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error.message)),
+          SnackBar(content: Text(_friendlyLoginError(error))),
         );
       }
     } catch (_) {
@@ -254,6 +282,24 @@ String? _validatePassword(String? value) {
     return 'Password must be at least 6 characters';
   }
   return null;
+}
+
+String _friendlyLoginError(AuthException error) {
+  final message = error.message.toLowerCase();
+  if (message.contains('email not confirmed') ||
+      message.contains('email_not_confirmed')) {
+    return 'Please confirm your email before signing in.';
+  }
+  if (message.contains('invalid login credentials') ||
+      message.contains('invalid credentials')) {
+    return 'The email or password is incorrect.';
+  }
+  if (message.contains('network') ||
+      message.contains('socket') ||
+      message.contains('connection')) {
+    return 'Unable to connect. Check your internet connection and try again.';
+  }
+  return 'Unable to sign in. Please try again.';
 }
 
 class _BrandHeader extends StatelessWidget {

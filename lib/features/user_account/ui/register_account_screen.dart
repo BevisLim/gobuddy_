@@ -30,128 +30,152 @@ class _RegisterAccountScreenState extends ConsumerState<RegisterAccountScreen> {
     super.dispose();
   }
 
-  void _register() {
+  Future<void> _register() async {
     if (!_hasAcceptedLegalTerms) return;
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final email = _emailController.text.trim();
-    ref
+    final succeeded = await ref
         .read(authenticationViewModelProvider.notifier)
-        .signInWithMagicLink(email);
+        .sendRegistrationLink(email);
+    if (!mounted) return;
+    if (!succeeded) {
+      final result = ref.read(authenticationViewModelProvider);
+      final message = switch (result) {
+        AsyncError(:final error) => _readableError(error),
+        _ => 'Unable to create account. Please try again.',
+      };
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
+      return;
+    }
     context.push(Routes.otp, extra: {'email': email, 'isRegister': true});
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) {
+    final isLoading = ref.watch(authenticationViewModelProvider).isLoading;
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
         backgroundColor: Colors.white,
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          foregroundColor: _ink,
-          elevation: 0,
-          surfaceTintColor: Colors.white,
-        ),
-        body: SafeArea(
-          top: false,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: MediaQuery.sizeOf(context).height - 140,
-              ),
-              child: IntrinsicHeight(
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const _BrandHeader(),
-                      const SizedBox(height: 40),
-                      const Text('Create your account',
-                          style: TextStyle(
-                              color: _ink,
-                              fontSize: 32,
-                              height: 1.1,
-                              fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 9),
-                      const Text('Start planning meaningful journeys.',
-                          style: TextStyle(color: _muted, fontSize: 15)),
-                      const SizedBox(height: 34),
-                      const Text('Email Address',
-                          style: TextStyle(
-                              color: _ink,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14)),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        validator: _validateEmail,
-                        decoration: InputDecoration(
-                          hintText: 'example@email.com',
-                          hintStyle: const TextStyle(color: _muted),
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 16),
-                          enabledBorder: _inputBorder,
-                          focusedBorder: _inputBorder.copyWith(
-                            borderSide:
-                                const BorderSide(color: _purple, width: 1.5),
+        foregroundColor: _ink,
+        elevation: 0,
+        surfaceTintColor: Colors.white,
+      ),
+      body: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: MediaQuery.sizeOf(context).height - 140,
+            ),
+            child: IntrinsicHeight(
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const _BrandHeader(),
+                    const SizedBox(height: 40),
+                    const Text('Create your account',
+                        style: TextStyle(
+                            color: _ink,
+                            fontSize: 32,
+                            height: 1.1,
+                            fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 9),
+                    const Text('Start planning meaningful journeys.',
+                        style: TextStyle(color: _muted, fontSize: 15)),
+                    const SizedBox(height: 34),
+                    const Text('Email Address',
+                        style: TextStyle(
+                            color: _ink,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14)),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      validator: _validateEmail,
+                      decoration: InputDecoration(
+                        hintText: 'example@email.com',
+                        hintStyle: const TextStyle(color: _muted),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 16),
+                        enabledBorder: _inputBorder,
+                        focusedBorder: _inputBorder.copyWith(
+                          borderSide:
+                              const BorderSide(color: _purple, width: 1.5),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    _LegalAgreement(
+                      value: _hasAcceptedLegalTerms,
+                      onChanged: (value) {
+                        setState(() => _hasAcceptedLegalTerms = value);
+                      },
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: _hasAcceptedLegalTerms && !isLoading
+                            ? _register
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _purple,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
                           ),
                         ),
+                        child: isLoading
+                            ? const SizedBox.square(
+                                dimension: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Continue',
+                                style: TextStyle(fontWeight: FontWeight.w700)),
                       ),
-                      const SizedBox(height: 20),
-                      _LegalAgreement(
-                        value: _hasAcceptedLegalTerms,
-                        onChanged: (value) {
-                          setState(() => _hasAcceptedLegalTerms = value);
-                        },
-                      ),
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: ElevatedButton(
-                          onPressed: _hasAcceptedLegalTerms ? _register : null,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _purple,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
+                    ),
+                    const Spacer(),
+                    Center(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('Already have an account? ',
+                              style: TextStyle(color: _muted)),
+                          TextButton(
+                            onPressed: () => context.go(Routes.login),
+                            style: TextButton.styleFrom(
+                              foregroundColor: _purple,
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
+                            child: const Text('Sign in',
+                                style: TextStyle(fontWeight: FontWeight.w800)),
                           ),
-                          child: const Text('Continue',
-                              style: TextStyle(fontWeight: FontWeight.w700)),
-                        ),
+                        ],
                       ),
-                      const Spacer(),
-                      Center(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text('Already have an account? ',
-                                style: TextStyle(color: _muted)),
-                            TextButton(
-                              onPressed: () => context.go(Routes.login),
-                              style: TextButton.styleFrom(
-                                foregroundColor: _purple,
-                                padding: EdgeInsets.zero,
-                                minimumSize: Size.zero,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              child: const Text('Sign in',
-                                  style:
-                                      TextStyle(fontWeight: FontWeight.w800)),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
         ),
-      );
+      ),
+    );
+  }
 }
 
 String? _validateEmail(String? value) {
@@ -160,6 +184,13 @@ String? _validateEmail(String? value) {
     return 'Enter a valid email address';
   }
   return null;
+}
+
+String _readableError(Object error) {
+  final message = error.toString();
+  return message.startsWith('Exception: ')
+      ? message.substring('Exception: '.length)
+      : message;
 }
 
 class _BrandHeader extends StatelessWidget {

@@ -3,8 +3,7 @@ class Constants {
 
   static const String tag = 'FMR';
 
-  static const String supabaseLoginCallback =
-      'com.areser.flutter_mvvm_riverpod://login-callback/';
+  static const String supabaseLoginCallback = 'gobuddy://auth-callback/';
   static const String supabaseProfileTable = 'profile';
   static const String googleEmailScope = 'email';
   static const String googleUserInfoScope =
@@ -35,6 +34,9 @@ class Constants {
   static const String isLoginKey = 'is_login_key';
   static const String isExistAccountKey = 'is_exist_account_key';
   static const String isGuestModeKey = 'is_guest_mode_key';
+  static const String registrationPendingKey = 'registration_pending_key';
+  static const String registrationPendingEmailKey =
+      'registration_pending_email_key';
   static const String wasShowOnboardingKey = 'was_show_onboarding_key';
   static const String isPremiumUserKey = 'is_premium_user_key';
   static const String lastDayShowPremiumKey = 'last_day_show_premium_key';

@@ -20,17 +20,31 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
     return const AuthenticationState();
   }
 
-  Future<void> signInWithMagicLink(String email) async {
+  Future<bool> sendRegistrationLink(String email) async {
     state = const AsyncValue.loading();
-    final result =
-        await AsyncValue.guard(() => _repository.signInWithMagicLink(email));
+    final result = await AsyncValue.guard(
+      () => _repository.sendRegistrationLink(email),
+    );
 
-    if (result is AsyncError) {
-      state = AsyncError(result.error.toString(), StackTrace.current);
-      return;
+    if (result case AsyncError(:final error, :final stackTrace)) {
+      state = AsyncError(error, stackTrace);
+      return false;
     }
 
     state = const AsyncData(AuthenticationState());
+    return true;
+  }
+
+  Future<bool> setPassword(String password) async {
+    state = const AsyncValue.loading();
+    final result =
+        await AsyncValue.guard(() => _repository.setPassword(password));
+    if (result case AsyncError(:final error, :final stackTrace)) {
+      state = AsyncError(error, stackTrace);
+      return false;
+    }
+    state = const AsyncData(AuthenticationState());
+    return true;
   }
 
   Future<void> resetPassword(String email) async {
@@ -44,22 +58,6 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
     }
 
     state = const AsyncData(AuthenticationState());
-  }
-
-  Future<void> verifyOtp({
-    required String email,
-    required String token,
-    required bool isRegister,
-  }) async {
-    state = const AsyncValue.loading();
-    final result = await AsyncValue.guard(
-      () => _repository.verifyOtp(
-        email: email,
-        token: token,
-        isRegister: isRegister,
-      ),
-    );
-    handleResult(result);
   }
 
   Future<void> signInWithGoogle() async {

@@ -27,58 +27,71 @@ class AuthenticationRepository {
   static final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
   static Future<void>? _googleSignInInitialization;
 
-  Future<void> signInWithMagicLink(String email) async {
-    // TODO: fake data
-    return;
-
-    // ignore: dead_code
+  Future<void> sendRegistrationLink(String email) async {
     try {
+      if (supabase.auth.currentSession != null) {
+        await supabase.auth.signOut(scope: SignOutScope.local);
+      }
       await supabase.auth.signInWithOtp(
-        email: email,
+        email: email.trim(),
         emailRedirectTo: Constants.supabaseLoginCallback,
+        shouldCreateUser: true,
+        data: const {'registration_pending': true},
       );
+      await setRegistrationPending(true, email: email.trim());
     } on AuthException catch (error) {
-      throw Exception(error.message);
-    } catch (error) {
-      throw Exception(LocaleKeys.unexpectedErrorOccurred.tr());
+      throw Exception(_friendlyRegistrationError(error));
+    } on Exception {
+      rethrow;
+    } catch (_) {
+      throw Exception('Unable to create account. Please try again.');
+    }
+  }
+
+  Future<void> setPassword(String password) async {
+    if (supabase.auth.currentSession == null) {
+      throw Exception(
+        'Your verification session is missing or expired. Request a new link.',
+      );
+    }
+    try {
+      await supabase.auth.updateUser(UserAttributes(password: password));
+      await setRegistrationPending(false);
+    } on AuthException catch (error) {
+      final message = error.message.toLowerCase();
+      if (message.contains('password')) {
+        throw Exception(
+          'Please choose a stronger password with at least 6 characters.',
+        );
+      }
+      throw Exception('Unable to save your password. Please try again.');
+    } catch (_) {
+      throw Exception('Unable to save your password. Please try again.');
+    }
+  }
+
+  Future<bool> isRegistrationPending() async {
+    final prefs = await SharedPreferences.getInstance();
+    final pending = prefs.getBool(Constants.registrationPendingKey) ?? false;
+    final pendingEmail =
+        prefs.getString(Constants.registrationPendingEmailKey)?.toLowerCase();
+    final currentEmail = supabase.auth.currentUser?.email?.toLowerCase();
+    return pending && pendingEmail != null && pendingEmail == currentEmail;
+  }
+
+  Future<void> setRegistrationPending(bool value, {String? email}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(Constants.registrationPendingKey, value);
+    if (value && email != null) {
+      await prefs.setString(Constants.registrationPendingEmailKey, email);
+    } else if (!value) {
+      await prefs.remove(Constants.registrationPendingEmailKey);
     }
   }
 
   Future<void> resetPassword(String email) async {
     try {
       await supabase.auth.resetPasswordForEmail(email.trim());
-    } on AuthException catch (error) {
-      throw Exception(error.message);
-    } catch (error) {
-      throw Exception(LocaleKeys.unexpectedErrorOccurred.tr());
-    }
-  }
-
-  Future<AuthResponse> verifyOtp({
-    required String email,
-    required String token,
-    required bool isRegister,
-  }) async {
-    try {
-      // TODO: fake data
-      return AuthResponse(
-        user: User(
-          id: '',
-          appMetadata: {},
-          userMetadata: {},
-          aud: '',
-          createdAt: '',
-          email: email,
-        ),
-      );
-
-      // ignore: dead_code
-      final result = await supabase.auth.verifyOTP(
-        email: email,
-        token: token,
-        type: isRegister ? OtpType.signup : OtpType.magiclink,
-      );
-      return result;
     } on AuthException catch (error) {
       throw Exception(error.message);
     } catch (error) {
@@ -233,4 +246,25 @@ class AuthenticationRepository {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(Constants.isGuestModeKey, true);
   }
+}
+
+String _friendlyRegistrationError(AuthException error) {
+  final message = error.message.toLowerCase();
+  if (message.contains('already registered') ||
+      message.contains('already exists') ||
+      message.contains('user already')) {
+    return 'An account with this email already exists. Please log in instead.';
+  }
+  if (message.contains('password')) {
+    return 'Please choose a stronger password with at least 6 characters.';
+  }
+  if (message.contains('email')) {
+    return 'Please enter a valid email address.';
+  }
+  if (message.contains('network') ||
+      message.contains('socket') ||
+      message.contains('connection')) {
+    return 'Unable to connect. Check your internet connection and try again.';
+  }
+  return 'Unable to send the verification link. Please try again.';
 }
