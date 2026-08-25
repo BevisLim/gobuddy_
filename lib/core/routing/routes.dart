@@ -22,8 +22,9 @@ class Routes {
   static const budgetAnalytics = '/expenses/analytics';
   static const userAccount = '/user_account';
   static const groupCollaboration = '/group-collaboration';
-static const identityVerification = '/identity-verification';
+  static const identityVerification = '/identity-verification';
   static const settings = '/settings';
+  static const safetyCheckInSettings = '/settings/safety-check-in';
   static const blockedUsers = '/settings/blocked-users';
   static const termsOfService = '/terms-of-service';
   static const privacyPolicy = '/privacy-policy';
@@ -31,5 +32,4 @@ static const identityVerification = '/identity-verification';
   static const addEmergencyContact = '/safety/emergency-contacts/add';
   static const liveLocation = '/safety/live-location';
   static const sos = '/safety/sos';
-
 }

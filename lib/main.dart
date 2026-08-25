@@ -30,11 +30,9 @@ Future<void> main() async {
     ),
   );
 
-  if (Env.hasSupabase) {
-    unawaited(PushNotificationService.initialize().catchError((error, stack) {
-      debugPrint('Push notification setup failed: $error');
-    }));
-  }
+  unawaited(PushNotificationService.initialize().catchError((error, stack) {
+    debugPrint('Notification setup failed: $error');
+  }));
 }
 
 class GoBuddyApp extends ConsumerWidget {

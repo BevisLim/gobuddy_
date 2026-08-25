@@ -3,3 +3,6 @@ url = "https://mcp.supabase.com/mcp?project_ref=xnkobjlnduowpwwxscvh&features=do
 
 [mcp_servers.supabase-cd.tools.execute_sql]
 approval_mode = "approve"
+
+[mcp_servers.supabase-cd.tools.apply_migration]
+approval_mode = "approve"
