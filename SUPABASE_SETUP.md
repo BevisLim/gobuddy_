@@ -194,3 +194,38 @@ table name is incorrect.
 The manual SQL workflow is sufficient for the current team project. If the
 database becomes larger, migrate these files into `supabase/migrations/` and
 use the Supabase CLI for local resets, schema diffs, and automated deployment.
+
+## Group Communication & Collaboration
+
+Run these files in the following order after the matchmaking schema and RLS
+scripts above. Open each file in VS Code, copy its **SQL contents** (not the
+file path), and run it in Supabase Dashboard → SQL Editor.
+
+1. `supabase/migrations/20260816_group_collaboration.sql`
+2. `supabase/migrations/20260820_group_collaboration_permissions.sql`
+3. `supabase/migrations/20260821_accept_request_adds_member.sql`
+4. `supabase/migrations/20260824_matchmaking_hardening.sql`
+5. `supabase/migrations/20260825_collaboration_enhancements.sql`
+6. `supabase/migrations/20260825_collaboration_membership_sync.sql`
+7. `supabase/migrations/20260825_collaboration_api_grants.sql`
+8. `supabase/migrations/20260825_collaboration_polish.sql`
+9. `supabase/migrations/20260825_collaboration_engagement.sql`
+
+The last two migrations enable Call History, Activity History, RSVP, typing,
+read receipts, and reversible member controls. If the app reports that
+`public.save_matchmaking_trip` is missing, run
+`20260824_matchmaking_hardening.sql`.
+
+### Flutter web Google sign-in
+
+In Supabase Dashboard → Authentication → URL Configuration, add:
+
+```text
+http://localhost:3000/**
+```
+
+Keep the local app running while signing in:
+
+```powershell
+& 'C:\flutter\bin\flutter.bat' run -d chrome --web-port 3000
+```

@@ -142,7 +142,9 @@ class AuthenticationRepository {
       await setRegistrationPending(false);
       final launched = await supabase.auth.signInWithOAuth(
         OAuthProvider.google,
-        redirectTo: kIsWeb ? null : Constants.supabaseLoginCallback,
+        // On Flutter web, return to the port used by `flutter run` instead
+        // of Supabase's project-wide Site URL (often localhost:3000).
+        redirectTo: kIsWeb ? Uri.base.origin : Constants.supabaseLoginCallback,
       );
       if (!launched) {
         throw Exception('Unable to open Google sign-in. Please try again.');

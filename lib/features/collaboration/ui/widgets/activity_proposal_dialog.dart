@@ -45,10 +45,11 @@ class _ActivityProposalDialogState extends State<ActivityProposalDialog> {
       }
       if (mounted) Navigator.pop(context);
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('$error')));
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }

@@ -4,8 +4,11 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:flutter_mvvm_riverpod/core/environment/env.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration_models.dart';
+import 'package:flutter_mvvm_riverpod/features/collaboration/ui/jitsi_call_screen.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/view_model/group_collaboration_view_model.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/activity_proposal_dialog.dart';
+import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_recorder.dart';
+import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_message_player.dart';
 
 class GroupCollaborationScreen extends ConsumerWidget {
   const GroupCollaborationScreen({required this.tripId, super.key});
@@ -51,69 +54,319 @@ class _Workspace extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final viewModel = ref.read(
-      groupCollaborationViewModelProvider(state.tripId).notifier,
-    );
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Trip workspace'),
-          actions: [
-            IconButton(
-              onPressed: () => _showNotifications(context, state.notifications),
-              icon: Badge(
-                isLabelVisible: state.notifications.isNotEmpty,
-                label: Text('${state.notifications.length}'),
-                child: const Icon(Icons.notifications_outlined),
-              ),
-              tooltip: 'Collaboration updates',
+    return Scaffold(
+      appBar: AppBar(
+        title: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => GroupInfoScreen(state: state),
             ),
-            IconButton(
-              onPressed: () =>
-                  _run(context, () => viewModel.startCall('voice')),
-              icon: const Icon(Icons.call),
-              tooltip: 'Voice call',
-            ),
-            IconButton(
-              onPressed: () =>
-                  _run(context, () => viewModel.startCall('video')),
-              icon: const Icon(Icons.videocam),
-              tooltip: 'Video call',
-            ),
-          ],
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Chat'),
-              Tab(text: 'Timeline'),
-              Tab(text: 'Files'),
+          ),
+          child: const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Trip workspace'),
+              Text('Tap for group info', style: TextStyle(fontSize: 12)),
             ],
           ),
         ),
-        body: TabBarView(
-          children: [
-            _ChatTab(state: state),
-            _TimelineTab(state: state),
-            _FilesTab(state: state),
-          ],
-        ),
+        actions: [
+          IconButton(
+            onPressed: () => _showNotifications(context, state.notifications),
+            icon: Badge(
+              isLabelVisible: state.notifications.isNotEmpty,
+              label: Text('${state.notifications.length}'),
+              child: const Icon(Icons.notifications_outlined),
+            ),
+            tooltip: 'Collaboration updates',
+          ),
+        ],
+      ),
+      body: _ChatTab(state: state),
+    );
+  }
+}
+
+class GroupInfoScreen extends ConsumerWidget {
+  const GroupInfoScreen({required this.state, super.key});
+
+  final GroupCollaborationState state;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final viewModel = ref.read(
+      groupCollaborationViewModelProvider(state.tripId).notifier,
+    );
+    return Scaffold(
+      appBar: AppBar(title: const Text('Group info')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          CircleAvatar(
+            radius: 44,
+            child: Icon(
+              Icons.groups,
+              size: 44,
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Center(
+            child: Text(
+              'Trip workspace',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+          ),
+          Center(child: Text('${state.members.length} members')),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _GroupInfoAction(
+                icon: Icons.call_outlined,
+                label: 'Voice',
+                onTap: () => _openInAppCall(
+                  context,
+                  state.tripId,
+                  () => viewModel.startCall('voice'),
+                ),
+              ),
+              _GroupInfoAction(
+                icon: Icons.videocam_outlined,
+                label: 'Video',
+                onTap: () => _openInAppCall(
+                  context,
+                  state.tripId,
+                  () => viewModel.startCall('video'),
+                ),
+              ),
+              _GroupInfoAction(
+                icon: Icons.person_add_alt_1_outlined,
+                label: 'Members',
+                onTap: () => _openGroupSection(
+                  context,
+                  'Members',
+                  _MembersInfoTab(state: state),
+                ),
+              ),
+              _GroupInfoAction(
+                icon: Icons.notifications_outlined,
+                label: 'Updates',
+                onTap: () => _showNotifications(context, state.notifications),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          const Divider(),
+          _GroupInfoTile(
+            icon: Icons.calendar_month_outlined,
+            title: 'Timeline & activities',
+            subtitle: 'Proposals, polls, RSVPs and activity comments',
+            onTap: () => _openGroupSection(
+              context,
+              'Timeline & activities',
+              _TimelineTab(state: state),
+            ),
+          ),
+          _GroupInfoTile(
+            icon: Icons.folder_outlined,
+            title: 'Files & media',
+            subtitle: '${state.files.length} shared file(s)',
+            onTap: () => _openGroupSection(
+              context,
+              'Files & media',
+              _FilesTab(state: state),
+            ),
+          ),
+          _GroupInfoTile(
+            icon: Icons.history_outlined,
+            title: 'Calls',
+            subtitle: '${state.calls.length} call(s) in history',
+            onTap: () =>
+                _openGroupSection(context, 'Calls', _CallsTab(state: state)),
+          ),
+          const Divider(),
+          const Text(
+            'Group members',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          ...state.members
+              .take(6)
+              .map(
+                (member) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    child: Text((member.displayName ?? 'M')[0].toUpperCase()),
+                  ),
+                  title: Text(member.displayName ?? 'Trip member'),
+                  subtitle: Text(member.isAdmin ? 'Admin' : 'Member'),
+                ),
+              ),
+        ],
       ),
     );
   }
+}
 
-  Future<void> _run(
-    BuildContext context,
-    Future<void> Function() action,
-  ) async {
-    try {
-      await action();
-    } catch (error) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$error')));
-      }
-    }
+class _GroupInfoAction extends StatelessWidget {
+  const _GroupInfoAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      IconButton.filledTonal(onPressed: onTap, icon: Icon(icon)),
+      const SizedBox(height: 4),
+      Text(label),
+    ],
+  );
+}
+
+class _GroupInfoTile extends StatelessWidget {
+  const _GroupInfoTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    contentPadding: EdgeInsets.zero,
+    leading: Icon(icon),
+    title: Text(title),
+    subtitle: Text(subtitle),
+    trailing: const Icon(Icons.chevron_right),
+    onTap: onTap,
+  );
+}
+
+void _openGroupSection(BuildContext context, String title, Widget child) {
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => Scaffold(
+        appBar: AppBar(title: Text(title)),
+        body: child,
+      ),
+    ),
+  );
+}
+
+class _MembersInfoTab extends ConsumerWidget {
+  const _MembersInfoTab({required this.state});
+
+  final GroupCollaborationState state;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final viewModel = ref.read(
+      groupCollaborationViewModelProvider(state.tripId).notifier,
+    );
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const Text(
+          'Group members',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        ...state.members.map(
+          (member) => ListTile(
+            leading: CircleAvatar(
+              child: Text((member.displayName ?? 'M')[0].toUpperCase()),
+            ),
+            subtitle: Text(member.isMuted ? 'Muted' : 'Trip member'),
+            trailing:
+                member.userId == state.currentUserId || !state.canManageMembers
+                ? null
+                : Wrap(
+                    spacing: 4,
+                    children: [
+                      TextButton(
+                        onPressed: () => _confirmMemberAction(
+                          context: context,
+                          title: member.isMuted
+                              ? 'Unmute member?'
+                              : 'Mute member?',
+                          message:
+                              'This member cannot send chat messages for 30 minutes.',
+                          confirmLabel: member.isMuted ? 'Unmute' : 'Mute',
+                          onConfirm: () => member.isMuted
+                              ? viewModel.unmuteMember(member.userId)
+                              : viewModel.muteMember(
+                                  member.userId,
+                                  const Duration(minutes: 30),
+                                ),
+                        ),
+                        child: Text(member.isMuted ? 'Unmute' : 'Mute'),
+                      ),
+                      TextButton(
+                        onPressed: () => _confirmMemberAction(
+                          context: context,
+                          title: 'Remove member?',
+                          message:
+                              'They will lose access to this trip workspace.',
+                          confirmLabel: 'Remove',
+                          isDestructive: true,
+                          onConfirm: () =>
+                              viewModel.removeMember(member.userId),
+                        ),
+                        child: const Text('Remove'),
+                      ),
+                      if (state.isCreator && !member.isAdmin)
+                        TextButton(
+                          onPressed: () => _confirmMemberAction(
+                            context: context,
+                            title: 'Make admin?',
+                            message: 'Admins can mute or remove group members.',
+                            confirmLabel: 'Make admin',
+                            onConfirm: () => viewModel.makeAdmin(member.userId),
+                          ),
+                          child: const Text('Make admin'),
+                        ),
+                      if (state.isCreator && member.isAdmin)
+                        TextButton(
+                          onPressed: () => _confirmMemberAction(
+                            context: context,
+                            title: 'Remove admin?',
+                            message:
+                                'This member will remain in the group but lose admin permissions.',
+                            confirmLabel: 'Remove admin',
+                            onConfirm: () =>
+                                viewModel.removeAdmin(member.userId),
+                          ),
+                          child: const Text('Remove admin'),
+                        ),
+                    ],
+                  ),
+            title: Row(
+              children: [
+                Expanded(child: Text(member.displayName ?? 'Trip member')),
+                if (member.userId == state.creatorId)
+                  const _RoleBadge(label: 'Creator')
+                else if (member.isAdmin)
+                  const _RoleBadge(label: 'Admin'),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -127,9 +380,14 @@ class _ChatTab extends ConsumerStatefulWidget {
 
 class _ChatTabState extends ConsumerState<_ChatTab> {
   final _messageController = TextEditingController();
+  final _voiceRecorder = VoiceRecorder();
+  bool _isTyping = false;
+  bool _readMarked = false;
+  bool _isRecordingVoice = false;
 
   @override
   void dispose() {
+    _voiceRecorder.dispose();
     _messageController.dispose();
     super.dispose();
   }
@@ -139,6 +397,12 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
     final viewModel = ref.read(
       groupCollaborationViewModelProvider(widget.state.tripId).notifier,
     );
+    if (!_readMarked && widget.state.messages.isNotEmpty) {
+      _readMarked = true;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => viewModel.markMessagesRead(),
+      );
+    }
     return Column(
       children: [
         Expanded(
@@ -146,54 +410,19 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
             padding: const EdgeInsets.all(16),
             children: [
               ...widget.state.messages.map(
-                (message) => Card(
-                  child: ListTile(
-                    title: Text(
-                      message.senderId == widget.state.currentUserId
-                          ? 'You'
-                          : (message.senderName ?? 'Trip member'),
-                    ),
-                    subtitle: Text(message.body),
-                  ),
+                (message) => _MessageBubble(
+                  message: message,
+                  isMine: message.senderId == widget.state.currentUserId,
                 ),
               ),
-              const Text(
-                'Member Management',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              ...widget.state.members
-                  .where(
-                    (member) => member.userId != widget.state.currentUserId,
-                  )
-                  .map(
-                    (member) => ListTile(
-                      title: Text(member.displayName ?? 'Trip member'),
-                      trailing: widget.state.canManageMembers
-                          ? Wrap(
-                              children: [
-                                TextButton(
-                                  onPressed: () => viewModel.muteMember(
-                                    member.userId,
-                                    const Duration(minutes: 30),
-                                  ),
-                                  child: const Text('Mute'),
-                                ),
-                                TextButton(
-                                  onPressed: () =>
-                                      viewModel.removeMember(member.userId),
-                                  child: const Text('Remove'),
-                                ),
-                                if (widget.state.isCreator)
-                                  TextButton(
-                                    onPressed: () =>
-                                        viewModel.makeAdmin(member.userId),
-                                    child: const Text('Make admin'),
-                                  ),
-                              ],
-                            )
-                          : null,
-                    ),
+              if (widget.state.typingMemberNames.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    '${widget.state.typingMemberNames.join(', ')} ${widget.state.typingMemberNames.length == 1 ? 'is' : 'are'} typing…',
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
+                ),
             ],
           ),
         ),
@@ -204,13 +433,31 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
             child: Row(
               children: [
                 IconButton(
-                  onPressed: viewModel.pickAndShareFile,
+                  onPressed: () =>
+                      _runWorkspaceAction(context, viewModel.pickAndShareFile),
                   icon: const Icon(Icons.attach_file),
                   tooltip: 'Share file',
+                ),
+                IconButton(
+                  onPressed: widget.state.isMuted
+                      ? null
+                      : () => _runWorkspaceAction(
+                          context,
+                          viewModel.takeAndSharePhoto,
+                        ),
+                  icon: const Icon(Icons.camera_alt_outlined),
+                  tooltip: 'Take photo',
                 ),
                 Expanded(
                   child: TextField(
                     controller: _messageController,
+                    onChanged: (value) {
+                      final typing = value.trim().isNotEmpty;
+                      if (typing != _isTyping) {
+                        _isTyping = typing;
+                        viewModel.setTyping(typing);
+                      }
+                    },
                     enabled: !widget.state.isMuted,
                     decoration: const InputDecoration(
                       hintText: 'Message group',
@@ -224,8 +471,23 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
                       : () async {
                           await viewModel.sendMessage(_messageController.text);
                           _messageController.clear();
+                          _isTyping = false;
                         },
                   icon: const Icon(Icons.send),
+                ),
+                IconButton(
+                  onPressed: widget.state.isMuted
+                      ? null
+                      : () => _toggleVoiceRecording(viewModel),
+                  icon: Icon(
+                    _isRecordingVoice ? Icons.stop_circle : Icons.mic,
+                    color: _isRecordingVoice
+                        ? Theme.of(context).colorScheme.error
+                        : null,
+                  ),
+                  tooltip: _isRecordingVoice
+                      ? 'Stop and send voice message'
+                      : 'Record voice message',
                 ),
               ],
             ),
@@ -234,6 +496,106 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
       ],
     );
   }
+
+  Future<void> _toggleVoiceRecording(
+    GroupCollaborationViewModel viewModel,
+  ) async {
+    try {
+      if (!_isRecordingVoice) {
+        await _voiceRecorder.start();
+        if (mounted) setState(() => _isRecordingVoice = true);
+        return;
+      }
+      final bytes = await _voiceRecorder.stop();
+      if (mounted) setState(() => _isRecordingVoice = false);
+      if (bytes != null) await viewModel.shareVoiceMessage(bytes);
+    } catch (error) {
+      if (mounted) {
+        setState(() => _isRecordingVoice = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not record voice message: $error')),
+        );
+      }
+    }
+  }
+}
+
+class _MessageBubble extends StatelessWidget {
+  const _MessageBubble({required this.message, required this.isMine});
+
+  final TripMessage message;
+  final bool isMine;
+
+  @override
+  Widget build(BuildContext context) {
+    final photoUrl = _messageAttachmentUrl(message.body, '[photo]');
+    final voiceUrl = _messageAttachmentUrl(message.body, '[voice]');
+    final colorScheme = Theme.of(context).colorScheme;
+    return Align(
+      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 340),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isMine
+                ? colorScheme.primaryContainer
+                : colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.only(
+              topLeft: const Radius.circular(16),
+              topRight: const Radius.circular(16),
+              bottomLeft: Radius.circular(isMine ? 16 : 4),
+              bottomRight: Radius.circular(isMine ? 4 : 16),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: isMine
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
+            children: [
+              if (!isMine)
+                Text(
+                  message.senderName ?? 'Trip member',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              if (photoUrl != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(
+                    photoUrl,
+                    height: 220,
+                    width: 280,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Text('Photo could not be loaded.'),
+                    ),
+                  ),
+                )
+              else if (voiceUrl != null)
+                VoiceMessagePlayer(url: voiceUrl)
+              else
+                Text(message.body),
+              const SizedBox(height: 4),
+              Text(
+                isMine
+                    ? '${_shortTime(message.sentAt)} · Seen by ${message.readByCount}'
+                    : _shortTime(message.sentAt),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String? _messageAttachmentUrl(String body, String prefix) {
+  if (!body.startsWith(prefix)) return null;
+  final url = body.substring(prefix.length).trim();
+  return Uri.tryParse(url)?.hasScheme == true ? url : null;
 }
 
 class _TimelineTab extends ConsumerWidget {
@@ -266,12 +628,13 @@ class _TimelineTab extends ConsumerWidget {
           icon: const Icon(Icons.add),
           label: const Text('Propose activity'),
         ),
+        const SizedBox(height: 12),
         ...state.activities.map(
           (activity) => Card(
             child: ListTile(
               title: Text(activity.title),
               subtitle: Text(
-                '${activity.startTime}\n${state.comments.where((comment) => comment.activityId == activity.id).length} comment(s)',
+                '${activity.startTime}\n${state.comments.where((comment) => comment.activityId == activity.id).length} comment(s) · ${_rsvpSummary(state, activity.id)}',
               ),
               isThreeLine: true,
               trailing: Wrap(
@@ -281,6 +644,25 @@ class _TimelineTab extends ConsumerWidget {
                         _showComments(context, state, activity, viewModel),
                     icon: const Icon(Icons.comment_outlined),
                     tooltip: 'Activity comments',
+                  ),
+                  PopupMenuButton<String>(
+                    tooltip: 'Your RSVP',
+                    onSelected: (status) => _runWorkspaceAction(
+                      context,
+                      () => viewModel.setActivityRsvp(
+                        activityId: activity.id,
+                        status: status,
+                      ),
+                    ),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'going', child: Text('Going')),
+                      PopupMenuItem(value: 'maybe', child: Text('Maybe')),
+                      PopupMenuItem(
+                        value: 'not_going',
+                        child: Text('Not going'),
+                      ),
+                    ],
+                    child: Chip(label: Text(_currentRsvp(state, activity.id))),
                   ),
                   IconButton(
                     onPressed: () => viewModel.togglePin(activity),
@@ -294,11 +676,10 @@ class _TimelineTab extends ConsumerWidget {
                   IconButton(
                     onPressed: activity.isLocked && !state.isCreator
                         ? null
-                        : () => viewModel.editActivity(
-                            activity: activity,
-                            title: activity.title,
-                            startTime: activity.startTime,
-                            location: activity.location,
+                        : () => _showEditActivityDialog(
+                            context,
+                            activity,
+                            viewModel,
                           ),
                     icon: const Icon(Icons.edit_outlined),
                     tooltip: 'Edit activity',
@@ -441,6 +822,81 @@ Future<void> _showComments(
   controller.dispose();
 }
 
+Future<void> _showEditActivityDialog(
+  BuildContext context,
+  TripActivity activity,
+  GroupCollaborationViewModel viewModel,
+) async {
+  final titleController = TextEditingController(text: activity.title);
+  final locationController = TextEditingController(
+    text: activity.location ?? '',
+  );
+  var submitting = false;
+
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (dialogContext, setDialogState) => AlertDialog(
+        title: const Text('Edit activity'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: titleController,
+              decoration: const InputDecoration(labelText: 'Activity title'),
+            ),
+            TextField(
+              controller: locationController,
+              decoration: const InputDecoration(labelText: 'Location'),
+            ),
+            const SizedBox(height: 12),
+            Text('Time: ${_shortDate(activity.startTime)}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: submitting ? null : () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: submitting
+                ? null
+                : () async {
+                    setDialogState(() => submitting = true);
+                    try {
+                      await viewModel.editActivity(
+                        activity: activity,
+                        title: titleController.text.trim(),
+                        startTime: activity.startTime,
+                        location: locationController.text.trim().isEmpty
+                            ? null
+                            : locationController.text.trim(),
+                      );
+                      if (dialogContext.mounted) {
+                        Navigator.pop(dialogContext);
+                      }
+                    } catch (error) {
+                      if (dialogContext.mounted) {
+                        ScaffoldMessenger.of(
+                          dialogContext,
+                        ).showSnackBar(SnackBar(content: Text('$error')));
+                      }
+                    } finally {
+                      if (dialogContext.mounted) {
+                        setDialogState(() => submitting = false);
+                      }
+                    }
+                  },
+            child: Text(submitting ? 'Saving...' : 'Save changes'),
+          ),
+        ],
+      ),
+    ),
+  );
+  titleController.dispose();
+  locationController.dispose();
+}
+
 class _FilesTab extends ConsumerWidget {
   const _FilesTab({required this.state});
   final GroupCollaborationState state;
@@ -461,11 +917,108 @@ class _FilesTab extends ConsumerWidget {
         ...state.files.map(
           (file) => ListTile(
             title: Text(file.name),
-            trailing: IconButton(
-              icon: const Icon(Icons.open_in_new),
-              onPressed: () => launchUrl(
-                Uri.parse(file.url),
-                mode: LaunchMode.externalApplication,
+            subtitle: Text(
+              '${file.uploadedBy == state.currentUserId ? 'You' : (file.uploadedByName ?? 'Trip member')} · ${_shortDate(file.createdAt)} · ${_fileSize(file.sizeBytes)}',
+            ),
+            trailing: Wrap(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.open_in_new),
+                  onPressed: () => launchUrl(
+                    Uri.parse(file.url),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                ),
+                if (file.uploadedBy == state.currentUserId ||
+                    state.canManageMembers)
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip: 'Delete file',
+                    onPressed: () => _confirmMemberAction(
+                      context: context,
+                      title: 'Delete file?',
+                      message:
+                          '${file.name} will no longer be available to the group.',
+                      confirmLabel: 'Delete',
+                      isDestructive: true,
+                      onConfirm: () => viewModel.deleteFile(file),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CallsTab extends ConsumerWidget {
+  const _CallsTab({required this.state});
+
+  final GroupCollaborationState state;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final viewModel = ref.read(
+      groupCollaborationViewModelProvider(state.tripId).notifier,
+    );
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const Text(
+          'Call history',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 4),
+        const Text('Join any group call in the shared Jitsi room.'),
+        const SizedBox(height: 12),
+        if (state.calls.isEmpty)
+          const Card(
+            child: ListTile(
+              leading: Icon(Icons.call_outlined),
+              title: Text('No calls yet'),
+              subtitle: Text('Start a voice or video call from the top bar.'),
+            ),
+          ),
+        ...state.calls.map(
+          (call) => Card(
+            child: ListTile(
+              leading: Icon(call.isVideo ? Icons.videocam : Icons.call),
+              title: Text('${call.isVideo ? 'Video' : 'Voice'} call'),
+              subtitle: Text(
+                '${call.initiatedBy == state.currentUserId ? 'You' : (call.initiatedByName ?? 'Trip member')} · ${_shortDate(call.createdAt)} · ${call.status}',
+              ),
+              trailing: Wrap(
+                children: [
+                  FilledButton(
+                    onPressed: call.status == 'ended'
+                        ? null
+                        : () => _openInAppCall(
+                            context,
+                            state.tripId,
+                            () => viewModel.joinCall(call),
+                          ),
+                    child: Text(call.status == 'ended' ? 'Ended' : 'Join'),
+                  ),
+                  if (call.initiatedBy == state.currentUserId ||
+                      state.canManageMembers)
+                    IconButton(
+                      tooltip: 'End call',
+                      onPressed: call.status == 'ended'
+                          ? null
+                          : () => _confirmMemberAction(
+                              context: context,
+                              title: 'End call?',
+                              message:
+                                  'This marks the call as ended in group history.',
+                              confirmLabel: 'End call',
+                              isDestructive: true,
+                              onConfirm: () => viewModel.endCall(call),
+                            ),
+                      icon: const Icon(Icons.call_end),
+                    ),
+                ],
               ),
             ),
           ),
@@ -473,4 +1026,130 @@ class _FilesTab extends ConsumerWidget {
       ],
     );
   }
+}
+
+class _RoleBadge extends StatelessWidget {
+  const _RoleBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.primaryContainer,
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Text(label, style: const TextStyle(fontSize: 12)),
+  );
+}
+
+Future<void> _confirmMemberAction({
+  required BuildContext context,
+  required String title,
+  required String message,
+  required String confirmLabel,
+  required Future<void> Function() onConfirm,
+  bool isDestructive = false,
+}) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text(title),
+      content: Text(message),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: isDestructive
+              ? FilledButton.styleFrom(
+                  backgroundColor: Theme.of(dialogContext).colorScheme.error,
+                )
+              : null,
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: Text(confirmLabel),
+        ),
+      ],
+    ),
+  );
+  if (confirmed == true && context.mounted) {
+    await _runWorkspaceAction(context, onConfirm);
+  }
+}
+
+Future<void> _runWorkspaceAction(
+  BuildContext context,
+  Future<void> Function() action,
+) async {
+  try {
+    await action();
+  } catch (error) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$error')));
+    }
+  }
+}
+
+Future<void> _openInAppCall(
+  BuildContext context,
+  String tripId,
+  Future<TripCall?> Function() action,
+) async {
+  try {
+    final call = await action();
+    if (call == null || !context.mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            JitsiCallScreen(tripId: tripId, callType: call.callType),
+      ),
+    );
+  } catch (error) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$error')));
+    }
+  }
+}
+
+String _shortDate(DateTime value) =>
+    '${value.day}/${value.month}/${value.year} ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+
+String _shortTime(DateTime value) =>
+    '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+
+String _currentRsvp(GroupCollaborationState state, String activityId) {
+  final ownRsvp = state.rsvps
+      .where(
+        (rsvp) =>
+            rsvp.activityId == activityId && rsvp.userId == state.currentUserId,
+      )
+      .map((rsvp) => rsvp.status)
+      .firstOrNull;
+  return switch (ownRsvp) {
+    'going' => 'Going',
+    'maybe' => 'Maybe',
+    'not_going' => 'Not going',
+    _ => 'RSVP',
+  };
+}
+
+String _rsvpSummary(GroupCollaborationState state, String activityId) {
+  final rsvps = state.rsvps.where((rsvp) => rsvp.activityId == activityId);
+  final going = rsvps.where((rsvp) => rsvp.status == 'going').length;
+  final maybe = rsvps.where((rsvp) => rsvp.status == 'maybe').length;
+  final notGoing = rsvps.where((rsvp) => rsvp.status == 'not_going').length;
+  return '$going going · $maybe maybe · $notGoing not going';
+}
+
+String _fileSize(int? bytes) {
+  if (bytes == null) return 'size unavailable';
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
 }

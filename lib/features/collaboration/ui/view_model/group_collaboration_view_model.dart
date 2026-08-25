@@ -1,13 +1,14 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:flutter_mvvm_riverpod/features/common/remote/supabase_client.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration_models.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/repository/collaboration_repository.dart';
-import 'package:flutter_mvvm_riverpod/features/collaboration/repository/jitsi_call_repository.dart';
 
 final groupCollaborationViewModelProvider =
     AsyncNotifierProvider.family<
@@ -22,7 +23,6 @@ class GroupCollaborationViewModel
 
   final String _tripId;
   late CollaborationRepository _repository;
-  final JitsiCallRepository _callRepository = const JitsiCallRepository();
   RealtimeChannel? _channel;
 
   @override
@@ -69,6 +69,11 @@ class GroupCollaborationViewModel
       current.currentUserId,
       body.trim(),
     );
+    await _repository.setTyping(
+      tripId: current.tripId,
+      userId: current.currentUserId,
+      isTyping: false,
+    );
   }
 
   Future<void> muteMember(String memberId, Duration duration) async {
@@ -82,7 +87,21 @@ class GroupCollaborationViewModel
       tripId: current.tripId,
       actorId: current.currentUserId,
       type: 'member_muted',
-      summary: 'A group member was muted.',
+      summary:
+          '${_memberName(current, current.currentUserId)} muted ${_memberName(current, memberId)}.',
+    );
+    ref.invalidateSelf();
+  }
+
+  Future<void> unmuteMember(String memberId) async {
+    final current = _requireMemberManager();
+    await _repository.unmuteMember(tripId: current.tripId, memberId: memberId);
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: 'member_unmuted',
+      summary:
+          '${_memberName(current, current.currentUserId)} unmuted ${_memberName(current, memberId)}.',
     );
     ref.invalidateSelf();
   }
@@ -97,7 +116,8 @@ class GroupCollaborationViewModel
       tripId: current.tripId,
       actorId: current.currentUserId,
       type: 'member_removed',
-      summary: 'A group member was removed.',
+      summary:
+          '${_memberName(current, current.currentUserId)} removed ${_memberName(current, memberId)} from the group.',
     );
     ref.invalidateSelf();
   }
@@ -108,6 +128,26 @@ class GroupCollaborationViewModel
       throw StateError('The trip creator already has admin permissions.');
     }
     await _repository.makeAdmin(tripId: current.tripId, memberId: memberId);
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: 'admin_assigned',
+      summary:
+          '${_memberName(current, current.currentUserId)} made ${_memberName(current, memberId)} an admin.',
+    );
+    ref.invalidateSelf();
+  }
+
+  Future<void> removeAdmin(String memberId) async {
+    final current = _requireCreator();
+    await _repository.removeAdmin(tripId: current.tripId, memberId: memberId);
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: 'admin_removed',
+      summary:
+          '${_memberName(current, current.currentUserId)} removed admin access from ${_memberName(current, memberId)}.',
+    );
     ref.invalidateSelf();
   }
 
@@ -217,6 +257,44 @@ class GroupCollaborationViewModel
     ref.invalidateSelf();
   }
 
+  Future<void> setActivityRsvp({
+    required String activityId,
+    required String status,
+  }) async {
+    final current = _current;
+    if (current == null) return;
+    await _repository.setActivityRsvp(
+      tripId: current.tripId,
+      activityId: activityId,
+      userId: current.currentUserId,
+      status: status,
+    );
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: 'rsvp_updated',
+      summary:
+          '${_memberName(current, current.currentUserId)} responded "$status" to an activity.',
+    );
+    ref.invalidateSelf();
+  }
+
+  Future<void> setTyping(bool isTyping) async {
+    final current = _current;
+    if (current == null) return;
+    await _repository.setTyping(
+      tripId: current.tripId,
+      userId: current.currentUserId,
+      isTyping: isTyping,
+    );
+  }
+
+  Future<void> markMessagesRead() async {
+    final current = _current;
+    if (current == null) return;
+    await _repository.markMessagesRead(current.tripId);
+  }
+
   Future<void> pickAndShareFile() async {
     final current = _current;
     if (current == null) return;
@@ -231,14 +309,145 @@ class GroupCollaborationViewModel
       fileName: file.name,
       bytes: file.bytes!,
     );
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: 'file_shared',
+      summary: 'A file was shared with the group: ${file.name}.',
+    );
     ref.invalidateSelf();
   }
 
-  Future<void> startCall(String type) async {
+  Future<void> takeAndSharePhoto() async {
     final current = _current;
     if (current == null) return;
-    await _repository.startCall(tripId: current.tripId, type: type);
-    await _callRepository.joinTripCall(tripId: current.tripId, callType: type);
+    if (current.isMuted) {
+      throw StateError(
+        'You are muted until the trip creator enables chat again.',
+      );
+    }
+    final image = await ImagePicker().pickImage(
+      source: ImageSource.camera,
+      imageQuality: 82,
+    );
+    if (image == null) return;
+    final bytes = await image.readAsBytes();
+    final url = await _repository.uploadFile(
+      tripId: current.tripId,
+      userId: current.currentUserId,
+      fileName: image.name.isEmpty ? 'photo.jpg' : image.name,
+      bytes: bytes,
+    );
+    await _repository.sendMessage(
+      current.tripId,
+      current.currentUserId,
+      '[photo]$url',
+    );
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: 'file_shared',
+      summary: 'A photo was shared with the group.',
+    );
+    ref.invalidateSelf();
+  }
+
+  Future<void> shareVoiceMessage(Uint8List bytes) async {
+    final current = _current;
+    if (current == null || bytes.isEmpty) return;
+    if (current.isMuted) {
+      throw StateError(
+        'You are muted until the trip creator enables chat again.',
+      );
+    }
+    final url = await _repository.uploadFile(
+      tripId: current.tripId,
+      userId: current.currentUserId,
+      fileName: 'voice_${DateTime.now().millisecondsSinceEpoch}.webm',
+      bytes: bytes,
+    );
+    await _repository.sendMessage(
+      current.tripId,
+      current.currentUserId,
+      '[voice]$url',
+    );
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: 'file_shared',
+      summary: 'A voice message was shared with the group.',
+    );
+    ref.invalidateSelf();
+  }
+
+  Future<TripCall?> startCall(String type) async {
+    final current = _current;
+    if (current == null) return null;
+    final call = await _repository.startCall(
+      tripId: current.tripId,
+      type: type,
+    );
+    await _repository.updateCallStatus(callId: call.id, status: 'active');
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: 'call_started',
+      summary: 'A ${type.trim()} call was started.',
+    );
+    ref.invalidateSelf();
+    return call;
+  }
+
+  Future<TripCall?> joinCall(TripCall call) async {
+    final current = _current;
+    if (current == null || call.status == 'ended') return null;
+    if (call.status == 'ringing') {
+      await _repository.updateCallStatus(callId: call.id, status: 'active');
+    }
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: 'call_joined',
+      summary: 'A member joined a ${call.callType} call.',
+    );
+    ref.invalidateSelf();
+    return call;
+  }
+
+  Future<void> endCall(TripCall call) async {
+    final current = _current;
+    if (current == null ||
+        (call.initiatedBy != current.currentUserId &&
+            !current.canManageMembers)) {
+      throw StateError('Only the call starter or an admin can end this call.');
+    }
+    await _repository.updateCallStatus(callId: call.id, status: 'ended');
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: 'call_ended',
+      summary:
+          '${_memberName(current, current.currentUserId)} ended a ${call.callType} call.',
+    );
+    ref.invalidateSelf();
+  }
+
+  Future<void> deleteFile(SharedTripFile file) async {
+    final current = _current;
+    if (current == null ||
+        (file.uploadedBy != current.currentUserId &&
+            !current.canManageMembers)) {
+      throw StateError('Only the uploader or an admin can delete this file.');
+    }
+    await _repository.deleteFile(file);
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: 'file_deleted',
+      summary:
+          '${_memberName(current, current.currentUserId)} removed ${file.name}.',
+    );
+    ref.invalidateSelf();
   }
 
   Future<void> addActivityComment({
@@ -278,5 +487,15 @@ class GroupCollaborationViewModel
       throw StateError('Only the trip creator can lock an activity.');
     }
     return current;
+  }
+
+  String _memberName(GroupCollaborationState state, String userId) {
+    if (userId == state.currentUserId) return 'You';
+    return state.members
+            .where((member) => member.userId == userId)
+            .map((member) => member.displayName)
+            .whereType<String>()
+            .firstOrNull ??
+        'A member';
   }
 }

@@ -8,16 +8,20 @@ import 'package:url_launcher/url_launcher.dart';
 class JitsiCallRepository {
   const JitsiCallRepository();
 
-  Future<void> joinTripCall({
-    required String tripId,
-    required String callType,
-  }) async {
+  Uri roomUri({required String tripId, required String callType}) {
     final safeTripId = tripId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '-');
     final roomName = 'gobuddy-trip-$safeTripId';
     final query = callType == 'voice'
         ? 'config.startWithVideoMuted=true&config.prejoinPageEnabled=true'
         : 'config.prejoinPageEnabled=true';
-    final uri = Uri.parse('https://meet.jit.si/$roomName#$query');
+    return Uri.parse('https://meet.jit.si/$roomName#$query');
+  }
+
+  Future<void> joinTripCall({
+    required String tripId,
+    required String callType,
+  }) async {
+    final uri = roomUri(tripId: tripId, callType: callType);
 
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       throw StateError('Could not open the $callType call. Please try again.');
