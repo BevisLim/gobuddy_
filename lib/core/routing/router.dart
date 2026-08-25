@@ -311,7 +311,13 @@ final GoRouter router = GoRouter(
       path: Routes.groupCollaboration,
       pageBuilder: (context, state) {
         final tripId = state.uri.queryParameters['tripId'] ?? '';
-        return state.slidePage(GroupCollaborationScreen(tripId: tripId));
+        final knownRemoved = state.uri.queryParameters['removed'] == 'true';
+        return state.slidePage(
+          GroupCollaborationScreen(
+            tripId: tripId,
+            knownRemoved: knownRemoved,
+          ),
+        );
       },
     ),
   ],

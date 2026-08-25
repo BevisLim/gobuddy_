@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -269,6 +271,39 @@ class MatchmakingRepository {
   Future<void> deleteTrip(String id) async {
     _requireUser();
     await supabase.from('matchmaking_trips').delete().eq('id', id);
+  }
+
+  Future<void> finishTrip(String id) async {
+    final user = _requireUser();
+    await supabase
+        .from('matchmaking_trips')
+        .update({
+          'status': 'closed',
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', id)
+        .eq('owner_id', user.id);
+  }
+
+  Future<String> uploadTripCover({
+    required String tripId,
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    final user = _requireUser();
+    final extension = fileName.contains('.')
+        ? fileName.split('.').last.toLowerCase()
+        : 'jpg';
+    final safeExtension = const {'jpg', 'jpeg', 'png', 'webp'}.contains(extension)
+        ? extension
+        : 'jpg';
+    final path = '${user.id}/$tripId/cover.$safeExtension';
+    await supabase.storage.from('trip-images').uploadBinary(
+          path,
+          bytes,
+          fileOptions: const FileOptions(upsert: true),
+        );
+    return supabase.storage.from('trip-images').getPublicUrl(path);
   }
 
   Future<void> setTripSaved(String tripId, {required bool saved}) async {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -35,15 +36,59 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
 
   Future<void> refresh() async {
     if (!_repository.hasAuthenticatedUser) return;
-    state = state.copyWith(isLoading: true, clearError: true);
+    final userId = _repository.currentUserId;
+    if (userId.isEmpty) return;
+
+    // Clear account-scoped state if Supabase changed users while this provider
+    // remained alive in the root ProviderScope.
+    if (state.currentUserId != userId) {
+      state = MatchmakingState(
+          page: state.page,
+          selectedFilter: state.selectedFilter,
+          availableFilters: _repository.discoveryFilters,
+          filters: state.filters,
+          currentUserId: userId,
+          isLoading: true);
+    } else {
+      state = state.copyWith(isLoading: true, clearError: true);
+    }
     try {
       final trips = await _repository.fetchTrips();
       final savedIds = await _repository.fetchSavedTripIds();
       final requests = await _repository.fetchJoinRequests();
       final joinedTripIds = await _repository.fetchJoinedTripIds();
-      final applicants = await _repository.fetchApplicants();
+      final loadedApplicants = await _repository.fetchApplicants();
+      final applicantsById = {
+        for (final applicant in loadedApplicants) applicant.id: applicant,
+      };
+      // Legacy/auth-only users can have a request without a readable public
+      // profile. Keep the owner's request inbox usable instead of crashing.
+      for (final request in requests) {
+        applicantsById.putIfAbsent(
+          request.applicantId,
+          () => MatchmakingApplicant(
+            id: request.applicantId,
+            name: 'Profile unavailable',
+            initials: '?',
+            age: 18,
+            gender: 'Prefer not to say',
+            languages: const {},
+            styles: const {},
+            bio: 'This traveller has not completed a public profile.',
+            introduction: request.message,
+            trips: 0,
+            rating: 0,
+            verified: false,
+          ),
+        );
+      }
+      final applicants = applicantsById.values.toList(growable: false);
       final notifications = await _repository.fetchNotifications();
+      // Do not publish results belonging to a session that has since ended or
+      // been replaced by another account.
+      if (_repository.currentUserId != userId) return;
       state = state.copyWith(
+          currentUserId: userId,
           trips: trips,
           requests: requests,
           joinedTripIds: joinedTripIds,
@@ -53,11 +98,15 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
           isLoading: false,
           clearError: true);
     } catch (error) {
+      if (_repository.currentUserId != userId) return;
       state = state.copyWith(isLoading: false, errorMessage: error.toString());
     }
   }
 
   void goTo(MatchmakingPage page) => state = state.copyWith(page: page);
+  void dismissGroup(String tripId) => state = state.copyWith(
+        dismissedGroupIds: {...state.dismissedGroupIds, tripId},
+      );
   void clearSuccessMessage() => state = state.copyWith(clearSuccess: true);
   Future<void> markNotificationsRead() async {
     if (!_repository.hasAuthenticatedUser ||
@@ -163,6 +212,33 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
         clearSelectedTrip: true);
     if (_repository.hasAuthenticatedUser) unawaited(_deletePersistedTrip(id));
   }
+
+  Future<void> finishTrip(String id) async {
+    final index = state.trips.indexWhere((trip) => trip.id == id);
+    if (index < 0 || !state.trips[index].isOwned) return;
+    final trips = [...state.trips];
+    trips[index] = trips[index].copyWith(status: TripStatus.closed);
+    state = state.copyWith(trips: trips, clearError: true);
+    try {
+      await _repository.finishTrip(id);
+      await refresh();
+      state = state.copyWith(successMessage: 'Trip marked as finished.');
+    } catch (error) {
+      await refresh();
+      state = state.copyWith(errorMessage: error.toString());
+    }
+  }
+
+  Future<String> uploadTripCover(
+    String tripId,
+    Uint8List bytes,
+    String fileName,
+  ) =>
+      _repository.uploadTripCover(
+        tripId: tripId,
+        bytes: bytes,
+        fileName: fileName,
+      );
 
   Future<void> _deletePersistedTrip(String id) async {
     try {

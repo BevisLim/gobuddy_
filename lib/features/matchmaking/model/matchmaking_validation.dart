@@ -44,9 +44,9 @@ abstract final class MatchmakingValidation {
     if (trip.minAge < 18 || trip.maxAge < trip.minAge) {
       throw const MatchmakingValidationException('Enter a valid age range.');
     }
-    if (trip.description.trim().isEmpty || trip.description.length > 1000) {
+    if (trip.description.length > 1000) {
       throw const MatchmakingValidationException(
-          'Description is required and must be 1000 characters or fewer.');
+          'Description must be 1000 characters or fewer.');
     }
   }
 

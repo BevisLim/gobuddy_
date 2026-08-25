@@ -3,6 +3,8 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:flutter_mvvm_riverpod/generated/locale_keys.g.dart';
+import '../../../collaboration/ui/view_model/group_collaboration_view_model.dart';
+import '../../../matchmaking/ui/view_model/matchmaking_view_model.dart';
 import '../../repository/authentication_repository.dart';
 import '../state/authentication_state.dart';
 
@@ -101,6 +103,8 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
       return;
     }
 
+    ref.invalidate(matchmakingViewModelProvider);
+    ref.invalidate(groupCollaborationViewModelProvider);
     state = const AsyncData(AuthenticationState());
   }
 

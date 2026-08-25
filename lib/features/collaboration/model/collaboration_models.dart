@@ -257,6 +257,7 @@ class GroupCollaborationState {
     required this.files,
     required this.comments,
     required this.notifications,
+    this.readNotificationIds = const {},
     required this.calls,
     required this.rsvps,
     required this.typingMemberNames,
@@ -273,11 +274,15 @@ class GroupCollaborationState {
   final List<SharedTripFile> files;
   final List<ActivityComment> comments;
   final List<CollaborationNotification> notifications;
+  final Set<String> readNotificationIds;
   final List<TripCall> calls;
   final List<ActivityRsvp> rsvps;
   final List<String> typingMemberNames;
 
   bool get isCreator => currentUserId == creatorId;
+  List<CollaborationNotification> get unreadNotifications => notifications
+      .where((notification) => !readNotificationIds.contains(notification.id))
+      .toList(growable: false);
   bool get canManageMembers => isCreator || isAdmin;
   bool get isMuted => members
       .where((member) => member.userId == currentUserId)
