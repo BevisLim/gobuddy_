@@ -334,9 +334,7 @@ class CollaborationRepository {
     required DateTime? mutedUntil,
   }) => _client
       .from('trip_members')
-      .update({
-        'muted_until': mutedUntil?.toUtc().toIso8601String(),
-      })
+      .update({'muted_until': mutedUntil?.toUtc().toIso8601String()})
       .eq('trip_id', tripId)
       .eq('user_id', memberId);
 
@@ -492,10 +490,8 @@ class CollaborationRepository {
     params: {'p_trip_id': tripId},
   );
 
-  Future<void> dismissRemovedGroup(String tripId) => _client.rpc(
-    'dismiss_removed_trip_group',
-    params: {'p_trip_id': tripId},
-  );
+  Future<void> dismissRemovedGroup(String tripId) =>
+      _client.rpc('dismiss_removed_trip_group', params: {'p_trip_id': tripId});
 
   Future<void> addActivityComment({
     required String tripId,
