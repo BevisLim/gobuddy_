@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:flutter_mvvm_riverpod/core/environment/env.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration_models.dart';
+import 'package:flutter_mvvm_riverpod/features/collaboration/ui/jitsi_call_screen.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/view_model/group_collaboration_view_model.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/activity_proposal_dialog.dart';
 
@@ -70,14 +71,20 @@ class _Workspace extends ConsumerWidget {
               tooltip: 'Collaboration updates',
             ),
             IconButton(
-              onPressed: () =>
-                  _run(context, () => viewModel.startCall('voice')),
+              onPressed: () => _openInAppCall(
+                context,
+                state.tripId,
+                () => viewModel.startCall('voice'),
+              ),
               icon: const Icon(Icons.call),
               tooltip: 'Voice call',
             ),
             IconButton(
-              onPressed: () =>
-                  _run(context, () => viewModel.startCall('video')),
+              onPressed: () => _openInAppCall(
+                context,
+                state.tripId,
+                () => viewModel.startCall('video'),
+              ),
               icon: const Icon(Icons.videocam),
               tooltip: 'Video call',
             ),
@@ -101,21 +108,6 @@ class _Workspace extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  Future<void> _run(
-    BuildContext context,
-    Future<void> Function() action,
-  ) async {
-    try {
-      await action();
-    } catch (error) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$error')));
-      }
-    }
   }
 }
 
@@ -720,8 +712,9 @@ class _CallsTab extends ConsumerWidget {
                   FilledButton(
                     onPressed: call.status == 'ended'
                         ? null
-                        : () => _runWorkspaceAction(
+                        : () => _openInAppCall(
                             context,
+                            state.tripId,
                             () => viewModel.joinCall(call),
                           ),
                     child: Text(call.status == 'ended' ? 'Ended' : 'Join'),
@@ -810,6 +803,29 @@ Future<void> _runWorkspaceAction(
 ) async {
   try {
     await action();
+  } catch (error) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$error')));
+    }
+  }
+}
+
+Future<void> _openInAppCall(
+  BuildContext context,
+  String tripId,
+  Future<TripCall?> Function() action,
+) async {
+  try {
+    final call = await action();
+    if (call == null || !context.mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            JitsiCallScreen(tripId: tripId, callType: call.callType),
+      ),
+    );
   } catch (error) {
     if (context.mounted) {
       ScaffoldMessenger.of(

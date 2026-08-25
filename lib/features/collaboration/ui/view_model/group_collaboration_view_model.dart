@@ -7,7 +7,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_mvvm_riverpod/features/common/remote/supabase_client.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration_models.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/repository/collaboration_repository.dart';
-import 'package:flutter_mvvm_riverpod/features/collaboration/repository/jitsi_call_repository.dart';
 
 final groupCollaborationViewModelProvider =
     AsyncNotifierProvider.family<
@@ -22,7 +21,6 @@ class GroupCollaborationViewModel
 
   final String _tripId;
   late CollaborationRepository _repository;
-  final JitsiCallRepository _callRepository = const JitsiCallRepository();
   RealtimeChannel? _channel;
 
   @override
@@ -318,9 +316,9 @@ class GroupCollaborationViewModel
     ref.invalidateSelf();
   }
 
-  Future<void> startCall(String type) async {
+  Future<TripCall?> startCall(String type) async {
     final current = _current;
-    if (current == null) return;
+    if (current == null) return null;
     final call = await _repository.startCall(
       tripId: current.tripId,
       type: type,
@@ -332,16 +330,13 @@ class GroupCollaborationViewModel
       type: 'call_started',
       summary: 'A ${type.trim()} call was started.',
     );
-    await _callRepository.joinTripCall(tripId: current.tripId, callType: type);
+    ref.invalidateSelf();
+    return call;
   }
 
-  Future<void> joinCall(TripCall call) async {
+  Future<TripCall?> joinCall(TripCall call) async {
     final current = _current;
-    if (current == null) return;
-    await _callRepository.joinTripCall(
-      tripId: current.tripId,
-      callType: call.callType,
-    );
+    if (current == null || call.status == 'ended') return null;
     if (call.status == 'ringing') {
       await _repository.updateCallStatus(callId: call.id, status: 'active');
     }
@@ -351,6 +346,8 @@ class GroupCollaborationViewModel
       type: 'call_joined',
       summary: 'A member joined a ${call.callType} call.',
     );
+    ref.invalidateSelf();
+    return call;
   }
 
   Future<void> endCall(TripCall call) async {
