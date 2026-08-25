@@ -355,8 +355,6 @@ class _TimelineTab extends ConsumerWidget {
           label: const Text('Propose activity'),
         ),
         const SizedBox(height: 12),
-        _ActivityHistoryPanel(notifications: state.notifications),
-        const SizedBox(height: 12),
         ...state.activities.map(
           (activity) => Card(
             child: ListTile(
@@ -404,11 +402,10 @@ class _TimelineTab extends ConsumerWidget {
                   IconButton(
                     onPressed: activity.isLocked && !state.isCreator
                         ? null
-                        : () => viewModel.editActivity(
-                            activity: activity,
-                            title: activity.title,
-                            startTime: activity.startTime,
-                            location: activity.location,
+                        : () => _showEditActivityDialog(
+                            context,
+                            activity,
+                            viewModel,
                           ),
                     icon: const Icon(Icons.edit_outlined),
                     tooltip: 'Edit activity',
@@ -551,6 +548,81 @@ Future<void> _showComments(
   controller.dispose();
 }
 
+Future<void> _showEditActivityDialog(
+  BuildContext context,
+  TripActivity activity,
+  GroupCollaborationViewModel viewModel,
+) async {
+  final titleController = TextEditingController(text: activity.title);
+  final locationController = TextEditingController(
+    text: activity.location ?? '',
+  );
+  var submitting = false;
+
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (dialogContext, setDialogState) => AlertDialog(
+        title: const Text('Edit activity'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: titleController,
+              decoration: const InputDecoration(labelText: 'Activity title'),
+            ),
+            TextField(
+              controller: locationController,
+              decoration: const InputDecoration(labelText: 'Location'),
+            ),
+            const SizedBox(height: 12),
+            Text('Time: ${_shortDate(activity.startTime)}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: submitting ? null : () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: submitting
+                ? null
+                : () async {
+                    setDialogState(() => submitting = true);
+                    try {
+                      await viewModel.editActivity(
+                        activity: activity,
+                        title: titleController.text.trim(),
+                        startTime: activity.startTime,
+                        location: locationController.text.trim().isEmpty
+                            ? null
+                            : locationController.text.trim(),
+                      );
+                      if (dialogContext.mounted) {
+                        Navigator.pop(dialogContext);
+                      }
+                    } catch (error) {
+                      if (dialogContext.mounted) {
+                        ScaffoldMessenger.of(
+                          dialogContext,
+                        ).showSnackBar(SnackBar(content: Text('$error')));
+                      }
+                    } finally {
+                      if (dialogContext.mounted) {
+                        setDialogState(() => submitting = false);
+                      }
+                    }
+                  },
+            child: Text(submitting ? 'Saving...' : 'Save changes'),
+          ),
+        ],
+      ),
+    ),
+  );
+  titleController.dispose();
+  locationController.dispose();
+}
+
 class _FilesTab extends ConsumerWidget {
   const _FilesTab({required this.state});
   final GroupCollaborationState state;
@@ -679,50 +751,6 @@ class _CallsTab extends ConsumerWidget {
       ],
     );
   }
-}
-
-class _ActivityHistoryPanel extends StatelessWidget {
-  const _ActivityHistoryPanel({required this.notifications});
-
-  final List<CollaborationNotification> notifications;
-
-  @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.history),
-              SizedBox(width: 8),
-              Text(
-                'Activity history',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          if (notifications.isEmpty)
-            const Text(
-              'Votes, edits, member actions, and files will appear here.',
-            ),
-          ...notifications
-              .take(5)
-              .map(
-                (event) => ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.bolt_outlined),
-                  title: Text(event.summary),
-                  subtitle: Text(_shortDate(event.createdAt)),
-                ),
-              ),
-        ],
-      ),
-    ),
-  );
 }
 
 class _RoleBadge extends StatelessWidget {
