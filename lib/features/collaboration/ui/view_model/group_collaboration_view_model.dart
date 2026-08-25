@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_mvvm_riverpod/features/common/remote/supabase_client.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration_models.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/repository/collaboration_repository.dart';
+import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/view_model/matchmaking_view_model.dart';
 
 final groupCollaborationViewModelProvider =
     AsyncNotifierProvider.family<
@@ -140,6 +141,9 @@ class GroupCollaborationViewModel
       (item) => item.userId == memberId,
     );
     await _repository.removeMember(current.tripId, memberId);
+    // Update the owner's traveller count immediately. Other sessions receive
+    // the same membership deletion through Supabase Realtime.
+    unawaited(ref.read(matchmakingViewModelProvider.notifier).refresh());
     await _repository.recordEvent(
       tripId: current.tripId,
       actorId: current.currentUserId,
@@ -321,6 +325,13 @@ class GroupCollaborationViewModel
     final current = _current;
     if (current == null) return;
     await _repository.markMessagesRead(current.tripId);
+  }
+
+  Future<void> markCollaborationNotificationsRead() async {
+    final current = _current;
+    if (current == null || current.unreadNotifications.isEmpty) return;
+    await _repository.markCollaborationNotificationsRead(current.tripId);
+    ref.invalidateSelf();
   }
 
   Future<void> pickAndShareFile() async {

@@ -69,6 +69,18 @@ void main() {
     );
   });
 
+  test('allows a trip without a description', () {
+    final withoutDescription = trip().copyWith(description: '');
+
+    expect(
+      () => MatchmakingValidation.validateTrip(
+        withoutDescription,
+        now: DateTime(2030, 1, 1),
+      ),
+      returnsNormally,
+    );
+  });
+
   test('discovery excludes full, closed, owned, joined, and requested trips',
       () {
     final available = trip();

@@ -7,7 +7,9 @@ alter table public.trip_activity_events
   add constraint trip_activity_events_event_type_check check (
     event_type in (
       'activity_created', 'activity_edited', 'activity_pinned', 'vote_cast',
-      'comment_added', 'member_muted', 'member_unmuted', 'member_removed'
+      'comment_added', 'member_muted', 'member_unmuted', 'member_removed',
+      'admin_assigned', 'admin_removed', 'file_shared', 'file_deleted',
+      'call_started', 'call_joined', 'call_ended', 'rsvp_updated'
     )
   );
 

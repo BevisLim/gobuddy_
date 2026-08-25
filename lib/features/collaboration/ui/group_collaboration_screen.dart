@@ -1,18 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import 'package:flutter_mvvm_riverpod/core/environment/env.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration_models.dart';
+import 'package:flutter_mvvm_riverpod/features/collaboration/repository/collaboration_repository.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/jitsi_call_screen.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/view_model/group_collaboration_view_model.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/activity_proposal_dialog.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_recorder.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_message_player.dart';
+import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/view_model/matchmaking_view_model.dart';
 
 class GroupCollaborationScreen extends ConsumerWidget {
-  const GroupCollaborationScreen({required this.tripId, super.key});
+  const GroupCollaborationScreen({
+    required this.tripId,
+    this.knownRemoved = false,
+    super.key,
+  });
   final String tripId;
+  final bool knownRemoved;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -30,30 +39,103 @@ class GroupCollaborationScreen extends ConsumerWidget {
         ),
       );
     }
+    if (knownRemoved) return _RemovedGroupScreen(tripId: tripId);
     final workspace = ref.watch(groupCollaborationViewModelProvider(tripId));
     return workspace.when(
       loading: () =>
           const Scaffold(body: Center(child: CircularProgressIndicator())),
-      error: (error, _) => Scaffold(
-        appBar: AppBar(title: const Text('Trip workspace')),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text('$error'),
-          ),
-        ),
-      ),
+      error: (error, _) => error is CollaborationAccessRemovedException
+          ? _RemovedGroupScreen(tripId: tripId)
+          : Scaffold(
+              appBar: AppBar(title: const Text('Trip workspace')),
+              body: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text('$error'),
+                ),
+              ),
+            ),
       data: (state) => _Workspace(state: state),
     );
   }
 }
 
-class _Workspace extends ConsumerWidget {
+class _RemovedGroupScreen extends ConsumerWidget {
+  const _RemovedGroupScreen({required this.tripId});
+
+  final String tripId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => Scaffold(
+    appBar: AppBar(title: const Text('Trip workspace')),
+    body: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.group_remove_outlined, size: 56),
+            const SizedBox(height: 16),
+            const Text(
+              'You are no longer a member of this trip group.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'You can remove this group from Messages. The trip may appear '
+              'in Discovery again if it is still accepting travellers.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: () {
+                final matchmaking =
+                    ref.read(matchmakingViewModelProvider.notifier);
+                matchmaking.dismissGroup(tripId);
+                ref.invalidate(groupCollaborationViewModelProvider(tripId));
+                context.go(Routes.messages);
+                // Permanently clean up a stale matchmaking membership only
+                // after collaboration access has already been revoked.
+                ref
+                    .read(collaborationRepositoryProvider)
+                    .dismissRemovedGroup(tripId)
+                    .then((_) => matchmaking.refresh())
+                    .catchError((_) {
+                      // The local dismissal remains immediate. A later retry
+                      // can reconcile if the device was temporarily offline.
+                    });
+              },
+              icon: const Icon(Icons.delete_outline_rounded),
+              label: const Text('Remove from Messages'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _Workspace extends ConsumerStatefulWidget {
   const _Workspace({required this.state});
   final GroupCollaborationState state;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_Workspace> createState() => _WorkspaceState();
+}
+
+class _WorkspaceState extends ConsumerState<_Workspace> {
+  final Set<String> _seenNotificationIds = {};
+
+  @override
+  Widget build(BuildContext context) {
+    final state = widget.state;
+    final unreadNotifications = state.unreadNotifications
+        .where((item) => !_seenNotificationIds.contains(item.id))
+        .toList(growable: false);
+    final viewModel = ref.read(
+      groupCollaborationViewModelProvider(state.tripId).notifier,
+    );
     return Scaffold(
       appBar: AppBar(
         title: InkWell(
@@ -74,10 +156,27 @@ class _Workspace extends ConsumerWidget {
         ),
         actions: [
           IconButton(
-            onPressed: () => _showNotifications(context, state.notifications),
+            onPressed: () async {
+              final newlySeenIds = state.unreadNotifications
+                  .map((item) => item.id)
+                  .toSet();
+              setState(() {
+                _seenNotificationIds.addAll(newlySeenIds);
+              });
+              _showNotifications(context, state.notifications);
+              try {
+                await viewModel.markCollaborationNotificationsRead();
+              } catch (error) {
+                if (!context.mounted) return;
+                setState(() => _seenNotificationIds.removeAll(newlySeenIds));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Could not mark updates read: $error')),
+                );
+              }
+            },
             icon: Badge(
-              isLabelVisible: state.notifications.isNotEmpty,
-              label: Text('${state.notifications.length}'),
+              isLabelVisible: unreadNotifications.isNotEmpty,
+              label: Text('${unreadNotifications.length}'),
               child: const Icon(Icons.notifications_outlined),
             ),
             tooltip: 'Collaboration updates',

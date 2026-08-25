@@ -35,11 +35,6 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
             event: PostgresChangeEvent.all,
             schema: 'public',
             table: 'matchmaking_trip_members',
-            filter: PostgresChangeFilter(
-              type: PostgresChangeFilterType.eq,
-              column: 'user_id',
-              value: userId,
-            ),
             callback: (_) {
               if (mounted) {
                 ref.read(matchmakingViewModelProvider.notifier).refresh();
@@ -83,7 +78,11 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
                   );
                 }
                 final trip = trips[index - 1];
-                return _TripConversationCard(trip: trip);
+                return _TripConversationCard(
+                  trip: trip,
+                  wasRemoved:
+                      !trip.isOwned && state.wasRemovedFromTrip(trip.id),
+                );
               },
             ),
       bottomNavigationBar: const AppModuleNavigation(selectedIndex: 2),
@@ -93,8 +92,12 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
 }
 
 class _TripConversationCard extends StatelessWidget {
-  const _TripConversationCard({required this.trip});
+  const _TripConversationCard({
+    required this.trip,
+    required this.wasRemoved,
+  });
   final MatchmakingTrip trip;
+  final bool wasRemoved;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -113,11 +116,13 @@ class _TripConversationCard extends StatelessWidget {
         style: const TextStyle(fontWeight: FontWeight.w700),
       ),
       subtitle: Text(
-        '${_date(trip.startDate)} – ${_date(trip.endDate)} • ${trip.joined} travellers',
+        '${_date(trip.startDate)} – ${_date(trip.endDate)} • '
+        '${trip.joined} ${trip.joined == 1 ? 'traveller' : 'travellers'}',
       ),
       trailing: const Icon(Icons.chevron_right_rounded),
       onTap: () {
-        final path = '${Routes.groupCollaboration}?tripId=${trip.id}';
+        final path = '${Routes.groupCollaboration}?tripId=${trip.id}'
+            '${wasRemoved ? '&removed=true' : ''}';
         context.push(path);
       },
     ),
