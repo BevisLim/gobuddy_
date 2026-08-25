@@ -54,63 +54,256 @@ class _Workspace extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final viewModel = ref.read(
-      groupCollaborationViewModelProvider(state.tripId).notifier,
-    );
-    return DefaultTabController(
-      length: 4,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Trip workspace'),
-          actions: [
-            IconButton(
-              onPressed: () => _showNotifications(context, state.notifications),
-              icon: Badge(
-                isLabelVisible: state.notifications.isNotEmpty,
-                label: Text('${state.notifications.length}'),
-                child: const Icon(Icons.notifications_outlined),
-              ),
-              tooltip: 'Collaboration updates',
+    return Scaffold(
+      appBar: AppBar(
+        title: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => GroupInfoScreen(state: state),
             ),
-            IconButton(
-              onPressed: () => _openInAppCall(
-                context,
-                state.tripId,
-                () => viewModel.startCall('voice'),
-              ),
-              icon: const Icon(Icons.call),
-              tooltip: 'Voice call',
-            ),
-            IconButton(
-              onPressed: () => _openInAppCall(
-                context,
-                state.tripId,
-                () => viewModel.startCall('video'),
-              ),
-              icon: const Icon(Icons.videocam),
-              tooltip: 'Video call',
-            ),
-          ],
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Chat'),
-              Tab(text: 'Timeline'),
-              Tab(text: 'Files'),
-              Tab(text: 'Calls'),
+          ),
+          child: const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Trip workspace'),
+              Text('Tap for group info', style: TextStyle(fontSize: 12)),
             ],
           ),
         ),
-        body: TabBarView(
-          children: [
-            _ChatTab(state: state),
-            _TimelineTab(state: state),
-            _FilesTab(state: state),
-            _CallsTab(state: state),
-          ],
-        ),
+        actions: [
+          IconButton(
+            onPressed: () => _showNotifications(context, state.notifications),
+            icon: Badge(
+              isLabelVisible: state.notifications.isNotEmpty,
+              label: Text('${state.notifications.length}'),
+              child: const Icon(Icons.notifications_outlined),
+            ),
+            tooltip: 'Collaboration updates',
+          ),
+        ],
+      ),
+      body: _ChatTab(state: state),
+    );
+  }
+}
+
+class GroupInfoScreen extends ConsumerWidget {
+  const GroupInfoScreen({required this.state, super.key});
+
+  final GroupCollaborationState state;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final viewModel = ref.read(
+      groupCollaborationViewModelProvider(state.tripId).notifier,
+    );
+    return Scaffold(
+      appBar: AppBar(title: const Text('Group info')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          CircleAvatar(
+            radius: 44,
+            child: Icon(
+              Icons.groups,
+              size: 44,
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Center(
+            child: Text(
+              'Trip workspace',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+          ),
+          Center(child: Text('${state.members.length} members')),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _GroupInfoAction(
+                icon: Icons.call_outlined,
+                label: 'Voice',
+                onTap: () => _openInAppCall(
+                  context,
+                  state.tripId,
+                  () => viewModel.startCall('voice'),
+                ),
+              ),
+              _GroupInfoAction(
+                icon: Icons.videocam_outlined,
+                label: 'Video',
+                onTap: () => _openInAppCall(
+                  context,
+                  state.tripId,
+                  () => viewModel.startCall('video'),
+                ),
+              ),
+              _GroupInfoAction(
+                icon: Icons.person_add_alt_1_outlined,
+                label: 'Members',
+                onTap: () => _openGroupSection(
+                  context,
+                  'Members',
+                  _MembersInfoTab(state: state),
+                ),
+              ),
+              _GroupInfoAction(
+                icon: Icons.notifications_outlined,
+                label: 'Updates',
+                onTap: () => _showNotifications(context, state.notifications),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          const Divider(),
+          _GroupInfoTile(
+            icon: Icons.calendar_month_outlined,
+            title: 'Timeline & activities',
+            subtitle: 'Proposals, polls, RSVPs and activity comments',
+            onTap: () => _openGroupSection(
+              context,
+              'Timeline & activities',
+              _TimelineTab(state: state),
+            ),
+          ),
+          _GroupInfoTile(
+            icon: Icons.folder_outlined,
+            title: 'Files & media',
+            subtitle: '${state.files.length} shared file(s)',
+            onTap: () => _openGroupSection(
+              context,
+              'Files & media',
+              _FilesTab(state: state),
+            ),
+          ),
+          _GroupInfoTile(
+            icon: Icons.history_outlined,
+            title: 'Calls',
+            subtitle: '${state.calls.length} call(s) in history',
+            onTap: () =>
+                _openGroupSection(context, 'Calls', _CallsTab(state: state)),
+          ),
+          const Divider(),
+          const Text(
+            'Group members',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          ...state.members
+              .take(6)
+              .map(
+                (member) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    child: Text((member.displayName ?? 'M')[0].toUpperCase()),
+                  ),
+                  title: Text(member.displayName ?? 'Trip member'),
+                  subtitle: Text(member.isAdmin ? 'Admin' : 'Member'),
+                ),
+              ),
+        ],
       ),
     );
   }
+}
+
+class _GroupInfoAction extends StatelessWidget {
+  const _GroupInfoAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      IconButton.filledTonal(onPressed: onTap, icon: Icon(icon)),
+      const SizedBox(height: 4),
+      Text(label),
+    ],
+  );
+}
+
+class _GroupInfoTile extends StatelessWidget {
+  const _GroupInfoTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    contentPadding: EdgeInsets.zero,
+    leading: Icon(icon),
+    title: Text(title),
+    subtitle: Text(subtitle),
+    trailing: const Icon(Icons.chevron_right),
+    onTap: onTap,
+  );
+}
+
+void _openGroupSection(BuildContext context, String title, Widget child) {
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => Scaffold(
+        appBar: AppBar(title: Text(title)),
+        body: child,
+      ),
+    ),
+  );
+}
+
+class _MembersInfoTab extends StatelessWidget {
+  const _MembersInfoTab({required this.state});
+
+  final GroupCollaborationState state;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.all(16),
+    children: [
+      const Text(
+        'Group members',
+        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      ),
+      const SizedBox(height: 8),
+      ...state.members.map(
+        (member) => ListTile(
+          leading: CircleAvatar(
+            child: Text((member.displayName ?? 'M')[0].toUpperCase()),
+          ),
+          title: Text(member.displayName ?? 'Trip member'),
+          subtitle: Text(
+            member.userId == state.creatorId
+                ? 'Trip creator'
+                : member.isAdmin
+                ? 'Admin'
+                : member.isMuted
+                ? 'Muted'
+                : 'Member',
+          ),
+        ),
+      ),
+      const SizedBox(height: 12),
+      const Text(
+        'Member moderation controls are available in the chat member section for group admins.',
+      ),
+    ],
+  );
 }
 
 class _ChatTab extends ConsumerStatefulWidget {
