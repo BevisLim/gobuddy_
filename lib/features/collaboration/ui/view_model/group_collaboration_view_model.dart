@@ -83,7 +83,7 @@ class GroupCollaborationViewModel
     );
     await _repository.setTyping(
       tripId: current.tripId,
-      userId: current.currentUserId,
+      userId: activeUserId,
       isTyping: false,
     );
     // Refresh immediately after a successful insert. Realtime remains useful
