@@ -9,12 +9,16 @@ class JitsiCallRepository {
   const JitsiCallRepository();
 
   Uri roomUri({required String tripId, required String callType}) {
-    final safeTripId = tripId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '-');
-    final roomName = 'gobuddy-trip-$safeTripId';
+    final roomName = roomNameForTrip(tripId);
     final query = callType == 'voice'
         ? 'config.startWithVideoMuted=true&config.prejoinPageEnabled=true'
         : 'config.prejoinPageEnabled=true';
     return Uri.parse('https://meet.jit.si/$roomName#$query');
+  }
+
+  String roomNameForTrip(String tripId) {
+    final safeTripId = tripId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '-');
+    return 'gobuddy-trip-$safeTripId';
   }
 
   Future<void> joinTripCall({

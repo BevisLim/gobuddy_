@@ -90,8 +90,9 @@ class _RemovedGroupScreen extends ConsumerWidget {
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: () {
-                final matchmaking =
-                    ref.read(matchmakingViewModelProvider.notifier);
+                final matchmaking = ref.read(
+                  matchmakingViewModelProvider.notifier,
+                );
                 matchmaking.dismissGroup(tripId);
                 ref.invalidate(groupCollaborationViewModelProvider(tripId));
                 context.go(Routes.messages);
@@ -170,7 +171,9 @@ class _WorkspaceState extends ConsumerState<_Workspace> {
                 if (!context.mounted) return;
                 setState(() => _seenNotificationIds.removeAll(newlySeenIds));
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Could not mark updates read: $error')),
+                  SnackBar(
+                    content: Text('Could not mark updates read: $error'),
+                  ),
                 );
               }
             },
@@ -305,8 +308,8 @@ class GroupInfoScreen extends ConsumerWidget {
                     member.userId == state.creatorId
                         ? 'Leader'
                         : member.isAdmin
-                            ? 'Admin'
-                            : 'Member',
+                        ? 'Admin'
+                        : 'Member',
                   ),
                 ),
               ),
@@ -399,10 +402,10 @@ class _MembersInfoTab extends ConsumerWidget {
               member.userId == state.creatorId
                   ? 'Leader'
                   : member.isMuted
-                      ? 'Muted'
-                      : member.isAdmin
-                          ? 'Admin'
-                          : 'Member',
+                  ? 'Muted'
+                  : member.isAdmin
+                  ? 'Admin'
+                  : 'Member',
             ),
             trailing:
                 member.userId == state.currentUserId || !state.canManageMembers
@@ -493,14 +496,30 @@ class _ChatTab extends ConsumerStatefulWidget {
 
 class _ChatTabState extends ConsumerState<_ChatTab> {
   final _messageController = TextEditingController();
+  final _messagesController = ScrollController();
   final _voiceRecorder = VoiceRecorder();
   bool _isTyping = false;
   bool _readMarked = false;
   bool _isRecordingVoice = false;
 
   @override
+  void initState() {
+    super.initState();
+    _scheduleScrollToBottom();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChatTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.state.messages.length != widget.state.messages.length) {
+      _scheduleScrollToBottom();
+    }
+  }
+
+  @override
   void dispose() {
     _voiceRecorder.dispose();
+    _messagesController.dispose();
     _messageController.dispose();
     super.dispose();
   }
@@ -520,6 +539,7 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
       children: [
         Expanded(
           child: ListView(
+            controller: _messagesController,
             padding: const EdgeInsets.all(16),
             children: [
               ...widget.state.messages.map(
@@ -623,6 +643,17 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
         ),
       ],
     );
+  }
+
+  void _scheduleScrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_messagesController.hasClients) return;
+      _messagesController.animateTo(
+        _messagesController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   Future<void> _toggleVoiceRecording(

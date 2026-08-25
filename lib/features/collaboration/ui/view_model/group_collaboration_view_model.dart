@@ -77,26 +77,19 @@ class GroupCollaborationViewModel
         'You are muted until the trip creator enables chat again.',
       );
     }
-    await _repository.sendMessage(
-      current.tripId,
-      activeUserId,
-      body.trim(),
-    );
+    await _repository.sendMessage(current.tripId, activeUserId, body.trim());
     await _repository.setTyping(
       tripId: current.tripId,
       userId: activeUserId,
       isTyping: false,
     );
-    // Refresh immediately after a successful insert. Realtime remains useful
-    // for messages from other members, but the sender must not depend on it.
+    // Show the sender's message immediately after a successful insert.
+    // Realtime remains useful for other members; the sender does not need a reply.
     ref.invalidateSelf();
   }
 
   Future<void> muteMember(String memberId, Duration duration) async {
     final current = _requireMemberManager();
-    final member = current.members.firstWhere(
-      (item) => item.userId == memberId,
-    );
     await _repository.setMutedUntil(
       tripId: current.tripId,
       memberId: memberId,
@@ -114,9 +107,6 @@ class GroupCollaborationViewModel
 
   Future<void> unmuteMember(String memberId) async {
     final current = _requireMemberManager();
-    final member = current.members.firstWhere(
-      (item) => item.userId == memberId,
-    );
     await _repository.setMutedUntil(
       tripId: current.tripId,
       memberId: memberId,
@@ -137,9 +127,6 @@ class GroupCollaborationViewModel
     if (memberId == current.creatorId) {
       throw StateError('The trip creator cannot be removed.');
     }
-    final member = current.members.firstWhere(
-      (item) => item.userId == memberId,
-    );
     await _repository.removeMember(current.tripId, memberId);
     // Update the owner's traveller count immediately. Other sessions receive
     // the same membership deletion through Supabase Realtime.
