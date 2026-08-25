@@ -77,6 +77,17 @@ class _MatchmakingShellScreenState
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
+          table: 'matchmaking_notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
+          callback: (_) => _refreshTrips(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
           table: 'trip_members',
           callback: (_) => _refreshTrips(),
         )
