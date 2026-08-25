@@ -139,6 +139,11 @@ final GoRouter router = GoRouter(
           state.slidePage(const SetPasswordScreen()),
     ),
     GoRoute(
+      path: Routes.resetPassword,
+      pageBuilder: (context, state) =>
+          state.slidePage(const SetPasswordScreen(isRecovery: true)),
+    ),
+    GoRoute(
       path: Routes.main,
       pageBuilder: (context, state) =>
           state.slidePage(const MatchmakingShellScreen()),

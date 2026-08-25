@@ -23,12 +23,28 @@ class UserAccountViewModel extends Notifier<UserAccountState> {
 
   /// Private initialization method to load profile data seamlessly
   Future<void> _initLoad() async {
+    // Let Riverpod finish initializing the notifier before mutating state.
+    await Future<void>.delayed(Duration.zero);
+    await _loadProfile();
+  }
+
+  Future<void> refresh() async {
+    if (state.isLoading) return;
+    await _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
     final repository = ref.read(userAccountRepositoryProvider);
+    state = state.copyWith(
+      isLoading: true,
+      clearError: true,
+      clearUser: true,
+    );
     try {
       final initialUser = await repository.fetchCurrentAccount();
       state = state.copyWith(user: initialUser, isLoading: false);
-    } catch (e) {
-      state = state.copyWith(error: e.toString(), isLoading: false);
+    } catch (error) {
+      state = state.copyWith(error: error.toString(), isLoading: false);
     }
   }
 

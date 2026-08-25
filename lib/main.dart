@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_mvvm_riverpod/core/environment/env.dart';
 import 'package:flutter_mvvm_riverpod/core/notifications/push_notification_service.dart';
 import 'package:flutter_mvvm_riverpod/core/routing/router.dart';
+import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_theme.dart';
 import 'package:flutter_mvvm_riverpod/features/common/ui/providers/app_theme_mode_provider.dart';
 
@@ -80,11 +81,47 @@ class _ConfigurationErrorApp extends StatelessWidget {
       );
 }
 
-class GoBuddyApp extends ConsumerWidget {
+class GoBuddyApp extends ConsumerStatefulWidget {
   const GoBuddyApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<GoBuddyApp> createState() => _GoBuddyAppState();
+}
+
+class _GoBuddyAppState extends ConsumerState<GoBuddyApp> {
+  late final StreamSubscription<AuthState> _authSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen(
+      (state) {
+        if (state.event == AuthChangeEvent.passwordRecovery &&
+            state.session != null) {
+          router.go(Routes.resetPassword);
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (error is AuthException) {
+          final message = error.message.toLowerCase();
+          if (message.contains('expired') ||
+              message.contains('invalid') ||
+              message.contains('otp')) {
+            router.go(Routes.resetPassword);
+          }
+        }
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _authSubscription.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final themeMode = ref.watch(appThemeModeProvider).value ?? ThemeMode.system;
     return MaterialApp.router(
       title: 'GoBuddy',

@@ -85,13 +85,53 @@ class AuthenticationRepository {
     }
   }
 
-  Future<void> resetPassword(String email) async {
+  Future<void> sendPasswordResetEmail(String email) async {
     try {
-      await supabase.auth.resetPasswordForEmail(email.trim());
+      await supabase.auth.resetPasswordForEmail(
+        email.trim(),
+        redirectTo: Constants.supabasePasswordRecoveryCallback,
+      );
     } on AuthException catch (error) {
-      throw Exception(error.message);
-    } catch (error) {
-      throw Exception(LocaleKeys.unexpectedErrorOccurred.tr());
+      throw Exception(_friendlyPasswordRecoveryError(error));
+    } catch (_) {
+      throw Exception(
+        'Unable to send the reset link. Check your connection and try again.',
+      );
+    }
+  }
+
+  Future<void> updateRecoveredPassword(String password) async {
+    if (supabase.auth.currentSession == null) {
+      throw Exception(
+        'This password reset link is invalid or expired. Request a new link.',
+      );
+    }
+
+    try {
+      await supabase.auth.updateUser(UserAttributes(password: password));
+      try {
+        await supabase.auth.signOut(scope: SignOutScope.local);
+      } catch (_) {
+        // The password is already updated. Login navigation still prevents
+        // continuing into the authenticated app from the recovery flow.
+      }
+    } on AuthException catch (error) {
+      final message = error.message.toLowerCase();
+      if (message.contains('password') || message.contains('weak')) {
+        throw Exception(
+          'Choose a stronger password with at least 6 characters.',
+        );
+      }
+      if (message.contains('expired') ||
+          message.contains('invalid') ||
+          message.contains('session')) {
+        throw Exception(
+          'This password reset link is invalid or expired. Request a new link.',
+        );
+      }
+      throw Exception('Unable to reset your password. Please try again.');
+    } catch (_) {
+      throw Exception('Unable to reset your password. Please try again.');
     }
   }
 
@@ -181,18 +221,23 @@ class AuthenticationRepository {
   }
 
   Future<void> signOut() async {
-    // TODO: fake data
-    await setIsLogin(false);
-    return;
-
-    // ignore: dead_code
     try {
       await supabase.auth.signOut();
-      Purchases.logOut();
-    } on AuthException catch (error) {
-      throw Exception(error.message);
-    } catch (error) {
-      throw Exception(LocaleKeys.unexpectedErrorOccurred.tr());
+      if (supabase.auth.currentSession != null ||
+          supabase.auth.currentUser != null) {
+        throw const AuthException('The Supabase session could not be cleared.');
+      }
+
+      try {
+        await Purchases.logOut();
+      } catch (_) {
+        // Supabase is the authentication source of truth. A RevenueCat cleanup
+        // failure must not restore or misreport an already-ended auth session.
+      }
+    } on AuthException {
+      throw Exception('Unable to sign out. Please try again.');
+    } catch (_) {
+      throw Exception('Unable to sign out. Please try again.');
     }
   }
 
@@ -266,4 +311,14 @@ String _friendlyGoogleSignInError(AuthException error) {
     return 'Unable to connect. Check your internet connection and try again.';
   }
   return 'Google sign-in failed. Please try again.';
+}
+
+String _friendlyPasswordRecoveryError(AuthException error) {
+  final message = error.message.toLowerCase();
+  if (message.contains('network') ||
+      message.contains('socket') ||
+      message.contains('connection')) {
+    return 'Unable to connect. Check your internet connection and try again.';
+  }
+  return 'Unable to send the reset link. Please try again later.';
 }

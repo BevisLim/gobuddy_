@@ -45,17 +45,32 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
     return true;
   }
 
-  Future<void> resetPassword(String email) async {
+  Future<bool> sendPasswordResetEmail(String email) async {
     state = const AsyncValue.loading();
-    final result =
-        await AsyncValue.guard(() => _repository.resetPassword(email.trim()));
+    final result = await AsyncValue.guard(
+      () => _repository.sendPasswordResetEmail(email.trim()),
+    );
 
     if (result case AsyncError(:final error, :final stackTrace)) {
       state = AsyncError(error, stackTrace);
-      return;
+      return false;
     }
 
     state = const AsyncData(AuthenticationState());
+    return true;
+  }
+
+  Future<bool> updateRecoveredPassword(String password) async {
+    state = const AsyncValue.loading();
+    final result = await AsyncValue.guard(
+      () => _repository.updateRecoveredPassword(password),
+    );
+    if (result case AsyncError(:final error, :final stackTrace)) {
+      state = AsyncError(error, stackTrace);
+      return false;
+    }
+    state = const AsyncData(AuthenticationState());
+    return true;
   }
 
   Future<bool> signInWithGoogle() async {
