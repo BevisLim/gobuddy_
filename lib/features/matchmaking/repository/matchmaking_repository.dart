@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -77,11 +79,13 @@ class MatchmakingRepository {
           .from('matchmaking_trip_members')
           .select()
           .inFilter('trip_id', tripIds),
+      supabase.from('trip_members').select().inFilter('trip_id', tripIds),
       supabase.from('user_accounts').select().inFilter('id', ownerIds),
     ]);
     final styleRows = relatedRows[0];
     final memberRows = relatedRows[1];
-    final profileRows = relatedRows[2];
+    final groupMemberRows = relatedRows[2];
+    final profileRows = relatedRows[3];
     final stylesByTrip = <String, Set<String>>{};
     for (final row in styleRows) {
       stylesByTrip
@@ -92,6 +96,11 @@ class MatchmakingRepository {
     for (final row in memberRows) {
       final id = row['trip_id'] as String;
       membersByTrip[id] = (membersByTrip[id] ?? 0) + 1;
+    }
+    final groupMembersByTrip = <String, int>{};
+    for (final row in groupMemberRows) {
+      final id = row['trip_id'] as String;
+      groupMembersByTrip[id] = (groupMembersByTrip[id] ?? 0) + 1;
     }
     final profiles = <String, Map<String, dynamic>>{
       for (final row in profileRows)
@@ -120,6 +129,7 @@ class MatchmakingRepository {
           maxAge: data['maximum_age'] as int,
           vacancies: data['vacancies'] as int,
           joined: membersByTrip[data['id']] ?? 0,
+          groupMemberCount: groupMembersByTrip[data['id']] ?? 0,
           description: data['description'] as String,
           verifiedHost: profile?['verification_status'] == 'verified',
           status: TripStatus.values.byName(data['status'] as String),
@@ -269,6 +279,39 @@ class MatchmakingRepository {
   Future<void> deleteTrip(String id) async {
     _requireUser();
     await supabase.from('matchmaking_trips').delete().eq('id', id);
+  }
+
+  Future<void> finishTrip(String id) async {
+    final user = _requireUser();
+    await supabase
+        .from('matchmaking_trips')
+        .update({
+          'status': 'closed',
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', id)
+        .eq('owner_id', user.id);
+  }
+
+  Future<String> uploadTripCover({
+    required String tripId,
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    final user = _requireUser();
+    final extension = fileName.contains('.')
+        ? fileName.split('.').last.toLowerCase()
+        : 'jpg';
+    final safeExtension = const {'jpg', 'jpeg', 'png', 'webp'}.contains(extension)
+        ? extension
+        : 'jpg';
+    final path = '${user.id}/$tripId/cover.$safeExtension';
+    await supabase.storage.from('trip-images').uploadBinary(
+          path,
+          bytes,
+          fileOptions: const FileOptions(upsert: true),
+        );
+    return supabase.storage.from('trip-images').getPublicUrl(path);
   }
 
   Future<void> setTripSaved(String tripId, {required bool saved}) async {

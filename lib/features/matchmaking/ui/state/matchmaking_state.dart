@@ -13,6 +13,7 @@ class MatchmakingState {
       this.requests = const [],
       this.currentUserId = '',
       this.joinedTripIds = const {},
+      this.dismissedGroupIds = const {},
       this.notifications = const [],
       this.savedTripIds = const {},
       this.isLoading = false,
@@ -30,6 +31,7 @@ class MatchmakingState {
   final List<JoinRequest> requests;
   final String currentUserId;
   final Set<String> joinedTripIds;
+  final Set<String> dismissedGroupIds;
   final List<MatchmakingNotification> notifications;
   final Set<String> savedTripIds;
   final bool isLoading;
@@ -49,9 +51,28 @@ class MatchmakingState {
   List<MatchmakingTrip> get joinedTrips => trips
       .where((trip) => joinedTripIds.contains(trip.id))
       .toList(growable: false);
+  List<MatchmakingTrip> get removedTrips => trips
+      .where((trip) => !trip.isOwned && wasRemovedFromTrip(trip.id))
+      .toList(growable: false);
+  List<MatchmakingTrip> get groupTrips => trips
+      .where(
+        (trip) =>
+            !dismissedGroupIds.contains(trip.id) &&
+            (trip.isOwned ||
+                joinedTripIds.contains(trip.id) ||
+                wasRemovedFromTrip(trip.id)),
+      )
+      .toList(growable: false);
   List<JoinRequest> get myRequests => requests
       .where((request) => request.applicantId == currentUserId)
       .toList(growable: false);
+  bool wasRemovedFromTrip(String tripId) {
+    return notifications.any(
+      (notification) =>
+          notification.tripId == tripId &&
+          notification.title.toLowerCase().contains('removed'),
+    );
+  }
   List<MatchmakingTrip> get discoveryTrips => trips
       .where((trip) =>
           !trip.isOwned &&
@@ -70,7 +91,14 @@ class MatchmakingState {
         ApplicantDecision.accepted,
       }.contains(request.decision));
   List<JoinRequest> get managedRequests => requests
-      .where((request) => request.tripId == managedTripId)
+      .where(
+        (request) =>
+            request.tripId == managedTripId &&
+            const {
+              ApplicantDecision.pending,
+              ApplicantDecision.held,
+            }.contains(request.decision),
+      )
       .toList(growable: false);
   MatchmakingTrip? _tripById(String? id) =>
       trips.where((trip) => trip.id == id).firstOrNull;
@@ -115,6 +143,7 @@ class MatchmakingState {
           List<JoinRequest>? requests,
           String? currentUserId,
           Set<String>? joinedTripIds,
+          Set<String>? dismissedGroupIds,
           List<MatchmakingNotification>? notifications,
           Set<String>? savedTripIds,
           bool? isLoading,
@@ -137,6 +166,7 @@ class MatchmakingState {
           requests: requests ?? this.requests,
           currentUserId: currentUserId ?? this.currentUserId,
           joinedTripIds: joinedTripIds ?? this.joinedTripIds,
+          dismissedGroupIds: dismissedGroupIds ?? this.dismissedGroupIds,
           notifications: notifications ?? this.notifications,
           savedTripIds: savedTripIds ?? this.savedTripIds,
           isLoading: isLoading ?? this.isLoading,

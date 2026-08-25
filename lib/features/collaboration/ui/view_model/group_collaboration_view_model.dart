@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_mvvm_riverpod/features/common/remote/supabase_client.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration_models.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/repository/collaboration_repository.dart';
+import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/view_model/matchmaking_view_model.dart';
 
 final groupCollaborationViewModelProvider =
     AsyncNotifierProvider.family<
@@ -59,32 +60,40 @@ class GroupCollaborationViewModel
     if (current == null || body.trim().isEmpty) {
       return;
     }
+    final activeUserId = supabase.auth.currentUser?.id;
+    if (activeUserId == null) {
+      throw StateError('Please sign in before sending a message.');
+    }
+    if (activeUserId != current.currentUserId) {
+      // Never send with identity cached from a previous account. Rebuilding
+      // also fixes which messages are labelled as "You".
+      ref.invalidateSelf();
+      throw StateError(
+        'Your account changed. The group was refreshed; please send again.',
+      );
+    }
     if (current.isMuted) {
       throw StateError(
         'You are muted until the trip creator enables chat again.',
       );
     }
-    await _repository.sendMessage(
-      current.tripId,
-      current.currentUserId,
-      body.trim(),
-    );
+    await _repository.sendMessage(current.tripId, activeUserId, body.trim());
     await _repository.setTyping(
       tripId: current.tripId,
-      userId: current.currentUserId,
+      userId: activeUserId,
       isTyping: false,
     );
-    // Show the sender's message immediately; other members refresh through
-    // the Supabase Realtime subscription and do not need to reply first.
+    // Show the sender's message immediately after a successful insert.
+    // Realtime remains useful for other members; the sender does not need a reply.
     ref.invalidateSelf();
   }
 
   Future<void> muteMember(String memberId, Duration duration) async {
     final current = _requireMemberManager();
-    await _repository.setMute(
+    await _repository.setMutedUntil(
       tripId: current.tripId,
       memberId: memberId,
-      duration: duration,
+      mutedUntil: DateTime.now().add(duration),
     );
     await _repository.recordEvent(
       tripId: current.tripId,
@@ -98,7 +107,11 @@ class GroupCollaborationViewModel
 
   Future<void> unmuteMember(String memberId) async {
     final current = _requireMemberManager();
-    await _repository.unmuteMember(tripId: current.tripId, memberId: memberId);
+    await _repository.setMutedUntil(
+      tripId: current.tripId,
+      memberId: memberId,
+      mutedUntil: null,
+    );
     await _repository.recordEvent(
       tripId: current.tripId,
       actorId: current.currentUserId,
@@ -115,6 +128,9 @@ class GroupCollaborationViewModel
       throw StateError('The trip creator cannot be removed.');
     }
     await _repository.removeMember(current.tripId, memberId);
+    // Update the owner's traveller count immediately. Other sessions receive
+    // the same membership deletion through Supabase Realtime.
+    unawaited(ref.read(matchmakingViewModelProvider.notifier).refresh());
     await _repository.recordEvent(
       tripId: current.tripId,
       actorId: current.currentUserId,
@@ -296,6 +312,13 @@ class GroupCollaborationViewModel
     final current = _current;
     if (current == null) return;
     await _repository.markMessagesRead(current.tripId);
+  }
+
+  Future<void> markCollaborationNotificationsRead() async {
+    final current = _current;
+    if (current == null || current.unreadNotifications.isEmpty) return;
+    await _repository.markCollaborationNotificationsRead(current.tripId);
+    ref.invalidateSelf();
   }
 
   Future<void> pickAndShareFile() async {

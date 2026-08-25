@@ -1,11 +1,17 @@
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../common/ui/widgets/app_module_navigation.dart';
+import '../../common/remote/supabase_client.dart';
 import '../../../core/routing/routes.dart';
 import '../model/matchmaking_models.dart';
 import '../model/matchmaking_notification.dart';
@@ -29,6 +35,84 @@ class MatchmakingShellScreen extends ConsumerStatefulWidget {
 
 class _MatchmakingShellScreenState
     extends ConsumerState<MatchmakingShellScreen> {
+  RealtimeChannel? _tripsChannel;
+  StreamSubscription<AuthState>? _authSubscription;
+  String? _subscribedUserId;
+
+  @override
+  void initState() {
+    super.initState();
+    _subscribeToTrips(supabase.auth.currentUser?.id);
+    _authSubscription = supabase.auth.onAuthStateChange.listen((authState) {
+      _subscribeToTrips(authState.session?.user.id);
+    });
+  }
+
+  Future<void> _subscribeToTrips(String? userId) async {
+    if (!mounted || userId == _subscribedUserId) return;
+
+    final previousChannel = _tripsChannel;
+    _tripsChannel = null;
+    _subscribedUserId = null;
+    if (previousChannel != null) {
+      await supabase.removeChannel(previousChannel);
+    }
+    if (!mounted || userId == null) return;
+
+    _subscribedUserId = userId;
+    _tripsChannel = supabase
+        .channel('matchmaking-trips-$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'matchmaking_trips',
+          callback: (_) => _refreshTrips(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'matchmaking_join_requests',
+          callback: (_) => _refreshTrips(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'matchmaking_notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
+          callback: (_) => _refreshTrips(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'trip_members',
+          callback: (_) => _refreshTrips(),
+        )
+        .subscribe((status, error) {
+          if (status == RealtimeSubscribeStatus.subscribed) {
+            // Close the gap between the initial query and channel readiness.
+            _refreshTrips();
+          }
+        });
+  }
+
+  void _refreshTrips() {
+    if (mounted) {
+      ref.read(matchmakingViewModelProvider.notifier).refresh();
+    }
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    final channel = _tripsChannel;
+    if (channel != null) supabase.removeChannel(channel);
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen<String?>(
@@ -75,23 +159,28 @@ class _MatchmakingShellScreenState
           onRequest: () => viewModel.goTo(MatchmakingPage.request)),
       MatchmakingPage.create => InteractiveTripFormPage(
           onBack: () => viewModel.goTo(MatchmakingPage.discover),
-          onPublish: viewModel.saveTrip),
+          onPublish: viewModel.saveTrip,
+          onUploadImage: viewModel.uploadTripCover),
       MatchmakingPage.edit => InteractiveTripFormPage(
           edit: true,
           initialTrip: state.selectedTrip,
           onBack: () => viewModel.goTo(MatchmakingPage.myTrips),
           onPublish: viewModel.saveTrip,
+          onUploadImage: viewModel.uploadTripCover,
           onDelete: () => viewModel.deleteTrip(state.selectedTrip!.id)),
       MatchmakingPage.myTrips => MyTripsPage(
           trips: state.ownedTrips,
           joinedTrips: state.joinedTrips,
+          removedTrips: state.removedTrips,
           allTrips: state.trips,
           requests: state.myRequests,
           onBack: () => viewModel.goTo(MatchmakingPage.discover),
           onCreate: () => viewModel.goTo(MatchmakingPage.create),
           onManage: viewModel.openRequests,
           onEdit: (id) => viewModel.openTrip(id, MatchmakingPage.edit),
-          onDelete: viewModel.deleteTrip,
+          onFinish: viewModel.finishTrip,
+          onOpenGroup: (id) => context.push(
+              '${Routes.groupCollaboration}?tripId=${Uri.encodeQueryComponent(id)}'),
           onCancelRequest: viewModel.cancelRequest),
       MatchmakingPage.request => RequestPage(
           trip: state.selectedTrip!,
@@ -830,6 +919,7 @@ class TripDetailsPage extends StatelessWidget {
 class InteractiveTripFormPage extends StatefulWidget {
   final VoidCallback onBack;
   final ValueChanged<MatchmakingTrip> onPublish;
+  final Future<String> Function(String, Uint8List, String) onUploadImage;
   final VoidCallback? onDelete;
   final MatchmakingTrip? initialTrip;
   final bool edit;
@@ -837,6 +927,7 @@ class InteractiveTripFormPage extends StatefulWidget {
       {super.key,
       required this.onBack,
       required this.onPublish,
+      required this.onUploadImage,
       this.onDelete,
       this.initialTrip,
       this.edit = false});
@@ -857,6 +948,10 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
   final _styles = <String>{};
   String _gender = 'Any';
   RangeValues _ages = const RangeValues(22, 40);
+  late String _imageUrl;
+  Uint8List? _pendingImageBytes;
+  String? _pendingImageName;
+  bool _isUploadingImage = false;
   static const _styleOptions = [
     'Adventure',
     'Foodie',
@@ -870,6 +965,7 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
   void initState() {
     super.initState();
     final trip = widget.initialTrip;
+    _imageUrl = trip?.imageUrl ?? '';
     _destination = TextEditingController(text: trip?.destination ?? '');
     _start = TextEditingController(
         text: trip == null ? '' : _dateInput(trip.startDate));
@@ -946,7 +1042,22 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
     }
   }
 
-  void _submit() {
+  Future<void> _pickCoverImage() async {
+    final image = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+      maxWidth: 1800,
+    );
+    if (image == null) return;
+    final bytes = await image.readAsBytes();
+    if (!mounted) return;
+    setState(() {
+      _pendingImageBytes = bytes;
+      _pendingImageName = image.name;
+    });
+  }
+
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate() || _styles.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content:
@@ -960,8 +1071,29 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
           content: Text('End date cannot be earlier than start date.')));
       return;
     }
+    final tripId = widget.initialTrip?.id ?? const Uuid().v4();
+    var coverUrl = _imageUrl;
+    if (_pendingImageBytes != null && _pendingImageName != null) {
+      setState(() => _isUploadingImage = true);
+      try {
+        coverUrl = await widget.onUploadImage(
+          tripId,
+          _pendingImageBytes!,
+          _pendingImageName!,
+        );
+      } catch (error) {
+        if (!mounted) return;
+        setState(() => _isUploadingImage = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not upload trip photo: $error')),
+        );
+        return;
+      }
+    }
+    if (!mounted) return;
+    setState(() => _isUploadingImage = false);
     widget.onPublish(MatchmakingTrip(
-      id: widget.initialTrip?.id ?? const Uuid().v4(),
+      id: tripId,
       destination: _destination.text.trim(),
       startDate: start,
       endDate: end,
@@ -970,7 +1102,7 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
       hostId: widget.initialTrip?.hostId ?? 'current-user',
       hostName: widget.initialTrip?.hostName ?? 'Morgan Lee',
       hostInitials: widget.initialTrip?.hostInitials ?? 'ML',
-      imageUrl: widget.initialTrip?.imageUrl ?? _tokyo,
+      imageUrl: coverUrl.isEmpty ? _tokyo : coverUrl,
       gender: _gender,
       minAge: _ages.start.round(),
       maxAge: _ages.end.round(),
@@ -1026,6 +1158,35 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      const FieldLabel('COVER PHOTO'),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 180,
+                        width: double.infinity,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: _pendingImageBytes != null
+                              ? Image.memory(
+                                  _pendingImageBytes!,
+                                  fit: BoxFit.cover,
+                                )
+                              : TravelImage(
+                                  url: _imageUrl.isEmpty ? _tokyo : _imageUrl,
+                                  radius: 12,
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: _isUploadingImage ? null : _pickCoverImage,
+                        icon: const Icon(Icons.add_photo_alternate_outlined),
+                        label: Text(
+                          _imageUrl.isEmpty && _pendingImageBytes == null
+                              ? 'Add photo'
+                              : 'Change photo',
+                        ),
+                      ),
+                      const SizedBox(height: 18),
                       const FieldLabel('DESTINATION'),
                       _field(_destination, 'e.g. Tokyo, Japan'),
                       const SizedBox(height: 18),
@@ -1113,8 +1274,12 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
                           lines: 4, required: false),
                       const SizedBox(height: 24),
                       PrimaryButton(
-                          label: widget.edit ? 'Save Changes' : 'Publish Trip',
-                          onTap: _submit),
+                          label: _isUploadingImage
+                              ? 'Uploading photo...'
+                              : widget.edit
+                                  ? 'Save Changes'
+                                  : 'Publish Trip',
+                          onTap: _isUploadingImage ? null : _submit),
                       if (widget.edit) ...[
                         const SizedBox(height: 10),
                         OutlineButton(label: 'Delete Trip', onTap: _delete)
@@ -1143,21 +1308,24 @@ class _DateInputFormatter extends TextInputFormatter {
 
 class MyTripsPage extends StatelessWidget {
   final VoidCallback onBack, onCreate;
-  final List<MatchmakingTrip> trips, joinedTrips, allTrips;
+  final List<MatchmakingTrip> trips, joinedTrips, removedTrips, allTrips;
   final List<JoinRequest> requests;
-  final ValueChanged<String> onManage, onEdit, onDelete;
+  final ValueChanged<String> onManage, onEdit, onFinish;
+  final ValueChanged<String> onOpenGroup;
   final Future<void> Function(String) onCancelRequest;
   const MyTripsPage(
       {super.key,
       required this.trips,
       required this.joinedTrips,
+      required this.removedTrips,
       required this.allTrips,
       required this.requests,
       required this.onBack,
       required this.onCreate,
       required this.onManage,
-      required this.onDelete,
+      required this.onFinish,
       required this.onEdit,
+      required this.onOpenGroup,
       required this.onCancelRequest});
   @override
   Widget build(BuildContext context) =>
@@ -1173,21 +1341,30 @@ class MyTripsPage extends StatelessWidget {
         const SizedBox(height: 16),
         OutlineButton(label: '+ Create a new trip', onTap: onCreate),
         const SizedBox(height: 24),
-        if (trips.isEmpty && joinedTrips.isEmpty && requests.isEmpty)
+        if (trips.isEmpty &&
+            joinedTrips.isEmpty &&
+            removedTrips.isEmpty &&
+            requests.isEmpty)
           const _NoTripsFound(),
+        if (trips.isNotEmpty) ...[
+          const Text('Hosting', style: _heading),
+          const SizedBox(height: 12),
+        ],
         for (final trip in trips) ...[
           CompactTrip(
               destination: trip.destination,
               dates: _dateRange(trip.startDate, trip.endDate),
-              members: '${trip.joined} joined',
+              members: '${trip.groupMemberCount} joined',
               image: trip.imageUrl,
               status: _statusLabel(trip.status),
               onEdit: () => onEdit(trip.id),
               onManage: () => onManage(trip.id),
-              onDelete: () => onDelete(trip.id)),
+              onFinish: trip.status == TripStatus.closed
+                  ? null
+                  : () => onFinish(trip.id)),
           const SizedBox(height: 14),
         ],
-        if (joinedTrips.isNotEmpty) ...[
+        if (joinedTrips.isNotEmpty || removedTrips.isNotEmpty) ...[
           const SizedBox(height: 18),
           const Text('Joined trips', style: _heading),
           const SizedBox(height: 12),
@@ -1197,7 +1374,24 @@ class MyTripsPage extends StatelessWidget {
                 leading: const Icon(Icons.group_outlined, color: _violet),
                 title: Text(trip.destination),
                 subtitle: Text(_dateRange(trip.startDate, trip.endDate)),
-                trailing: const Chip(label: Text('Joined')),
+                trailing: FilledButton.tonalIcon(
+                  onPressed: () => onOpenGroup(trip.id),
+                  icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
+                  label: const Text('Group'),
+                ),
+                onTap: () => onOpenGroup(trip.id),
+              ),
+            ),
+          for (final trip in removedTrips)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.group_off_outlined, color: _muted),
+                title: Text(trip.destination),
+                subtitle: Text(_dateRange(trip.startDate, trip.endDate)),
+                trailing: const Chip(
+                  avatar: Icon(Icons.person_remove_outlined, size: 18),
+                  label: Text('Removed from group'),
+                ),
               ),
             ),
         ],
@@ -1365,9 +1559,15 @@ class ManageRequestsPage extends StatelessWidget {
         Text('${trip.destination} · ${requests.length} applicants',
             style: TextStyle(color: _muted)),
         const SizedBox(height: 22),
+        if (requests.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 48),
+            child: Center(child: Text('No pending requests.')),
+          ),
         for (final request in requests) ...[
           ApplicantCard(
               applicant: _applicant(request.applicantId),
+              message: request.message,
               onTap: () => onApplicant(request.applicantId),
               status: _decisionLabel(request.decision),
               onDecision: (decision) => onDecision(request.id, decision)),
@@ -1457,6 +1657,11 @@ class ApplicantPage extends StatelessWidget {
                             .map((value) =>
                                 ChipButton(label: value, active: true))
                             .toList()),
+                    SizedBox(height: 24),
+                    FieldLabel('REQUEST MESSAGE'),
+                    SizedBox(height: 8),
+                    Text(request.message,
+                        style: TextStyle(color: _muted, height: 1.65)),
                     SizedBox(height: 24),
                     FieldLabel('ABOUT'),
                     SizedBox(height: 8),
@@ -1626,7 +1831,7 @@ class SlotChip extends StatelessWidget {
 
 class PrimaryButton extends StatelessWidget {
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   const PrimaryButton({super.key, required this.label, required this.onTap});
   @override
   Widget build(BuildContext context) => SizedBox(
@@ -1828,7 +2033,7 @@ class CompactTrip extends StatelessWidget {
   final String status;
   final VoidCallback? onManage;
   final VoidCallback? onEdit;
-  final VoidCallback? onDelete;
+  final VoidCallback? onFinish;
   const CompactTrip({
     super.key,
     required this.destination,
@@ -1838,27 +2043,26 @@ class CompactTrip extends StatelessWidget {
     this.status = 'Active',
     this.onManage,
     this.onEdit,
-    this.onDelete,
+    this.onFinish,
   });
 
-  Future<void> _confirmDelete(BuildContext context) async {
-    if (onDelete == null) return;
+  Future<void> _confirmFinish(BuildContext context) async {
+    if (onFinish == null) return;
     final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-                title: const Text('Delete trip?'),
-                content:
-                    Text('Delete $destination? This action cannot be undone.'),
+                title: const Text('Finish trip?'),
+                content: Text(
+                    'Mark $destination as finished? It will no longer appear in Discovery.'),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(context, false),
                       child: const Text('Cancel')),
                   TextButton(
                       onPressed: () => Navigator.pop(context, true),
-                      child: const Text('Delete',
-                          style: TextStyle(color: Color(0xFFDC2626))))
+                      child: const Text('Finish trip'))
                 ]));
-    if (confirmed == true) onDelete?.call();
+    if (confirmed == true) onFinish?.call();
   }
 
   @override
@@ -1907,23 +2111,25 @@ class CompactTrip extends StatelessWidget {
                       onPressed: onManage, child: const Text('Requests'))),
               Expanded(
                   child: TextButton(
-                      onPressed: onDelete == null
+                      onPressed: onFinish == null
                           ? null
-                          : () => _confirmDelete(context),
-                      child: const Text('Delete',
-                          style: TextStyle(color: Color(0xFFDC2626)))))
+                          : () => _confirmFinish(context),
+                      child: Text(
+                          onFinish == null ? 'Finished' : 'Finish trip')))
             ]))
       ]));
 }
 
 class ApplicantCard extends StatelessWidget {
   final MatchmakingApplicant applicant;
+  final String message;
   final String status;
   final VoidCallback? onTap;
   final ValueChanged<ApplicantDecision>? onDecision;
   const ApplicantCard(
       {super.key,
       required this.applicant,
+      required this.message,
       this.status = 'Pending',
       this.onTap,
       this.onDecision});
@@ -1964,7 +2170,7 @@ class ApplicantCard extends StatelessWidget {
                 .map((value) => ChipButton(label: value, small: true))
                 .toList()),
         const SizedBox(height: 12),
-        Text('“${applicant.introduction}”',
+        Text('“$message”',
             style: TextStyle(
                 fontStyle: FontStyle.italic, color: _muted, height: 1.45)),
         if (status == 'Pending') ...[

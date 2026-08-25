@@ -149,8 +149,17 @@ final GoRouter router = GoRouter(
     ),
     GoRoute(
       path: Routes.main,
-      pageBuilder: (context, state) =>
-          state.slidePage(const MatchmakingShellScreen()),
+      pageBuilder: (context, state) => state.slidePage(
+        ProviderScope(
+          overrides: [
+            matchmakingInitialPageProvider.overrideWithValue(
+              MatchmakingPage.discover,
+            ),
+            matchmakingViewModelProvider.overrideWith(MatchmakingViewModel.new),
+          ],
+          child: const MatchmakingShellScreen(),
+        ),
+      ),
     ),
     GoRoute(
       path: Routes.myTrips,
@@ -160,6 +169,7 @@ final GoRouter router = GoRouter(
             matchmakingInitialPageProvider.overrideWithValue(
               MatchmakingPage.myTrips,
             ),
+            matchmakingViewModelProvider.overrideWith(MatchmakingViewModel.new),
           ],
           child: const MatchmakingShellScreen(),
         ),
@@ -311,7 +321,13 @@ final GoRouter router = GoRouter(
       path: Routes.groupCollaboration,
       pageBuilder: (context, state) {
         final tripId = state.uri.queryParameters['tripId'] ?? '';
-        return state.slidePage(GroupCollaborationScreen(tripId: tripId));
+        final knownRemoved = state.uri.queryParameters['removed'] == 'true';
+        return state.slidePage(
+          GroupCollaborationScreen(
+            tripId: tripId,
+            knownRemoved: knownRemoved,
+          ),
+        );
       },
     ),
   ],

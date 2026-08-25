@@ -32,14 +32,19 @@ create index if not exists user_reports_review_queue_idx
 alter table public.user_blocks enable row level security;
 alter table public.user_reports enable row level security;
 
+drop policy if exists "users read blocks they created" on public.user_blocks;
 create policy "users read blocks they created" on public.user_blocks
   for select to authenticated using (blocker_id = auth.uid());
+drop policy if exists "users create their blocks" on public.user_blocks;
 create policy "users create their blocks" on public.user_blocks
   for insert to authenticated with check (blocker_id = auth.uid());
+drop policy if exists "users remove their blocks" on public.user_blocks;
 create policy "users remove their blocks" on public.user_blocks
   for delete to authenticated using (blocker_id = auth.uid());
+drop policy if exists "users create their reports" on public.user_reports;
 create policy "users create their reports" on public.user_reports
   for insert to authenticated with check (reporter_id = auth.uid());
+drop policy if exists "users read their reports" on public.user_reports;
 create policy "users read their reports" on public.user_reports
   for select to authenticated using (reporter_id = auth.uid());
 
@@ -61,7 +66,7 @@ as $$
   select b.blocked_id, coalesce(p.display_name, 'GoBuddy user'),
          null::text, b.created_at
   from public.user_blocks b
-  left join public.matchmaking_profiles p on p.id = b.blocked_id
+  left join public.user_accounts p on p.id = b.blocked_id
   where b.blocker_id = auth.uid()
   order by b.created_at desc;
 $$;
@@ -104,6 +109,7 @@ before insert or update on public.matchmaking_join_requests
 for each row execute function public.reject_blocked_trip_interaction();
 
 drop policy if exists "members read messages" on public.trip_messages;
+drop policy if exists "members read unblocked messages" on public.trip_messages;
 create policy "members read unblocked messages" on public.trip_messages
 for select to authenticated using (
   public.is_trip_member(trip_id)

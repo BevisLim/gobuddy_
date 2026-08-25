@@ -1,22 +1,97 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_colors.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_theme.dart';
+import 'package:flutter_mvvm_riverpod/features/common/remote/supabase_client.dart';
 import 'package:flutter_mvvm_riverpod/features/common/ui/widgets/app_module_navigation.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/model/matchmaking_models.dart';
-import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/state/matchmaking_state.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/view_model/matchmaking_view_model.dart';
 
-class MessagesScreen extends ConsumerWidget {
+class MessagesScreen extends ConsumerStatefulWidget {
   const MessagesScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MessagesScreen> createState() => _MessagesScreenState();
+}
+
+class _MessagesScreenState extends ConsumerState<MessagesScreen> {
+  RealtimeChannel? _membershipChannel;
+  StreamSubscription<AuthState>? _authSubscription;
+  String? _subscribedUserId;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(matchmakingViewModelProvider.notifier).refresh();
+    });
+    _subscribeToGroupChanges(supabase.auth.currentUser?.id);
+    _authSubscription = supabase.auth.onAuthStateChange.listen((authState) {
+      _subscribeToGroupChanges(authState.session?.user.id);
+    });
+  }
+
+  Future<void> _subscribeToGroupChanges(String? userId) async {
+    if (!mounted || userId == _subscribedUserId) return;
+    final previousChannel = _membershipChannel;
+    _membershipChannel = null;
+    _subscribedUserId = null;
+    if (previousChannel != null) await supabase.removeChannel(previousChannel);
+    if (!mounted || userId == null) return;
+
+    _subscribedUserId = userId;
+    _membershipChannel = supabase
+        .channel('message-groups-$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'matchmaking_trip_members',
+          callback: (_) => _refreshGroups(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'trip_members',
+          callback: (_) => _refreshGroups(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'matchmaking_notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
+          callback: (_) => _refreshGroups(),
+        )
+        .subscribe((status, error) {
+          if (status == RealtimeSubscribeStatus.subscribed) _refreshGroups();
+        });
+  }
+
+  void _refreshGroups() {
+    if (mounted) ref.read(matchmakingViewModelProvider.notifier).refresh();
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    final channel = _membershipChannel;
+    if (channel != null) supabase.removeChannel(channel);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(matchmakingViewModelProvider);
-    final trips = _groupTrips(state);
+    final trips = state.groupTrips;
     return Scaffold(
       appBar: AppBar(title: Text('Messages', style: AppTheme.title20)),
       body: trips.isEmpty
@@ -39,31 +114,26 @@ class MessagesScreen extends ConsumerWidget {
                   );
                 }
                 final trip = trips[index - 1];
-                return _TripConversationCard(trip: trip);
+                return _TripConversationCard(
+                  trip: trip,
+                  wasRemoved:
+                      !trip.isOwned && state.wasRemovedFromTrip(trip.id),
+                );
               },
             ),
       bottomNavigationBar: const AppModuleNavigation(selectedIndex: 2),
     );
   }
 
-  List<MatchmakingTrip> _groupTrips(MatchmakingState state) {
-    final acceptedIds = state.requests
-        .where(
-          (request) =>
-              request.applicantId == 'current-user' &&
-              request.decision == ApplicantDecision.accepted,
-        )
-        .map((request) => request.tripId)
-        .toSet();
-    return state.trips
-        .where((trip) => trip.isOwned || acceptedIds.contains(trip.id))
-        .toList(growable: false);
-  }
 }
 
 class _TripConversationCard extends StatelessWidget {
-  const _TripConversationCard({required this.trip});
+  const _TripConversationCard({
+    required this.trip,
+    required this.wasRemoved,
+  });
   final MatchmakingTrip trip;
+  final bool wasRemoved;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -82,11 +152,19 @@ class _TripConversationCard extends StatelessWidget {
         style: const TextStyle(fontWeight: FontWeight.w700),
       ),
       subtitle: Text(
-        '${_date(trip.startDate)} – ${_date(trip.endDate)} • ${trip.joined} travellers',
+        '${_date(trip.startDate)} – ${_date(trip.endDate)} • '
+        '${trip.groupMemberCount} '
+        '${trip.groupMemberCount == 1 ? 'member' : 'members'}',
       ),
-      trailing: const Icon(Icons.chevron_right_rounded),
+      trailing: wasRemoved
+          ? const Chip(
+              avatar: Icon(Icons.person_remove_outlined, size: 18),
+              label: Text('Removed from group'),
+            )
+          : const Icon(Icons.chevron_right_rounded),
       onTap: () {
-        final path = '${Routes.groupCollaboration}?tripId=${trip.id}';
+        final path = '${Routes.groupCollaboration}?tripId=${trip.id}'
+            '${wasRemoved ? '&removed=true' : ''}';
         context.push(path);
       },
     ),

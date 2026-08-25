@@ -20,6 +20,7 @@ class MatchmakingTrip {
     required this.vacancies,
     required this.description,
     this.joined = 0,
+    this.groupMemberCount = 0,
     this.verifiedHost = true,
     this.status = TripStatus.active,
     this.isOwned = false,
@@ -27,7 +28,7 @@ class MatchmakingTrip {
 
   final String id, destination, hostId, hostName, hostInitials, imageUrl;
   final DateTime startDate, endDate;
-  final int budget, minAge, maxAge, vacancies, joined;
+  final int budget, minAge, maxAge, vacancies, joined, groupMemberCount;
   final Set<String> styles;
   final String gender, description;
   final bool verifiedHost, isOwned;
@@ -55,6 +56,7 @@ class MatchmakingTrip {
           int? vacancies,
           String? description,
           int? joined,
+          int? groupMemberCount,
           TripStatus? status}) =>
       MatchmakingTrip(
           id: id,
@@ -73,6 +75,7 @@ class MatchmakingTrip {
           vacancies: vacancies ?? this.vacancies,
           description: description ?? this.description,
           joined: joined ?? this.joined,
+          groupMemberCount: groupMemberCount ?? this.groupMemberCount,
           verifiedHost: verifiedHost,
           status: status ?? this.status,
           isOwned: isOwned);

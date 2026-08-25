@@ -13,11 +13,16 @@ alter table public.trip_activity_events
       'vote_cast',
       'comment_added',
       'member_muted',
+      'member_unmuted',
       'member_removed',
       'admin_assigned',
+      'admin_removed',
       'file_shared',
+      'file_deleted',
       'call_started',
-      'call_joined'
+      'call_joined',
+      'call_ended',
+      'rsvp_updated'
     )
   );
 

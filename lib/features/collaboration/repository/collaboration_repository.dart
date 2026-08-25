@@ -19,6 +19,13 @@ class CollaborationRepository {
     required String tripId,
     required String currentUserId,
   }) async {
+    final hasAccess = await _client.rpc(
+      'is_trip_member',
+      params: {'p_trip_id': tripId},
+    );
+    if (hasAccess != true) {
+      throw const CollaborationAccessRemovedException();
+    }
     final trip = await _client
         .from('matchmaking_trips')
         .select('owner_id')
@@ -83,6 +90,11 @@ class CollaborationRepository {
                 .toUtc()
                 .toIso8601String(),
           ),
+      _client
+          .from('trip_activity_event_reads')
+          .select('event_id')
+          .eq('trip_id', tripId)
+          .eq('user_id', currentUserId),
     ]);
     final profileNames = <String, String>{
       for (final profile in results[8] as List<dynamic>)
@@ -172,6 +184,10 @@ class CollaborationRepository {
             ),
           )
           .toList(),
+      readNotificationIds: {
+        for (final read in results[12] as List<dynamic>)
+          (read as Map<String, dynamic>)['event_id'] as String,
+      },
       calls: (results[9] as List<dynamic>).map((call) {
         final row = call as Map<String, dynamic>;
         return TripCall.fromMap(
@@ -312,15 +328,13 @@ class CollaborationRepository {
       .from('trip_messages')
       .insert({'trip_id': tripId, 'sender_id': userId, 'body': body});
 
-  Future<void> setMute({
+  Future<void> setMutedUntil({
     required String tripId,
     required String memberId,
-    required Duration duration,
+    required DateTime? mutedUntil,
   }) => _client
       .from('trip_members')
-      .update({
-        'muted_until': DateTime.now().add(duration).toUtc().toIso8601String(),
-      })
+      .update({'muted_until': mutedUntil?.toUtc().toIso8601String()})
       .eq('trip_id', tripId)
       .eq('user_id', memberId);
 
@@ -333,11 +347,10 @@ class CollaborationRepository {
       .eq('trip_id', tripId)
       .eq('user_id', memberId);
 
-  Future<void> removeMember(String tripId, String memberId) => _client
-      .from('trip_members')
-      .delete()
-      .eq('trip_id', tripId)
-      .eq('user_id', memberId);
+  Future<void> removeMember(String tripId, String memberId) => _client.rpc(
+    'remove_matchmaking_trip_member',
+    params: {'p_trip_id': tripId, 'p_user_id': memberId},
+  );
 
   Future<void> makeAdmin({required String tripId, required String memberId}) =>
       _client.from('trip_member_roles').upsert({
@@ -472,6 +485,14 @@ class CollaborationRepository {
   Future<void> markMessagesRead(String tripId) =>
       _client.rpc('mark_trip_messages_read', params: {'p_trip_id': tripId});
 
+  Future<void> markCollaborationNotificationsRead(String tripId) => _client.rpc(
+    'mark_trip_activity_events_read',
+    params: {'p_trip_id': tripId},
+  );
+
+  Future<void> dismissRemovedGroup(String tripId) =>
+      _client.rpc('dismiss_removed_trip_group', params: {'p_trip_id': tripId});
+
   Future<void> addActivityComment({
     required String tripId,
     required String activityId,
@@ -495,4 +516,11 @@ class CollaborationRepository {
     'event_type': type,
     'summary': summary,
   });
+}
+
+class CollaborationAccessRemovedException implements Exception {
+  const CollaborationAccessRemovedException();
+
+  @override
+  String toString() => 'You are no longer a member of this trip group.';
 }
