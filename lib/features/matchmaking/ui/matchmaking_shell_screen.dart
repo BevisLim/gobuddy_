@@ -6,9 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../common/ui/widgets/app_module_navigation.dart';
+import '../../common/remote/supabase_client.dart';
 import '../../../core/routing/routes.dart';
 import '../model/matchmaking_models.dart';
 import '../model/matchmaking_notification.dart';
@@ -32,6 +34,36 @@ class MatchmakingShellScreen extends ConsumerStatefulWidget {
 
 class _MatchmakingShellScreenState
     extends ConsumerState<MatchmakingShellScreen> {
+  RealtimeChannel? _tripsChannel;
+
+  @override
+  void initState() {
+    super.initState();
+    final userId = supabase.auth.currentUser?.id;
+    if (userId != null) {
+      _tripsChannel = supabase
+          .channel('matchmaking-trips-$userId')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'matchmaking_trips',
+            callback: (_) {
+              if (mounted) {
+                ref.read(matchmakingViewModelProvider.notifier).refresh();
+              }
+            },
+          )
+          .subscribe();
+    }
+  }
+
+  @override
+  void dispose() {
+    final channel = _tripsChannel;
+    if (channel != null) supabase.removeChannel(channel);
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen<String?>(
