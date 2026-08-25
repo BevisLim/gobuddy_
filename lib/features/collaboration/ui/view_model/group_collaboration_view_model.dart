@@ -74,6 +74,9 @@ class GroupCollaborationViewModel
       userId: current.currentUserId,
       isTyping: false,
     );
+    // Show the sender's message immediately; other members refresh through
+    // the Supabase Realtime subscription and do not need to reply first.
+    ref.invalidateSelf();
   }
 
   Future<void> muteMember(String memberId, Duration duration) async {
