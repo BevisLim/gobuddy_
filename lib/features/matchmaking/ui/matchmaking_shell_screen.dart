@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -35,30 +36,61 @@ class MatchmakingShellScreen extends ConsumerStatefulWidget {
 class _MatchmakingShellScreenState
     extends ConsumerState<MatchmakingShellScreen> {
   RealtimeChannel? _tripsChannel;
+  StreamSubscription<AuthState>? _authSubscription;
+  String? _subscribedUserId;
 
   @override
   void initState() {
     super.initState();
-    final userId = supabase.auth.currentUser?.id;
-    if (userId != null) {
-      _tripsChannel = supabase
-          .channel('matchmaking-trips-$userId')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: 'matchmaking_trips',
-            callback: (_) {
-              if (mounted) {
-                ref.read(matchmakingViewModelProvider.notifier).refresh();
-              }
-            },
-          )
-          .subscribe();
+    _subscribeToTrips(supabase.auth.currentUser?.id);
+    _authSubscription = supabase.auth.onAuthStateChange.listen((authState) {
+      _subscribeToTrips(authState.session?.user.id);
+    });
+  }
+
+  Future<void> _subscribeToTrips(String? userId) async {
+    if (!mounted || userId == _subscribedUserId) return;
+
+    final previousChannel = _tripsChannel;
+    _tripsChannel = null;
+    _subscribedUserId = null;
+    if (previousChannel != null) {
+      await supabase.removeChannel(previousChannel);
+    }
+    if (!mounted || userId == null) return;
+
+    _subscribedUserId = userId;
+    _tripsChannel = supabase
+        .channel('matchmaking-trips-$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'matchmaking_trips',
+          callback: (_) => _refreshTrips(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'trip_members',
+          callback: (_) => _refreshTrips(),
+        )
+        .subscribe((status, error) {
+          if (status == RealtimeSubscribeStatus.subscribed) {
+            // Close the gap between the initial query and channel readiness.
+            _refreshTrips();
+          }
+        });
+  }
+
+  void _refreshTrips() {
+    if (mounted) {
+      ref.read(matchmakingViewModelProvider.notifier).refresh();
     }
   }
 
   @override
   void dispose() {
+    _authSubscription?.cancel();
     final channel = _tripsChannel;
     if (channel != null) supabase.removeChannel(channel);
     super.dispose();
@@ -122,6 +154,7 @@ class _MatchmakingShellScreenState
       MatchmakingPage.myTrips => MyTripsPage(
           trips: state.ownedTrips,
           joinedTrips: state.joinedTrips,
+          removedTrips: state.removedTrips,
           allTrips: state.trips,
           requests: state.myRequests,
           onBack: () => viewModel.goTo(MatchmakingPage.discover),
@@ -1258,7 +1291,7 @@ class _DateInputFormatter extends TextInputFormatter {
 
 class MyTripsPage extends StatelessWidget {
   final VoidCallback onBack, onCreate;
-  final List<MatchmakingTrip> trips, joinedTrips, allTrips;
+  final List<MatchmakingTrip> trips, joinedTrips, removedTrips, allTrips;
   final List<JoinRequest> requests;
   final ValueChanged<String> onManage, onEdit, onFinish;
   final ValueChanged<String> onOpenGroup;
@@ -1267,6 +1300,7 @@ class MyTripsPage extends StatelessWidget {
       {super.key,
       required this.trips,
       required this.joinedTrips,
+      required this.removedTrips,
       required this.allTrips,
       required this.requests,
       required this.onBack,
@@ -1290,7 +1324,10 @@ class MyTripsPage extends StatelessWidget {
         const SizedBox(height: 16),
         OutlineButton(label: '+ Create a new trip', onTap: onCreate),
         const SizedBox(height: 24),
-        if (trips.isEmpty && joinedTrips.isEmpty && requests.isEmpty)
+        if (trips.isEmpty &&
+            joinedTrips.isEmpty &&
+            removedTrips.isEmpty &&
+            requests.isEmpty)
           const _NoTripsFound(),
         if (trips.isNotEmpty) ...[
           const Text('Hosting', style: _heading),
@@ -1300,7 +1337,7 @@ class MyTripsPage extends StatelessWidget {
           CompactTrip(
               destination: trip.destination,
               dates: _dateRange(trip.startDate, trip.endDate),
-              members: '${trip.joined} joined',
+              members: '${trip.groupMemberCount} joined',
               image: trip.imageUrl,
               status: _statusLabel(trip.status),
               onEdit: () => onEdit(trip.id),
@@ -1310,7 +1347,7 @@ class MyTripsPage extends StatelessWidget {
                   : () => onFinish(trip.id)),
           const SizedBox(height: 14),
         ],
-        if (joinedTrips.isNotEmpty) ...[
+        if (joinedTrips.isNotEmpty || removedTrips.isNotEmpty) ...[
           const SizedBox(height: 18),
           const Text('Joined trips', style: _heading),
           const SizedBox(height: 12),
@@ -1326,6 +1363,18 @@ class MyTripsPage extends StatelessWidget {
                   label: const Text('Group'),
                 ),
                 onTap: () => onOpenGroup(trip.id),
+              ),
+            ),
+          for (final trip in removedTrips)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.group_off_outlined, color: _muted),
+                title: Text(trip.destination),
+                subtitle: Text(_dateRange(trip.startDate, trip.endDate)),
+                trailing: const Chip(
+                  avatar: Icon(Icons.person_remove_outlined, size: 18),
+                  label: Text('Removed from group'),
+                ),
               ),
             ),
         ],

@@ -301,7 +301,13 @@ class GroupInfoScreen extends ConsumerWidget {
                     child: Text((member.displayName ?? 'M')[0].toUpperCase()),
                   ),
                   title: Text(member.displayName ?? 'Trip member'),
-                  subtitle: Text(member.isAdmin ? 'Admin' : 'Member'),
+                  subtitle: Text(
+                    member.userId == state.creatorId
+                        ? 'Leader'
+                        : member.isAdmin
+                            ? 'Admin'
+                            : 'Member',
+                  ),
                 ),
               ),
         ],
@@ -389,7 +395,15 @@ class _MembersInfoTab extends ConsumerWidget {
             leading: CircleAvatar(
               child: Text((member.displayName ?? 'M')[0].toUpperCase()),
             ),
-            subtitle: Text(member.isMuted ? 'Muted' : 'Trip member'),
+            subtitle: Text(
+              member.userId == state.creatorId
+                  ? 'Leader'
+                  : member.isMuted
+                      ? 'Muted'
+                      : member.isAdmin
+                          ? 'Admin'
+                          : 'Member',
+            ),
             trailing:
                 member.userId == state.currentUserId || !state.canManageMembers
                 ? null
@@ -457,7 +471,7 @@ class _MembersInfoTab extends ConsumerWidget {
               children: [
                 Expanded(child: Text(member.displayName ?? 'Trip member')),
                 if (member.userId == state.creatorId)
-                  const _RoleBadge(label: 'Creator')
+                  const _RoleBadge(label: 'Leader')
                 else if (member.isAdmin)
                   const _RoleBadge(label: 'Admin'),
               ],
