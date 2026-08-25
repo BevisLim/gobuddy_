@@ -267,43 +267,107 @@ void _openGroupSection(BuildContext context, String title, Widget child) {
   );
 }
 
-class _MembersInfoTab extends StatelessWidget {
+class _MembersInfoTab extends ConsumerWidget {
   const _MembersInfoTab({required this.state});
 
   final GroupCollaborationState state;
 
   @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(16),
-    children: [
-      const Text(
-        'Group members',
-        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-      ),
-      const SizedBox(height: 8),
-      ...state.members.map(
-        (member) => ListTile(
-          leading: CircleAvatar(
-            child: Text((member.displayName ?? 'M')[0].toUpperCase()),
-          ),
-          title: Text(member.displayName ?? 'Trip member'),
-          subtitle: Text(
-            member.userId == state.creatorId
-                ? 'Trip creator'
-                : member.isAdmin
-                ? 'Admin'
-                : member.isMuted
-                ? 'Muted'
-                : 'Member',
+  Widget build(BuildContext context, WidgetRef ref) {
+    final viewModel = ref.read(
+      groupCollaborationViewModelProvider(state.tripId).notifier,
+    );
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const Text(
+          'Group members',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        ...state.members.map(
+          (member) => ListTile(
+            leading: CircleAvatar(
+              child: Text((member.displayName ?? 'M')[0].toUpperCase()),
+            ),
+            subtitle: Text(member.isMuted ? 'Muted' : 'Trip member'),
+            trailing:
+                member.userId == state.currentUserId || !state.canManageMembers
+                ? null
+                : Wrap(
+                    spacing: 4,
+                    children: [
+                      TextButton(
+                        onPressed: () => _confirmMemberAction(
+                          context: context,
+                          title: member.isMuted
+                              ? 'Unmute member?'
+                              : 'Mute member?',
+                          message:
+                              'This member cannot send chat messages for 30 minutes.',
+                          confirmLabel: member.isMuted ? 'Unmute' : 'Mute',
+                          onConfirm: () => member.isMuted
+                              ? viewModel.unmuteMember(member.userId)
+                              : viewModel.muteMember(
+                                  member.userId,
+                                  const Duration(minutes: 30),
+                                ),
+                        ),
+                        child: Text(member.isMuted ? 'Unmute' : 'Mute'),
+                      ),
+                      TextButton(
+                        onPressed: () => _confirmMemberAction(
+                          context: context,
+                          title: 'Remove member?',
+                          message:
+                              'They will lose access to this trip workspace.',
+                          confirmLabel: 'Remove',
+                          isDestructive: true,
+                          onConfirm: () =>
+                              viewModel.removeMember(member.userId),
+                        ),
+                        child: const Text('Remove'),
+                      ),
+                      if (state.isCreator && !member.isAdmin)
+                        TextButton(
+                          onPressed: () => _confirmMemberAction(
+                            context: context,
+                            title: 'Make admin?',
+                            message: 'Admins can mute or remove group members.',
+                            confirmLabel: 'Make admin',
+                            onConfirm: () => viewModel.makeAdmin(member.userId),
+                          ),
+                          child: const Text('Make admin'),
+                        ),
+                      if (state.isCreator && member.isAdmin)
+                        TextButton(
+                          onPressed: () => _confirmMemberAction(
+                            context: context,
+                            title: 'Remove admin?',
+                            message:
+                                'This member will remain in the group but lose admin permissions.',
+                            confirmLabel: 'Remove admin',
+                            onConfirm: () =>
+                                viewModel.removeAdmin(member.userId),
+                          ),
+                          child: const Text('Remove admin'),
+                        ),
+                    ],
+                  ),
+            title: Row(
+              children: [
+                Expanded(child: Text(member.displayName ?? 'Trip member')),
+                if (member.userId == state.creatorId)
+                  const _RoleBadge(label: 'Creator')
+                else if (member.isAdmin)
+                  const _RoleBadge(label: 'Admin'),
+              ],
+            ),
           ),
         ),
-      ),
-      const SizedBox(height: 12),
-      const Text(
-        'Member moderation controls are available in the chat member section for group admins.',
-      ),
-    ],
-  );
+      ],
+    );
+  }
 }
 
 class _ChatTab extends ConsumerStatefulWidget {
@@ -351,99 +415,6 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
                   isMine: message.senderId == widget.state.currentUserId,
                 ),
               ),
-              const Text(
-                'Member Management',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              ...widget.state.members
-                  .where(
-                    (member) => member.userId != widget.state.currentUserId,
-                  )
-                  .map(
-                    (member) => ListTile(
-                      title: Row(
-                        children: [
-                          Expanded(
-                            child: Text(member.displayName ?? 'Trip member'),
-                          ),
-                          if (member.userId == widget.state.creatorId)
-                            const _RoleBadge(label: 'Creator')
-                          else if (member.isAdmin)
-                            const _RoleBadge(label: 'Admin'),
-                        ],
-                      ),
-                      subtitle: member.isMuted
-                          ? const Text('Muted for 30 minutes')
-                          : const Text('Trip member'),
-                      trailing: widget.state.canManageMembers
-                          ? Wrap(
-                              children: [
-                                TextButton(
-                                  onPressed: () => _confirmMemberAction(
-                                    context: context,
-                                    title: member.isMuted
-                                        ? 'Unmute member?'
-                                        : 'Mute member?',
-                                    message:
-                                        'This member cannot send chat messages for 30 minutes.',
-                                    confirmLabel: member.isMuted
-                                        ? 'Unmute'
-                                        : 'Mute',
-                                    onConfirm: () => member.isMuted
-                                        ? viewModel.unmuteMember(member.userId)
-                                        : viewModel.muteMember(
-                                            member.userId,
-                                            const Duration(minutes: 30),
-                                          ),
-                                  ),
-                                  child: Text(
-                                    member.isMuted ? 'Unmute' : 'Mute',
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: () => _confirmMemberAction(
-                                    context: context,
-                                    title: 'Remove member?',
-                                    message:
-                                        'They will lose access to this trip workspace.',
-                                    confirmLabel: 'Remove',
-                                    isDestructive: true,
-                                    onConfirm: () =>
-                                        viewModel.removeMember(member.userId),
-                                  ),
-                                  child: const Text('Remove'),
-                                ),
-                                if (widget.state.isCreator && !member.isAdmin)
-                                  TextButton(
-                                    onPressed: () => _confirmMemberAction(
-                                      context: context,
-                                      title: 'Make admin?',
-                                      message:
-                                          'Admins can mute or remove group members.',
-                                      confirmLabel: 'Make admin',
-                                      onConfirm: () =>
-                                          viewModel.makeAdmin(member.userId),
-                                    ),
-                                    child: const Text('Make admin'),
-                                  ),
-                                if (widget.state.isCreator && member.isAdmin)
-                                  TextButton(
-                                    onPressed: () => _confirmMemberAction(
-                                      context: context,
-                                      title: 'Remove admin?',
-                                      message:
-                                          'This member will remain in the group but lose admin permissions.',
-                                      confirmLabel: 'Remove admin',
-                                      onConfirm: () =>
-                                          viewModel.removeAdmin(member.userId),
-                                    ),
-                                    child: const Text('Remove admin'),
-                                  ),
-                              ],
-                            )
-                          : null,
-                    ),
-                  ),
               if (widget.state.typingMemberNames.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
