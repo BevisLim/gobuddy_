@@ -6,6 +6,34 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Matchmaking route starts on Discover after My Trips was selected', () {
+    final parent = ProviderContainer();
+    addTearDown(parent.dispose);
+    parent
+        .read(matchmakingViewModelProvider.notifier)
+        .goTo(MatchmakingPage.myTrips);
+
+    final routeScope = ProviderContainer(
+      parent: parent,
+      overrides: [
+        matchmakingInitialPageProvider.overrideWithValue(
+          MatchmakingPage.discover,
+        ),
+        matchmakingViewModelProvider.overrideWith(MatchmakingViewModel.new),
+      ],
+    );
+    addTearDown(routeScope.dispose);
+
+    expect(
+      parent.read(matchmakingViewModelProvider).page,
+      MatchmakingPage.myTrips,
+    );
+    expect(
+      routeScope.read(matchmakingViewModelProvider).page,
+      MatchmakingPage.discover,
+    );
+  });
+
   testWidgets('My Trips route opens the My Trips page', (tester) async {
     tester.view.physicalSize = const Size(1080, 1920);
     tester.view.devicePixelRatio = 1;

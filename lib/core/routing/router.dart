@@ -149,8 +149,17 @@ final GoRouter router = GoRouter(
     ),
     GoRoute(
       path: Routes.main,
-      pageBuilder: (context, state) =>
-          state.slidePage(const MatchmakingShellScreen()),
+      pageBuilder: (context, state) => state.slidePage(
+        ProviderScope(
+          overrides: [
+            matchmakingInitialPageProvider.overrideWithValue(
+              MatchmakingPage.discover,
+            ),
+            matchmakingViewModelProvider.overrideWith(MatchmakingViewModel.new),
+          ],
+          child: const MatchmakingShellScreen(),
+        ),
+      ),
     ),
     GoRoute(
       path: Routes.myTrips,
@@ -160,6 +169,7 @@ final GoRouter router = GoRouter(
             matchmakingInitialPageProvider.overrideWithValue(
               MatchmakingPage.myTrips,
             ),
+            matchmakingViewModelProvider.overrideWith(MatchmakingViewModel.new),
           ],
           child: const MatchmakingShellScreen(),
         ),
