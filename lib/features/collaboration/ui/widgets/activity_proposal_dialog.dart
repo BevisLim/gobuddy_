@@ -8,7 +8,8 @@ class ActivityProposalDialog extends StatefulWidget {
   });
 
   final Future<void> Function(String title, String? location) onPropose;
-  final Future<void> Function(String question, List<String> options) onCreatePoll;
+  final Future<void> Function(String question, List<String> options)
+  onCreatePoll;
 
   @override
   State<ActivityProposalDialog> createState() => _ActivityProposalDialogState();
@@ -44,7 +45,10 @@ class _ActivityProposalDialogState extends State<ActivityProposalDialog> {
       }
       if (mounted) Navigator.pop(context);
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$error')));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -53,24 +57,54 @@ class _ActivityProposalDialogState extends State<ActivityProposalDialog> {
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: Text(_creatingPoll ? 'Create activity poll' : 'Propose activity'),
-    content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      TextField(controller: _titleController, decoration: InputDecoration(labelText: _creatingPoll ? 'Poll question' : 'Activity title')),
-      if (!_creatingPoll) TextField(controller: _locationController, decoration: const InputDecoration(labelText: 'Location (optional)')),
-      if (_creatingPoll) ...[
-        TextField(controller: _optionOneController, decoration: const InputDecoration(labelText: 'Option 1')),
-        TextField(controller: _optionTwoController, decoration: const InputDecoration(labelText: 'Option 2')),
-      ],
-      const SizedBox(height: 12),
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        value: _creatingPoll,
-        onChanged: _submitting ? null : (value) => setState(() => _creatingPoll = value),
-        title: const Text('Create a voting poll instead'),
+    content: SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _titleController,
+            decoration: InputDecoration(
+              labelText: _creatingPoll ? 'Poll question' : 'Activity title',
+            ),
+          ),
+          if (!_creatingPoll)
+            TextField(
+              controller: _locationController,
+              decoration: const InputDecoration(
+                labelText: 'Location (optional)',
+              ),
+            ),
+          if (_creatingPoll) ...[
+            TextField(
+              controller: _optionOneController,
+              decoration: const InputDecoration(labelText: 'Option 1'),
+            ),
+            TextField(
+              controller: _optionTwoController,
+              decoration: const InputDecoration(labelText: 'Option 2'),
+            ),
+          ],
+          const SizedBox(height: 12),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: _creatingPoll,
+            onChanged: _submitting
+                ? null
+                : (value) => setState(() => _creatingPoll = value),
+            title: const Text('Create a voting poll instead'),
+          ),
+        ],
       ),
-    ])),
+    ),
     actions: [
-      TextButton(onPressed: _submitting ? null : () => Navigator.pop(context), child: const Text('Cancel')),
-      FilledButton(onPressed: _submitting ? null : _submit, child: Text(_submitting ? 'Saving...' : 'Create')),
+      TextButton(
+        onPressed: _submitting ? null : () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: _submitting ? null : _submit,
+        child: Text(_submitting ? 'Saving...' : 'Create'),
+      ),
     ],
   );
 }

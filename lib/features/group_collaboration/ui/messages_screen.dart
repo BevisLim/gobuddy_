@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:flutter_mvvm_riverpod/core/environment/env.dart';
 import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_colors.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_theme.dart';
@@ -23,7 +22,7 @@ class MessagesScreen extends ConsumerWidget {
       body: trips.isEmpty ? const _EmptyMessages() : ListView.separated(
         padding: const EdgeInsets.all(16),
         itemCount: trips.length + 1,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, index) {
           if (index == 0) {
             return const Padding(
