@@ -7,6 +7,8 @@ import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/jitsi_call_screen.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/view_model/group_collaboration_view_model.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/activity_proposal_dialog.dart';
+import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_recorder.dart';
+import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_message_player.dart';
 
 class GroupCollaborationScreen extends ConsumerWidget {
   const GroupCollaborationScreen({required this.tripId, super.key});
@@ -121,11 +123,14 @@ class _ChatTab extends ConsumerStatefulWidget {
 
 class _ChatTabState extends ConsumerState<_ChatTab> {
   final _messageController = TextEditingController();
+  final _voiceRecorder = VoiceRecorder();
   bool _isTyping = false;
   bool _readMarked = false;
+  bool _isRecordingVoice = false;
 
   @override
   void dispose() {
+    _voiceRecorder.dispose();
     _messageController.dispose();
     super.dispose();
   }
@@ -148,20 +153,9 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
             padding: const EdgeInsets.all(16),
             children: [
               ...widget.state.messages.map(
-                (message) => Card(
-                  child: ListTile(
-                    title: Text(
-                      message.senderId == widget.state.currentUserId
-                          ? 'You'
-                          : (message.senderName ?? 'Trip member'),
-                    ),
-                    subtitle: Text(
-                      message.senderId == widget.state.currentUserId
-                          ? '${message.body}\nSeen by ${message.readByCount} member(s)'
-                          : message.body,
-                    ),
-                    isThreeLine: message.senderId == widget.state.currentUserId,
-                  ),
+                (message) => _MessageBubble(
+                  message: message,
+                  isMine: message.senderId == widget.state.currentUserId,
                 ),
               ),
               const Text(
@@ -280,6 +274,16 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
                   icon: const Icon(Icons.attach_file),
                   tooltip: 'Share file',
                 ),
+                IconButton(
+                  onPressed: widget.state.isMuted
+                      ? null
+                      : () => _runWorkspaceAction(
+                          context,
+                          viewModel.takeAndSharePhoto,
+                        ),
+                  icon: const Icon(Icons.camera_alt_outlined),
+                  tooltip: 'Take photo',
+                ),
                 Expanded(
                   child: TextField(
                     controller: _messageController,
@@ -307,6 +311,20 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
                         },
                   icon: const Icon(Icons.send),
                 ),
+                IconButton(
+                  onPressed: widget.state.isMuted
+                      ? null
+                      : () => _toggleVoiceRecording(viewModel),
+                  icon: Icon(
+                    _isRecordingVoice ? Icons.stop_circle : Icons.mic,
+                    color: _isRecordingVoice
+                        ? Theme.of(context).colorScheme.error
+                        : null,
+                  ),
+                  tooltip: _isRecordingVoice
+                      ? 'Stop and send voice message'
+                      : 'Record voice message',
+                ),
               ],
             ),
           ),
@@ -314,6 +332,106 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
       ],
     );
   }
+
+  Future<void> _toggleVoiceRecording(
+    GroupCollaborationViewModel viewModel,
+  ) async {
+    try {
+      if (!_isRecordingVoice) {
+        await _voiceRecorder.start();
+        if (mounted) setState(() => _isRecordingVoice = true);
+        return;
+      }
+      final bytes = await _voiceRecorder.stop();
+      if (mounted) setState(() => _isRecordingVoice = false);
+      if (bytes != null) await viewModel.shareVoiceMessage(bytes);
+    } catch (error) {
+      if (mounted) {
+        setState(() => _isRecordingVoice = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not record voice message: $error')),
+        );
+      }
+    }
+  }
+}
+
+class _MessageBubble extends StatelessWidget {
+  const _MessageBubble({required this.message, required this.isMine});
+
+  final TripMessage message;
+  final bool isMine;
+
+  @override
+  Widget build(BuildContext context) {
+    final photoUrl = _messageAttachmentUrl(message.body, '[photo]');
+    final voiceUrl = _messageAttachmentUrl(message.body, '[voice]');
+    final colorScheme = Theme.of(context).colorScheme;
+    return Align(
+      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 340),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isMine
+                ? colorScheme.primaryContainer
+                : colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.only(
+              topLeft: const Radius.circular(16),
+              topRight: const Radius.circular(16),
+              bottomLeft: Radius.circular(isMine ? 16 : 4),
+              bottomRight: Radius.circular(isMine ? 4 : 16),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: isMine
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
+            children: [
+              if (!isMine)
+                Text(
+                  message.senderName ?? 'Trip member',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              if (photoUrl != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(
+                    photoUrl,
+                    height: 220,
+                    width: 280,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Text('Photo could not be loaded.'),
+                    ),
+                  ),
+                )
+              else if (voiceUrl != null)
+                VoiceMessagePlayer(url: voiceUrl)
+              else
+                Text(message.body),
+              const SizedBox(height: 4),
+              Text(
+                isMine
+                    ? '${_shortTime(message.sentAt)} · Seen by ${message.readByCount}'
+                    : _shortTime(message.sentAt),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String? _messageAttachmentUrl(String body, String prefix) {
+  if (!body.startsWith(prefix)) return null;
+  final url = body.substring(prefix.length).trim();
+  return Uri.tryParse(url)?.hasScheme == true ? url : null;
 }
 
 class _TimelineTab extends ConsumerWidget {
@@ -837,6 +955,9 @@ Future<void> _openInAppCall(
 
 String _shortDate(DateTime value) =>
     '${value.day}/${value.month}/${value.year} ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+
+String _shortTime(DateTime value) =>
+    '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
 
 String _currentRsvp(GroupCollaborationState state, String activityId) {
   final ownRsvp = state.rsvps

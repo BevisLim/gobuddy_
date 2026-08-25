@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:flutter_mvvm_riverpod/features/common/remote/supabase_client.dart';
@@ -312,6 +314,68 @@ class GroupCollaborationViewModel
       actorId: current.currentUserId,
       type: 'file_shared',
       summary: 'A file was shared with the group: ${file.name}.',
+    );
+    ref.invalidateSelf();
+  }
+
+  Future<void> takeAndSharePhoto() async {
+    final current = _current;
+    if (current == null) return;
+    if (current.isMuted) {
+      throw StateError(
+        'You are muted until the trip creator enables chat again.',
+      );
+    }
+    final image = await ImagePicker().pickImage(
+      source: ImageSource.camera,
+      imageQuality: 82,
+    );
+    if (image == null) return;
+    final bytes = await image.readAsBytes();
+    final url = await _repository.uploadFile(
+      tripId: current.tripId,
+      userId: current.currentUserId,
+      fileName: image.name.isEmpty ? 'photo.jpg' : image.name,
+      bytes: bytes,
+    );
+    await _repository.sendMessage(
+      current.tripId,
+      current.currentUserId,
+      '[photo]$url',
+    );
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: 'file_shared',
+      summary: 'A photo was shared with the group.',
+    );
+    ref.invalidateSelf();
+  }
+
+  Future<void> shareVoiceMessage(Uint8List bytes) async {
+    final current = _current;
+    if (current == null || bytes.isEmpty) return;
+    if (current.isMuted) {
+      throw StateError(
+        'You are muted until the trip creator enables chat again.',
+      );
+    }
+    final url = await _repository.uploadFile(
+      tripId: current.tripId,
+      userId: current.currentUserId,
+      fileName: 'voice_${DateTime.now().millisecondsSinceEpoch}.webm',
+      bytes: bytes,
+    );
+    await _repository.sendMessage(
+      current.tripId,
+      current.currentUserId,
+      '[voice]$url',
+    );
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: 'file_shared',
+      summary: 'A voice message was shared with the group.',
     );
     ref.invalidateSelf();
   }

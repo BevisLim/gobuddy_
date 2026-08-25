@@ -393,7 +393,7 @@ class CollaborationRepository {
         params: {'p_poll_id': pollId, 'p_option_id': optionId},
       );
 
-  Future<void> uploadFile({
+  Future<String> uploadFile({
     required String tripId,
     required String userId,
     required String fileName,
@@ -415,6 +415,7 @@ class CollaborationRepository {
       'uploaded_by': userId,
       'file_size_bytes': bytes.length,
     });
+    return url;
   }
 
   Future<void> deleteFile(SharedTripFile file) async {
