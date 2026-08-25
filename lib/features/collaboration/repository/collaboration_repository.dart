@@ -49,8 +49,7 @@ class CollaborationRepository {
       _client
           .from('trip_member_roles')
           .select('user_id, role')
-          .eq('trip_id', tripId)
-          .eq('user_id', currentUserId),
+          .eq('trip_id', tripId),
       _client
           .from('trip_activity_comments')
           .select()
@@ -62,13 +61,23 @@ class CollaborationRepository {
           .eq('trip_id', tripId)
           .order('created_at', ascending: false)
           .limit(20),
-      _client.from('matchmaking_profiles').select('id, display_name'),
+      _client.from('user_accounts').select('id, display_name'),
+      _client
+          .from('trip_calls')
+          .select()
+          .eq('trip_id', tripId)
+          .order('created_at', ascending: false)
+          .limit(20),
     ]);
     final profileNames = <String, String>{
       for (final profile in results[8] as List<dynamic>)
         (profile as Map<String, dynamic>)['id'] as String:
             profile['display_name'] as String,
     };
+    final adminIds = (results[5] as List<dynamic>)
+        .where((role) => (role as Map<String, dynamic>)['role'] == 'admin')
+        .map((role) => (role as Map<String, dynamic>)['user_id'] as String)
+        .toSet();
     final polls = <ActivityPoll>[];
     for (final rawPoll in results[4] as List<dynamic>) {
       final poll = rawPoll as Map<String, dynamic>;
@@ -103,14 +112,13 @@ class CollaborationRepository {
       tripId: tripId,
       currentUserId: currentUserId,
       creatorId: trip['owner_id'] as String,
-      isAdmin: (results[5] as List<dynamic>).any(
-        (role) => (role as Map<String, dynamic>)['role'] == 'admin',
-      ),
+      isAdmin: adminIds.contains(currentUserId),
       members: (results[0] as List<dynamic>).map((member) {
         final row = member as Map<String, dynamic>;
         return CollaborationMember.fromMap(
           row,
           displayName: profileNames[row['user_id'] as String],
+          isAdmin: adminIds.contains(row['user_id'] as String),
         );
       }).toList(),
       messages: (results[1] as List<dynamic>).map((message) {
@@ -143,6 +151,13 @@ class CollaborationRepository {
             ),
           )
           .toList(),
+      calls: (results[9] as List<dynamic>).map((call) {
+        final row = call as Map<String, dynamic>;
+        return TripCall.fromMap(
+          row,
+          initiatedByName: profileNames[row['initiated_by'] as String],
+        );
+      }).toList(),
     );
   }
 
@@ -213,6 +228,17 @@ class CollaborationRepository {
         event: PostgresChangeEvent.all,
         schema: 'public',
         table: 'trip_files',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'trip_id',
+          value: tripId,
+        ),
+        callback: (_) => onChange(),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'trip_calls',
         filter: PostgresChangeFilter(
           type: PostgresChangeFilterType.eq,
           column: 'trip_id',
@@ -312,12 +338,17 @@ class CollaborationRepository {
     });
   }
 
-  Future<void> startCall({required String tripId, required String type}) =>
-      _client.from('trip_calls').insert({
-        'trip_id': tripId,
-        'call_type': type,
-        'status': 'ringing',
-      });
+  Future<TripCall> startCall({
+    required String tripId,
+    required String type,
+  }) async {
+    final call = await _client
+        .from('trip_calls')
+        .insert({'trip_id': tripId, 'call_type': type, 'status': 'ringing'})
+        .select()
+        .single();
+    return TripCall.fromMap(call);
+  }
 
   Future<void> addActivityComment({
     required String tripId,

@@ -3,23 +3,59 @@ class CollaborationMember {
     required this.userId,
     this.displayName,
     this.mutedUntil,
+    this.isAdmin = false,
   });
 
   final String userId;
   final String? displayName;
   final DateTime? mutedUntil;
+  final bool isAdmin;
 
   bool get isMuted => mutedUntil?.isAfter(DateTime.now()) ?? false;
 
   factory CollaborationMember.fromMap(
     Map<String, dynamic> map, {
     String? displayName,
+    bool isAdmin = false,
   }) => CollaborationMember(
     userId: map['user_id'] as String,
     displayName: displayName,
+    isAdmin: isAdmin,
     mutedUntil: map['muted_until'] == null
         ? null
         : DateTime.parse(map['muted_until'] as String).toLocal(),
+  );
+}
+
+class TripCall {
+  const TripCall({
+    required this.id,
+    required this.initiatedBy,
+    required this.callType,
+    required this.status,
+    required this.createdAt,
+    this.initiatedByName,
+  });
+
+  final String id;
+  final String initiatedBy;
+  final String callType;
+  final String status;
+  final DateTime createdAt;
+  final String? initiatedByName;
+
+  bool get isVideo => callType == 'video';
+
+  factory TripCall.fromMap(
+    Map<String, dynamic> map, {
+    String? initiatedByName,
+  }) => TripCall(
+    id: map['id'] as String,
+    initiatedBy: map['initiated_by'] as String,
+    callType: map['call_type'] as String,
+    status: map['status'] as String,
+    createdAt: DateTime.parse(map['created_at'] as String).toLocal(),
+    initiatedByName: initiatedByName,
   );
 }
 
@@ -182,6 +218,7 @@ class GroupCollaborationState {
     required this.files,
     required this.comments,
     required this.notifications,
+    required this.calls,
   });
 
   final String tripId;
@@ -195,6 +232,7 @@ class GroupCollaborationState {
   final List<SharedTripFile> files;
   final List<ActivityComment> comments;
   final List<CollaborationNotification> notifications;
+  final List<TripCall> calls;
 
   bool get isCreator => currentUserId == creatorId;
   bool get canManageMembers => isCreator || isAdmin;

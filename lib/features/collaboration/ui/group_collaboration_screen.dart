@@ -55,7 +55,7 @@ class _Workspace extends ConsumerWidget {
       groupCollaborationViewModelProvider(state.tripId).notifier,
     );
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Trip workspace'),
@@ -87,6 +87,7 @@ class _Workspace extends ConsumerWidget {
               Tab(text: 'Chat'),
               Tab(text: 'Timeline'),
               Tab(text: 'Files'),
+              Tab(text: 'Calls'),
             ],
           ),
         ),
@@ -95,6 +96,7 @@ class _Workspace extends ConsumerWidget {
             _ChatTab(state: state),
             _TimelineTab(state: state),
             _FilesTab(state: state),
+            _CallsTab(state: state),
           ],
         ),
       ),
@@ -167,26 +169,61 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
                   )
                   .map(
                     (member) => ListTile(
-                      title: Text(member.displayName ?? 'Trip member'),
+                      title: Row(
+                        children: [
+                          Expanded(
+                            child: Text(member.displayName ?? 'Trip member'),
+                          ),
+                          if (member.userId == widget.state.creatorId)
+                            const _RoleBadge(label: 'Creator')
+                          else if (member.isAdmin)
+                            const _RoleBadge(label: 'Admin'),
+                        ],
+                      ),
+                      subtitle: member.isMuted
+                          ? const Text('Muted for 30 minutes')
+                          : const Text('Trip member'),
                       trailing: widget.state.canManageMembers
                           ? Wrap(
                               children: [
                                 TextButton(
-                                  onPressed: () => viewModel.muteMember(
-                                    member.userId,
-                                    const Duration(minutes: 30),
+                                  onPressed: () => _confirmMemberAction(
+                                    context: context,
+                                    title: 'Mute member?',
+                                    message:
+                                        'This member cannot send chat messages for 30 minutes.',
+                                    confirmLabel: 'Mute',
+                                    onConfirm: () => viewModel.muteMember(
+                                      member.userId,
+                                      const Duration(minutes: 30),
+                                    ),
                                   ),
                                   child: const Text('Mute'),
                                 ),
                                 TextButton(
-                                  onPressed: () =>
-                                      viewModel.removeMember(member.userId),
+                                  onPressed: () => _confirmMemberAction(
+                                    context: context,
+                                    title: 'Remove member?',
+                                    message:
+                                        'They will lose access to this trip workspace.',
+                                    confirmLabel: 'Remove',
+                                    isDestructive: true,
+                                    onConfirm: () =>
+                                        viewModel.removeMember(member.userId),
+                                  ),
                                   child: const Text('Remove'),
                                 ),
-                                if (widget.state.isCreator)
+                                if (widget.state.isCreator && !member.isAdmin)
                                   TextButton(
-                                    onPressed: () =>
-                                        viewModel.makeAdmin(member.userId),
+                                    onPressed: () => _confirmMemberAction(
+                                      context: context,
+                                      title: 'Make admin?',
+                                      message:
+                                          'Admins can mute or remove group members.',
+                                      confirmLabel: 'Make admin',
+                                      onConfirm: () =>
+                                          viewModel.makeAdmin(member.userId),
+                                    ),
                                     child: const Text('Make admin'),
                                   ),
                               ],
@@ -266,6 +303,9 @@ class _TimelineTab extends ConsumerWidget {
           icon: const Icon(Icons.add),
           label: const Text('Propose activity'),
         ),
+        const SizedBox(height: 12),
+        _ActivityHistoryPanel(notifications: state.notifications),
+        const SizedBox(height: 12),
         ...state.activities.map(
           (activity) => Card(
             child: ListTile(
@@ -474,3 +514,167 @@ class _FilesTab extends ConsumerWidget {
     );
   }
 }
+
+class _CallsTab extends ConsumerWidget {
+  const _CallsTab({required this.state});
+
+  final GroupCollaborationState state;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final viewModel = ref.read(
+      groupCollaborationViewModelProvider(state.tripId).notifier,
+    );
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const Text(
+          'Call history',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 4),
+        const Text('Join any group call in the shared Jitsi room.'),
+        const SizedBox(height: 12),
+        if (state.calls.isEmpty)
+          const Card(
+            child: ListTile(
+              leading: Icon(Icons.call_outlined),
+              title: Text('No calls yet'),
+              subtitle: Text('Start a voice or video call from the top bar.'),
+            ),
+          ),
+        ...state.calls.map(
+          (call) => Card(
+            child: ListTile(
+              leading: Icon(call.isVideo ? Icons.videocam : Icons.call),
+              title: Text('${call.isVideo ? 'Video' : 'Voice'} call'),
+              subtitle: Text(
+                '${call.initiatedBy == state.currentUserId ? 'You' : (call.initiatedByName ?? 'Trip member')} · ${_shortDate(call.createdAt)} · ${call.status}',
+              ),
+              trailing: FilledButton(
+                onPressed: () => _runWorkspaceAction(
+                  context,
+                  () => viewModel.joinCall(call),
+                ),
+                child: const Text('Join'),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ActivityHistoryPanel extends StatelessWidget {
+  const _ActivityHistoryPanel({required this.notifications});
+
+  final List<CollaborationNotification> notifications;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.history),
+              SizedBox(width: 8),
+              Text(
+                'Activity history',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (notifications.isEmpty)
+            const Text(
+              'Votes, edits, member actions, and files will appear here.',
+            ),
+          ...notifications
+              .take(5)
+              .map(
+                (event) => ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.bolt_outlined),
+                  title: Text(event.summary),
+                  subtitle: Text(_shortDate(event.createdAt)),
+                ),
+              ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _RoleBadge extends StatelessWidget {
+  const _RoleBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.primaryContainer,
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Text(label, style: const TextStyle(fontSize: 12)),
+  );
+}
+
+Future<void> _confirmMemberAction({
+  required BuildContext context,
+  required String title,
+  required String message,
+  required String confirmLabel,
+  required Future<void> Function() onConfirm,
+  bool isDestructive = false,
+}) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text(title),
+      content: Text(message),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: isDestructive
+              ? FilledButton.styleFrom(
+                  backgroundColor: Theme.of(dialogContext).colorScheme.error,
+                )
+              : null,
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: Text(confirmLabel),
+        ),
+      ],
+    ),
+  );
+  if (confirmed == true && context.mounted) {
+    await _runWorkspaceAction(context, onConfirm);
+  }
+}
+
+Future<void> _runWorkspaceAction(
+  BuildContext context,
+  Future<void> Function() action,
+) async {
+  try {
+    await action();
+  } catch (error) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$error')));
+    }
+  }
+}
+
+String _shortDate(DateTime value) =>
+    '${value.day}/${value.month}/${value.year} ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';

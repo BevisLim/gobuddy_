@@ -108,6 +108,12 @@ class GroupCollaborationViewModel
       throw StateError('The trip creator already has admin permissions.');
     }
     await _repository.makeAdmin(tripId: current.tripId, memberId: memberId);
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: 'admin_assigned',
+      summary: 'A group member was made an admin.',
+    );
     ref.invalidateSelf();
   }
 
@@ -231,6 +237,12 @@ class GroupCollaborationViewModel
       fileName: file.name,
       bytes: file.bytes!,
     );
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: 'file_shared',
+      summary: 'A file was shared with the group: ${file.name}.',
+    );
     ref.invalidateSelf();
   }
 
@@ -238,7 +250,28 @@ class GroupCollaborationViewModel
     final current = _current;
     if (current == null) return;
     await _repository.startCall(tripId: current.tripId, type: type);
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: 'call_started',
+      summary: 'A ${type.trim()} call was started.',
+    );
     await _callRepository.joinTripCall(tripId: current.tripId, callType: type);
+  }
+
+  Future<void> joinCall(TripCall call) async {
+    final current = _current;
+    if (current == null) return;
+    await _callRepository.joinTripCall(
+      tripId: current.tripId,
+      callType: call.callType,
+    );
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: 'call_joined',
+      summary: 'A member joined a ${call.callType} call.',
+    );
   }
 
   Future<void> addActivityComment({
