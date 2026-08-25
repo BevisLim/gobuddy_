@@ -19,6 +19,8 @@ create index if not exists live_location_shares_trip_idx
 
 alter table public.live_location_shares enable row level security;
 
+drop policy if exists "trip members read live locations"
+  on public.live_location_shares;
 create policy "trip members read live locations"
 on public.live_location_shares for select to authenticated
 using (
@@ -27,10 +29,14 @@ using (
   and expires_at > now()
 );
 
+drop policy if exists "users start their own live location"
+  on public.live_location_shares;
 create policy "users start their own live location"
 on public.live_location_shares for insert to authenticated
 with check (user_id = auth.uid() and public.is_trip_member(trip_id));
 
+drop policy if exists "users update their own live location"
+  on public.live_location_shares;
 create policy "users update their own live location"
 on public.live_location_shares for update to authenticated
 using (user_id = auth.uid())
@@ -38,4 +44,17 @@ with check (user_id = auth.uid() and public.is_trip_member(trip_id));
 
 grant select, insert, update on public.live_location_shares to authenticated;
 
-alter publication supabase_realtime add table public.live_location_shares;
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'live_location_shares'
+  ) then
+    alter publication supabase_realtime
+      add table public.live_location_shares;
+  end if;
+end;
+$$;
