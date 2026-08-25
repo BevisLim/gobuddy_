@@ -50,41 +50,65 @@ BoxDecoration _cardDecoration({double radius = 16, bool feed = false}) =>
 // ==========================================================================
 // 🛡️ Main Module Screen Container
 // ==========================================================================
-class UserAccountScreen extends ConsumerWidget {
+class UserAccountScreen extends ConsumerStatefulWidget {
   const UserAccountScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<UserAccountScreen> createState() => _UserAccountScreenState();
+}
+
+class _UserAccountScreenState extends ConsumerState<UserAccountScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(userAccountViewModelProvider.notifier).refresh();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(userAccountViewModelProvider);
     final viewModel = ref.read(userAccountViewModelProvider.notifier);
 
+    final Widget body;
+    if (state.isLoading && state.user == null) {
+      body = const Center(child: CircularProgressIndicator(color: _violet));
+    } else if (state.user == null) {
+      body = _AccountErrorView(
+        message: state.error ?? 'Your profile is not available.',
+        onRetry: viewModel.refresh,
+      );
+    } else {
+      body = switch (state.page) {
+        UserAccountPage.profile => _AccountDashboardView(
+            user: state.user!,
+            onNavigate: viewModel.goTo,
+            onRefresh: viewModel.refresh,
+          ),
+        UserAccountPage.editProfile => _AccountEditView(
+            user: state.user!,
+            isSaving: state.isLoading,
+            onBack: () => viewModel.goTo(UserAccountPage.profile),
+            onSave: viewModel.updateProfile,
+            onSelectImage: viewModel.selectProfileImage,
+            onVerify: () => context.push(Routes.identityVerification),
+          ),
+        UserAccountPage.security => _AccountStaticFrame(
+            title: 'Security',
+            subtitle: 'ACCESS MANAGEMENT',
+            description:
+                'Manage active authorization keys, session duration thresholds, and multi-factor validation credentials.',
+            onBack: () => viewModel.goTo(UserAccountPage.profile),
+          ),
+      };
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF7F5FB),
-      body: SafeArea(
-        child: state.isLoading && state.user == null
-            ? const Center(child: CircularProgressIndicator(color: _violet))
-            : switch (state.page) {
-                UserAccountPage.profile => _AccountDashboardView(
-                    user: state.user,
-                    onNavigate: viewModel.goTo,
-                  ),
-                UserAccountPage.editProfile => _AccountEditView(
-                    user: state.user!,
-                    isSaving: state.isLoading,
-                    onBack: () => viewModel.goTo(UserAccountPage.profile),
-                    onSave: viewModel.updateProfile,
-                    onSelectImage: viewModel.selectProfileImage,
-                    onVerify: () => context.push(Routes.identityVerification),
-                  ),
-                UserAccountPage.security => _AccountStaticFrame(
-                    title: 'Security',
-                    subtitle: 'ACCESS MANAGEMENT',
-                    description:
-                        'Manage active authorization keys, session duration thresholds, and multi-factor validation credentials.',
-                    onBack: () => viewModel.goTo(UserAccountPage.profile),
-                  ),
-              },
-      ),
+      body: SafeArea(child: body),
       bottomNavigationBar: state.page == UserAccountPage.profile
           ? const AppModuleNavigation(selectedIndex: 4)
           : null,
@@ -95,55 +119,90 @@ class UserAccountScreen extends ConsumerWidget {
 // ==========================================================================
 // 👤 Sub-View: Main Profile Dashboard
 // ==========================================================================
-class _AccountDashboardView extends StatelessWidget {
-  final UserAccount? user;
-  final ValueChanged<UserAccountPage> onNavigate;
+class _AccountErrorView extends StatelessWidget {
+  const _AccountErrorView({required this.message, required this.onRetry});
 
-  const _AccountDashboardView({required this.user, required this.onNavigate});
+  final String message;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.person_off_outlined, color: _muted, size: 42),
+              const SizedBox(height: 14),
+              Text(message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: _muted, height: 1.5)),
+              const SizedBox(height: 18),
+              FilledButton(onPressed: onRetry, child: const Text('Try again')),
+            ],
+          ),
+        ),
+      );
+}
+
+class _AccountDashboardView extends StatelessWidget {
+  final UserAccount user;
+  final ValueChanged<UserAccountPage> onNavigate;
+  final Future<void> Function() onRefresh;
+
+  const _AccountDashboardView({
+    required this.user,
+    required this.onNavigate,
+    required this.onRefresh,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.only(bottom: 32),
-      children: [
-        _ProfileHeader(
-          user: user,
-          onBack: () => Navigator.maybePop(context),
-          onSettings: () => context.push(Routes.settings),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: _ProfileStatsCard(
-            onEdit: () => onNavigate(UserAccountPage.editProfile),
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 32),
+        children: [
+          _ProfileHeader(
+            user: user,
+            onBack: () => Navigator.maybePop(context),
+            onSettings: () => context.push(Routes.settings),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: _AccountMenuTile(
-            icon: Icons.health_and_safety_outlined,
-            title: 'Emergency contacts',
-            onTap: () => context.push(Routes.emergencyContacts),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: _ProfileStatsCard(
+              onEdit: () => onNavigate(UserAccountPage.editProfile),
+            ),
           ),
-        ),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: _ProfilePhotosCard(),
-        ),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: _ProfileAboutCard(),
-        ),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: _ProfileInterestsCard(),
-        ),
-      ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: _AccountMenuTile(
+              icon: Icons.health_and_safety_outlined,
+              title: 'Emergency contacts',
+              onTap: () => context.push(Routes.emergencyContacts),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: _ProfilePhotosCard(),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: _ProfileAboutCard(bio: user.bio),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: _ProfileInterestsCard(),
+          ),
+        ],
+      ),
     );
   }
 }
 
 class _ProfileHeader extends StatelessWidget {
-  final UserAccount? user;
+  final UserAccount user;
   final VoidCallback onBack;
   final VoidCallback onSettings;
 
@@ -167,7 +226,7 @@ class _ProfileHeader extends StatelessWidget {
                 children: [
                   Image(
                     image: _accountImageProvider(
-                      user?.backgroundPhoto,
+                      user.backgroundPhoto,
                       fallback: _coverPhotoUrl,
                     ),
                     fit: BoxFit.cover,
@@ -215,9 +274,7 @@ class _ProfileHeader extends StatelessWidget {
                           children: [
                             Flexible(
                               child: Text(
-                                user?.fullName ??
-                                    user?.username ??
-                                    'Guest User',
+                                _profileDisplayName(user),
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   fontFamily: 'Georgia',
@@ -227,7 +284,7 @@ class _ProfileHeader extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            if (user?.isVerified == true) ...[
+                            if (user.isVerified) ...[
                               const SizedBox(width: 7),
                               const _VerifiedBadge(),
                             ],
@@ -235,14 +292,14 @@ class _ProfileHeader extends StatelessWidget {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                            user?.gender == null
+                            user.gender == null || user.gender!.isEmpty
                                 ? 'Profile details not added'
-                                : user!.gender!,
+                                : user.gender!,
                             style: const TextStyle(
                                 color: Color(0xE6FFFFFF),
                                 fontWeight: FontWeight.w600)),
                         const SizedBox(height: 3),
-                        const Text('Joined January 2023',
+                        Text(_joinedLabel(user.joinedAt),
                             style: TextStyle(
                                 color: Color(0xB3FFFFFF), fontSize: 12)),
                       ],
@@ -275,7 +332,7 @@ class _ProfileHeader extends StatelessWidget {
                       child: ClipOval(
                         child: Image(
                           image: _accountImageProvider(
-                            user?.profilePhoto,
+                            user.profilePhoto,
                             fallback: 'assets/images/avatar.webp',
                           ),
                           fit: BoxFit.cover,
@@ -316,9 +373,9 @@ class _ProfileStatsCard extends StatelessWidget {
         decoration: _cardDecoration(),
         child: Column(children: [
           const Row(children: [
-            Expanded(child: _ProfileStat(number: '12', label: 'TRIPS')),
+            Expanded(child: _ProfileStat(number: '—', label: 'TRIPS')),
             SizedBox(height: 38, child: VerticalDivider(color: _border)),
-            Expanded(child: _ProfileStat(number: '8', label: 'CITIES')),
+            Expanded(child: _ProfileStat(number: '—', label: 'CITIES')),
           ]),
           const SizedBox(height: 18),
           SizedBox(
@@ -404,29 +461,26 @@ class _ProfilePhotosCard extends StatelessWidget {
   const _ProfilePhotosCard();
 
   @override
-  Widget build(BuildContext context) => _ProfileCard(
+  Widget build(BuildContext context) => const _ProfileCard(
         title: 'Photos',
-        child: Column(children: const [
-          _PhotoSlot(url: _galleryPhotoOne, height: 170),
-          SizedBox(height: 10),
-          Row(children: [
-            Expanded(child: _PhotoSlot(url: _galleryPhotoTwo, height: 112)),
-            SizedBox(width: 10),
-            Expanded(child: _PhotoSlot(url: _galleryPhotoThree, height: 112)),
-          ]),
-        ]),
+        child: Text(
+          'No profile photos added.',
+          style: TextStyle(color: _muted, height: 1.6),
+        ),
       );
 }
 
 class _ProfileAboutCard extends StatelessWidget {
-  const _ProfileAboutCard();
+  const _ProfileAboutCard({required this.bio});
+
+  final String bio;
 
   @override
-  Widget build(BuildContext context) => const _ProfileCard(
+  Widget build(BuildContext context) => _ProfileCard(
         title: 'About Me',
         child: Text(
-          'I enjoy slow mornings, good local food, and finding the small places that make every trip memorable. Always happy to share an itinerary or discover somewhere new together.',
-          style: TextStyle(color: _muted, height: 1.7),
+          bio.isEmpty ? 'Not set' : bio,
+          style: const TextStyle(color: _muted, height: 1.7),
         ),
       );
 }
@@ -443,19 +497,11 @@ class _ProfileInterestsCard extends StatelessWidget {
             children: [
               Text('TRAVEL STYLE', style: _label),
               SizedBox(height: 9),
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                _PillTag(label: '🏄 Adventure'),
-                _PillTag(label: '🎒 Backpacker'),
-              ]),
+              Text('Not set', style: TextStyle(color: _muted)),
               SizedBox(height: 22),
               Text('INTERESTS', style: _label),
               SizedBox(height: 9),
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                _PillTag(label: 'Food & Cuisine'),
-                _PillTag(label: 'Hiking'),
-                _PillTag(label: 'Museums'),
-                _PillTag(label: 'Photography'),
-              ]),
+              Text('Not set', style: TextStyle(color: _muted)),
             ]),
       );
 }
@@ -487,75 +533,6 @@ class _ProfileCard extends StatelessWidget {
           const SizedBox(height: 12),
           child,
         ]),
-      );
-}
-
-class _PhotoSlot extends StatelessWidget {
-  final String url;
-  final double height;
-  const _PhotoSlot({required this.url, required this.height});
-
-  @override
-  Widget build(BuildContext context) => CustomPaint(
-        painter: _DashedBorderPainter(),
-        child: Container(
-          height: height,
-          decoration: BoxDecoration(
-            color: _bgSubtle,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Stack(fit: StackFit.expand, children: [
-            Image.network(url,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
-                    const ColoredBox(color: _bgSubtle)),
-            DecoratedBox(
-                decoration: BoxDecoration(color: _ink.withValues(alpha: .18))),
-            const Center(
-                child: Icon(Icons.camera_alt_outlined,
-                    color: Colors.white, size: 25)),
-          ]),
-        ),
-      );
-}
-
-class _DashedBorderPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    const radius = Radius.circular(12);
-    final path = Path()
-      ..addRRect(RRect.fromRectAndRadius(Offset.zero & size, radius));
-    final paint = Paint()
-      ..color = _border
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-    for (final metric in path.computeMetrics()) {
-      for (double distance = 0; distance < metric.length; distance += 8) {
-        canvas.drawPath(metric.extractPath(distance, distance + 4), paint);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _PillTag extends StatelessWidget {
-  final String label;
-  const _PillTag({required this.label});
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: _surface,
-          border: Border.all(color: _border),
-          borderRadius: BorderRadius.circular(99),
-        ),
-        child: Text(label,
-            style: const TextStyle(
-                color: _ink, fontSize: 12, fontWeight: FontWeight.w600)),
       );
 }
 
@@ -602,12 +579,6 @@ class _VerifiedBadge extends StatelessWidget {
 
 const _coverPhotoUrl =
     'https://images.unsplash.com/photo-1498307833015-e7b400441eb8?auto=format&fit=crop&w=1200&q=85';
-const _galleryPhotoOne =
-    'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=900&q=85';
-const _galleryPhotoTwo =
-    'https://images.unsplash.com/photo-1537996194471-e657df975ab4?auto=format&fit=crop&w=900&q=85';
-const _galleryPhotoThree =
-    'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=900&q=85';
 
 // ==========================================================================
 // 📝 Sub-View: Edit Account Information Input Form
@@ -989,6 +960,32 @@ ImageProvider<Object> _accountImageProvider(
   }
   if (resolved.startsWith('assets/')) return AssetImage(resolved);
   return FileImage(File(resolved));
+}
+
+String _profileDisplayName(UserAccount user) {
+  final fullName = user.fullName?.trim();
+  if (fullName != null && fullName.isNotEmpty) return fullName;
+  final username = user.username.trim();
+  return username.isEmpty ? 'Profile incomplete' : username;
+}
+
+String _joinedLabel(DateTime? date) {
+  if (date == null) return 'Join date unavailable';
+  const months = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+  return 'Joined ${months[date.month - 1]} ${date.year}';
 }
 
 String _formatDate(DateTime date) {

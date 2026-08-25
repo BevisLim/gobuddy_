@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/group_collaboration_screen.dart';
-import '../../features/user_account/ui/otp_screen.dart';
+import '../../features/user_account/ui/login_confirmation.dart';
 import '../../features/user_account/ui/welcome_screen.dart';
 import '../../features/matchmaking/ui/matchmaking_shell_screen.dart';
 import '../../features/matchmaking/ui/view_model/matchmaking_view_model.dart';
@@ -27,6 +27,7 @@ import '../../features/user_account/ui/settings/blocked_users_screen.dart';
 import '../../features/user_account/ui/settings/settings_screen.dart';
 import '../../features/user_account/ui/login_screen.dart';
 import '../../features/user_account/ui/register_account_screen.dart';
+import '../../features/user_account/ui/set_password_screen.dart';
 import '../../features/user_account/ui/legal/privacy_policy_screen.dart';
 import '../../features/user_account/ui/legal/terms_screen.dart';
 import '../../features/safety/ui/add_emergency_contact_screen.dart';
@@ -132,11 +133,20 @@ final GoRouter router = GoRouter(
           final map = state.extra as Map?;
           return state.slidePage(
             OtpScreen(
-              email: map?['email'],
-              isRegister: map?['isRegister'],
+              email: map?['email'] as String? ?? '',
             ),
           );
         }),
+    GoRoute(
+      path: Routes.setPassword,
+      pageBuilder: (context, state) =>
+          state.slidePage(const SetPasswordScreen()),
+    ),
+    GoRoute(
+      path: Routes.resetPassword,
+      pageBuilder: (context, state) =>
+          state.slidePage(const SetPasswordScreen(isRecovery: true)),
+    ),
     GoRoute(
       path: Routes.main,
       pageBuilder: (context, state) =>

@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:easy_localization/easy_localization.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter/foundation.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,7 +10,6 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
-import 'package:flutter_mvvm_riverpod/core/environment/env.dart';
 import 'package:flutter_mvvm_riverpod/generated/locale_keys.g.dart';
 import 'package:flutter_mvvm_riverpod/features/common/remote/supabase_client.dart';
 
@@ -24,116 +23,156 @@ AuthenticationRepository authenticationRepository(Ref ref) {
 class AuthenticationRepository {
   const AuthenticationRepository();
 
-  static final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
-  static Future<void>? _googleSignInInitialization;
-
-  Future<void> signInWithMagicLink(String email) async {
-    // TODO: fake data
-    return;
-
-    // ignore: dead_code
+  Future<void> sendRegistrationLink(String email) async {
     try {
+      if (supabase.auth.currentSession != null) {
+        await supabase.auth.signOut(scope: SignOutScope.local);
+      }
       await supabase.auth.signInWithOtp(
-        email: email,
+        email: email.trim(),
         emailRedirectTo: Constants.supabaseLoginCallback,
+        shouldCreateUser: true,
+        data: const {'registration_pending': true},
       );
+      await setRegistrationPending(true, email: email.trim());
     } on AuthException catch (error) {
-      throw Exception(error.message);
-    } catch (error) {
-      throw Exception(LocaleKeys.unexpectedErrorOccurred.tr());
+      throw Exception(_friendlyRegistrationError(error));
+    } on Exception {
+      rethrow;
+    } catch (_) {
+      throw Exception('Unable to create account. Please try again.');
     }
   }
 
-  Future<void> resetPassword(String email) async {
-    try {
-      await supabase.auth.resetPasswordForEmail(email.trim());
-    } on AuthException catch (error) {
-      throw Exception(error.message);
-    } catch (error) {
-      throw Exception(LocaleKeys.unexpectedErrorOccurred.tr());
+  Future<void> setPassword(String password) async {
+    if (supabase.auth.currentSession == null) {
+      throw Exception(
+        'Your verification session is missing or expired. Request a new link.',
+      );
     }
-  }
-
-  Future<AuthResponse> verifyOtp({
-    required String email,
-    required String token,
-    required bool isRegister,
-  }) async {
     try {
-      // TODO: fake data
-      return AuthResponse(
-        user: User(
-          id: '',
-          appMetadata: {},
-          userMetadata: {},
-          aud: '',
-          createdAt: '',
-          email: email,
-        ),
-      );
-
-      // ignore: dead_code
-      final result = await supabase.auth.verifyOTP(
-        email: email,
-        token: token,
-        type: isRegister ? OtpType.signup : OtpType.magiclink,
-      );
-      return result;
+      await supabase.auth.updateUser(UserAttributes(password: password));
+      await setRegistrationPending(false);
     } on AuthException catch (error) {
-      throw Exception(error.message);
-    } catch (error) {
-      throw Exception(LocaleKeys.unexpectedErrorOccurred.tr());
-    }
-  }
-
-  Future<AuthResponse> signInWithGoogle() async {
-    // TODO: fake data
-    return AuthResponse(
-      user: User(
-        id: '',
-        appMetadata: {},
-        userMetadata: {},
-        aud: '',
-        createdAt: '',
-        email: 'henry@google.com',
-      ),
-    );
-
-    // ignore: dead_code
-    try {
-      const List<String> scopes = <String>[
-        Constants.googleEmailScope,
-        Constants.googleUserInfoScope,
-      ];
-
-      _googleSignInInitialization ??= _googleSignIn.initialize(
-        clientId: Env.googleClientId,
-        serverClientId: Env.googleServerClientId,
-      );
-      await _googleSignInInitialization;
-
-      if (!_googleSignIn.supportsAuthenticate()) {
-        throw UnsupportedError(
-            'Google Sign-In is not supported on this platform.');
+      final message = error.message.toLowerCase();
+      if (message.contains('password')) {
+        throw Exception(
+          'Please choose a stronger password with at least 6 characters.',
+        );
       }
+      throw Exception('Unable to save your password. Please try again.');
+    } catch (_) {
+      throw Exception('Unable to save your password. Please try again.');
+    }
+  }
 
-      final googleUser = await _googleSignIn.authenticate(scopeHint: scopes);
-      final googleAuth = googleUser.authentication;
-      final idToken = googleAuth.idToken;
+  Future<bool> isRegistrationPending() async {
+    final prefs = await SharedPreferences.getInstance();
+    final pending = prefs.getBool(Constants.registrationPendingKey) ?? false;
+    final pendingEmail =
+        prefs.getString(Constants.registrationPendingEmailKey)?.toLowerCase();
+    final currentEmail = supabase.auth.currentUser?.email?.toLowerCase();
+    return pending && pendingEmail != null && pendingEmail == currentEmail;
+  }
 
-      if (idToken == null) {
-        throw Exception(LocaleKeys.idTokenNotFound.tr());
-      }
+  Future<void> setRegistrationPending(bool value, {String? email}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(Constants.registrationPendingKey, value);
+    if (value && email != null) {
+      await prefs.setString(Constants.registrationPendingEmailKey, email);
+    } else if (!value) {
+      await prefs.remove(Constants.registrationPendingEmailKey);
+    }
+  }
 
-      final result = await supabase.auth.signInWithIdToken(
-        provider: OAuthProvider.google,
-        idToken: idToken,
+  Future<void> sendPasswordResetEmail(String email) async {
+    try {
+      await supabase.auth.resetPasswordForEmail(
+        email.trim(),
+        redirectTo: Constants.supabasePasswordRecoveryCallback,
       );
-      return result;
     } on AuthException catch (error) {
-      throw Exception(error.message);
-    } catch (error) {
-      throw Exception(LocaleKeys.unexpectedErrorOccurred.tr());
+      throw Exception(_friendlyPasswordRecoveryError(error));
+    } catch (_) {
+      throw Exception(
+        'Unable to send the reset link. Check your connection and try again.',
+      );
+    }
+  }
+
+  Future<void> updateRecoveredPassword(String password) async {
+    if (supabase.auth.currentSession == null) {
+      throw Exception(
+        'This password reset link is invalid or expired. Request a new link.',
+      );
+    }
+
+    try {
+      await supabase.auth.updateUser(UserAttributes(password: password));
+      try {
+        await supabase.auth.signOut(scope: SignOutScope.local);
+      } catch (_) {
+        // The password is already updated. Login navigation still prevents
+        // continuing into the authenticated app from the recovery flow.
+      }
+    } on AuthException catch (error) {
+      final message = error.message.toLowerCase();
+      if (message.contains('password') || message.contains('weak')) {
+        throw Exception(
+          'Choose a stronger password with at least 6 characters.',
+        );
+      }
+      if (message.contains('expired') ||
+          message.contains('invalid') ||
+          message.contains('session')) {
+        throw Exception(
+          'This password reset link is invalid or expired. Request a new link.',
+        );
+      }
+      throw Exception('Unable to reset your password. Please try again.');
+    } catch (_) {
+      throw Exception('Unable to reset your password. Please try again.');
+    }
+  }
+
+  Future<void> signInWithGoogle() async {
+    try {
+      // A pending email-link registration must never send a Google user to
+      // the email-only Set Password flow.
+      await setRegistrationPending(false);
+      final launched = await supabase.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: kIsWeb ? null : Constants.supabaseLoginCallback,
+      );
+      if (!launched) {
+        throw Exception('Unable to open Google sign-in. Please try again.');
+      }
+    } on AuthException catch (error) {
+      throw Exception(_friendlyGoogleSignInError(error));
+    } on Exception {
+      rethrow;
+    } catch (_) {
+      throw Exception('Unable to start Google sign-in. Please try again.');
+    }
+  }
+
+  Future<bool> hasCurrentUserProfile() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Your sign-in session is missing. Please try again.');
+    }
+
+    try {
+      final profile = await supabase
+          .from('user_accounts')
+          .select('id')
+          .eq('id', userId)
+          .maybeSingle();
+      return profile != null;
+    } on PostgrestException {
+      throw Exception(
+        'Unable to load your profile. Check your connection and try again.',
+      );
     }
   }
 
@@ -182,18 +221,23 @@ class AuthenticationRepository {
   }
 
   Future<void> signOut() async {
-    // TODO: fake data
-    await setIsLogin(false);
-    return;
-
-    // ignore: dead_code
     try {
       await supabase.auth.signOut();
-      Purchases.logOut();
-    } on AuthException catch (error) {
-      throw Exception(error.message);
-    } catch (error) {
-      throw Exception(LocaleKeys.unexpectedErrorOccurred.tr());
+      if (supabase.auth.currentSession != null ||
+          supabase.auth.currentUser != null) {
+        throw const AuthException('The Supabase session could not be cleared.');
+      }
+
+      try {
+        await Purchases.logOut();
+      } catch (_) {
+        // Supabase is the authentication source of truth. A RevenueCat cleanup
+        // failure must not restore or misreport an already-ended auth session.
+      }
+    } on AuthException {
+      throw Exception('Unable to sign out. Please try again.');
+    } catch (_) {
+      throw Exception('Unable to sign out. Please try again.');
     }
   }
 
@@ -233,4 +277,48 @@ class AuthenticationRepository {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(Constants.isGuestModeKey, true);
   }
+}
+
+String _friendlyRegistrationError(AuthException error) {
+  final message = error.message.toLowerCase();
+  if (message.contains('already registered') ||
+      message.contains('already exists') ||
+      message.contains('user already')) {
+    return 'An account with this email already exists. Please log in instead.';
+  }
+  if (message.contains('password')) {
+    return 'Please choose a stronger password with at least 6 characters.';
+  }
+  if (message.contains('email')) {
+    return 'Please enter a valid email address.';
+  }
+  if (message.contains('network') ||
+      message.contains('socket') ||
+      message.contains('connection')) {
+    return 'Unable to connect. Check your internet connection and try again.';
+  }
+  return 'Unable to send the verification link. Please try again.';
+}
+
+String _friendlyGoogleSignInError(AuthException error) {
+  final message = error.message.toLowerCase();
+  if (message.contains('cancel') || message.contains('denied')) {
+    return 'Google sign-in was cancelled.';
+  }
+  if (message.contains('network') ||
+      message.contains('socket') ||
+      message.contains('connection')) {
+    return 'Unable to connect. Check your internet connection and try again.';
+  }
+  return 'Google sign-in failed. Please try again.';
+}
+
+String _friendlyPasswordRecoveryError(AuthException error) {
+  final message = error.message.toLowerCase();
+  if (message.contains('network') ||
+      message.contains('socket') ||
+      message.contains('connection')) {
+    return 'Unable to connect. Check your internet connection and try again.';
+  }
+  return 'Unable to send the reset link. Please try again later.';
 }
