@@ -11,9 +11,6 @@ include: package:flutter_lints/flutter.yaml
 
 analyzer:
   exclude:
-    # Local project copies are not part of the root GoBuddy package.
-    - flutter_mvvm_riverpod/**
-    - gobuddy_/**
     - build/**
     - android/**
     - ios/**
@@ -21,6 +18,12 @@ analyzer:
     - windows/**
     - macos/**
     - linux/**
+    # Local project copies are not part of the root GoBuddy package.
+    - flutter_mvvm_riverpod/**
+    - gobuddy_/**
+  errors:
+    # Freezed supports JsonKey annotations on factory constructor parameters.
+    invalid_annotation_target: ignore
 
 linter:
   # The lint rules applied to this project can be customized in the

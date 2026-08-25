@@ -24,14 +24,18 @@ class MessagesScreen extends ConsumerWidget {
           : ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: trips.length + 1,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 if (index == 0) {
                   return const Padding(
                     padding: EdgeInsets.only(bottom: 4),
-                    child: Text('Your trip groups',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w700)),
+                    child: Text(
+                      'Your trip groups',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   );
                 }
                 final trip = trips[index - 1];
@@ -44,9 +48,11 @@ class MessagesScreen extends ConsumerWidget {
 
   List<MatchmakingTrip> _groupTrips(MatchmakingState state) {
     final acceptedIds = state.requests
-        .where((request) =>
-            request.applicantId == 'current-user' &&
-            request.decision == ApplicantDecision.accepted)
+        .where(
+          (request) =>
+              request.applicantId == 'current-user' &&
+              request.decision == ApplicantDecision.accepted,
+        )
         .map((request) => request.tripId)
         .toSet();
     return state.trips
@@ -61,25 +67,30 @@ class _TripConversationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Card(
-        elevation: 0,
-        child: ListTile(
-          leading: CircleAvatar(
-            backgroundColor: AppColors.brandSurface,
-            child: Text(trip.hostInitials.isEmpty
-                ? trip.destination.substring(0, 1)
-                : trip.hostInitials.substring(0, 1)),
-          ),
-          title: Text(trip.destination,
-              style: const TextStyle(fontWeight: FontWeight.w700)),
-          subtitle: Text(
-              '${_date(trip.startDate)} – ${_date(trip.endDate)} • ${trip.joined} travellers'),
-          trailing: const Icon(Icons.chevron_right_rounded),
-          onTap: () {
-            final path = '${Routes.groupCollaboration}?tripId=${trip.id}';
-            context.push(path);
-          },
+    elevation: 0,
+    child: ListTile(
+      leading: CircleAvatar(
+        backgroundColor: AppColors.brandSurface,
+        child: Text(
+          trip.hostInitials.isEmpty
+              ? trip.destination.substring(0, 1)
+              : trip.hostInitials.substring(0, 1),
         ),
-      );
+      ),
+      title: Text(
+        trip.destination,
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+      subtitle: Text(
+        '${_date(trip.startDate)} – ${_date(trip.endDate)} • ${trip.joined} travellers',
+      ),
+      trailing: const Icon(Icons.chevron_right_rounded),
+      onTap: () {
+        final path = '${Routes.groupCollaboration}?tripId=${trip.id}';
+        context.push(path);
+      },
+    ),
+  );
 
   String _date(DateTime value) => '${value.day}/${value.month}/${value.year}';
 }
@@ -89,19 +100,26 @@ class _EmptyMessages extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.chat_bubble_outline_rounded,
-                size: 56, color: AppColors.brandSurface),
-            const SizedBox(height: 16),
-            Text('No trip chats yet', style: AppTheme.title20),
-            const SizedBox(height: 8),
-            Text('Trips you create or join will appear here.',
-                textAlign: TextAlign.center,
-                style:
-                    AppTheme.body16.copyWith(color: AppColors.brandTextMuted)),
-          ]),
-        ),
-      );
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.chat_bubble_outline_rounded,
+            size: 56,
+            color: AppColors.brandSurface,
+          ),
+          const SizedBox(height: 16),
+          Text('No trip chats yet', style: AppTheme.title20),
+          const SizedBox(height: 8),
+          Text(
+            'Trips you create or join will appear here.',
+            textAlign: TextAlign.center,
+            style: AppTheme.body16.copyWith(color: AppColors.brandTextMuted),
+          ),
+        ],
+      ),
+    ),
+  );
 }

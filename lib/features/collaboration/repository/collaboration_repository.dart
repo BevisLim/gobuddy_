@@ -7,7 +7,8 @@ import 'package:flutter_mvvm_riverpod/features/common/remote/supabase_client.dar
 import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration_models.dart';
 
 final collaborationRepositoryProvider = Provider<CollaborationRepository>(
-    (ref) => CollaborationRepository(supabase));
+  (ref) => CollaborationRepository(supabase),
+);
 
 class CollaborationRepository {
   CollaborationRepository(this._client);
@@ -25,7 +26,7 @@ class CollaborationRepository {
         .single();
     final results = await Future.wait<dynamic>([
       _client
-          .from('matchmaking_trip_members')
+          .from('trip_members')
           .select('user_id, muted_until')
           .eq('trip_id', tripId),
       _client
@@ -45,7 +46,29 @@ class CollaborationRepository {
           .eq('trip_id', tripId)
           .order('created_at', ascending: false),
       _client.from('trip_polls').select('id, question').eq('trip_id', tripId),
+      _client
+          .from('trip_member_roles')
+          .select('user_id, role')
+          .eq('trip_id', tripId)
+          .eq('user_id', currentUserId),
+      _client
+          .from('trip_activity_comments')
+          .select()
+          .eq('trip_id', tripId)
+          .order('created_at'),
+      _client
+          .from('trip_activity_events')
+          .select()
+          .eq('trip_id', tripId)
+          .order('created_at', ascending: false)
+          .limit(20),
+      _client.from('matchmaking_profiles').select('id, display_name'),
     ]);
+    final profileNames = <String, String>{
+      for (final profile in results[8] as List<dynamic>)
+        (profile as Map<String, dynamic>)['id'] as String:
+            profile['display_name'] as String,
+    };
     final polls = <ActivityPoll>[];
     for (final rawPoll in results[4] as List<dynamic>) {
       final poll = rawPoll as Map<String, dynamic>;
@@ -54,47 +77,71 @@ class CollaborationRepository {
           .select('id, label, trip_poll_votes(user_id)')
           .eq('poll_id', poll['id'])
           .order('created_at');
-      polls.add(ActivityPoll(
-        id: poll['id'] as String,
-        question: poll['question'] as String,
-        options: (options as List<dynamic>).map((rawOption) {
-          final option = rawOption as Map<String, dynamic>;
-          final votes = option['trip_poll_votes'] as List<dynamic>? ?? const [];
-          return PollOption(
-            id: option['id'] as String,
-            label: option['label'] as String,
-            voterIds: votes
-                .map((vote) =>
-                    (vote as Map<String, dynamic>)['user_id'] as String)
-                .toList(),
-          );
-        }).toList(),
-      ));
-    }
-    final members = (results[0] as List<dynamic>)
-        .map((member) =>
-            CollaborationMember.fromMap(member as Map<String, dynamic>))
-        .toList();
-    final creatorId = trip['owner_id'] as String;
-    if (!members.any((member) => member.userId == creatorId)) {
-      members.insert(0, CollaborationMember(userId: creatorId));
+      polls.add(
+        ActivityPoll(
+          id: poll['id'] as String,
+          question: poll['question'] as String,
+          options: (options as List<dynamic>).map((rawOption) {
+            final option = rawOption as Map<String, dynamic>;
+            final votes =
+                option['trip_poll_votes'] as List<dynamic>? ?? const [];
+            return PollOption(
+              id: option['id'] as String,
+              label: option['label'] as String,
+              voterIds: votes
+                  .map(
+                    (vote) =>
+                        (vote as Map<String, dynamic>)['user_id'] as String,
+                  )
+                  .toList(),
+            );
+          }).toList(),
+        ),
+      );
     }
     return GroupCollaborationState(
       tripId: tripId,
       currentUserId: currentUserId,
-      creatorId: creatorId,
-      members: members,
-      messages: (results[1] as List<dynamic>)
-          .map(
-              (message) => TripMessage.fromMap(message as Map<String, dynamic>))
-          .toList(),
+      creatorId: trip['owner_id'] as String,
+      isAdmin: (results[5] as List<dynamic>).any(
+        (role) => (role as Map<String, dynamic>)['role'] == 'admin',
+      ),
+      members: (results[0] as List<dynamic>).map((member) {
+        final row = member as Map<String, dynamic>;
+        return CollaborationMember.fromMap(
+          row,
+          displayName: profileNames[row['user_id'] as String],
+        );
+      }).toList(),
+      messages: (results[1] as List<dynamic>).map((message) {
+        final row = message as Map<String, dynamic>;
+        return TripMessage.fromMap(
+          row,
+          senderName: profileNames[row['sender_id'] as String],
+        );
+      }).toList(),
       activities: (results[2] as List<dynamic>)
-          .map((activity) =>
-              TripActivity.fromMap(activity as Map<String, dynamic>))
+          .map(
+            (activity) =>
+                TripActivity.fromMap(activity as Map<String, dynamic>),
+          )
           .toList(),
       polls: polls,
       files: (results[3] as List<dynamic>)
           .map((file) => SharedTripFile.fromMap(file as Map<String, dynamic>))
+          .toList(),
+      comments: (results[6] as List<dynamic>)
+          .map(
+            (comment) =>
+                ActivityComment.fromMap(comment as Map<String, dynamic>),
+          )
+          .toList(),
+      notifications: (results[7] as List<dynamic>)
+          .map(
+            (event) => CollaborationNotification.fromMap(
+              event as Map<String, dynamic>,
+            ),
+          )
           .toList(),
     );
   }
@@ -115,11 +162,51 @@ class CollaborationRepository {
       ..onPostgresChanges(
         event: PostgresChangeEvent.all,
         schema: 'public',
+        table: 'trip_polls',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'trip_id',
+          value: tripId,
+        ),
+        callback: (_) => onChange(),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'trip_poll_votes',
+        callback: (_) => onChange(),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'trip_activity_comments',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'trip_id',
+          value: tripId,
+        ),
+        callback: (_) => onChange(),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'trip_activity_events',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'trip_id',
+          value: tripId,
+        ),
+        callback: (_) => onChange(),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
         table: 'trip_activities',
         filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'trip_id',
-            value: tripId),
+          type: PostgresChangeFilterType.eq,
+          column: 'trip_id',
+          value: tripId,
+        ),
         callback: (_) => onChange(),
       )
       ..onPostgresChanges(
@@ -127,9 +214,10 @@ class CollaborationRepository {
         schema: 'public',
         table: 'trip_files',
         filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'trip_id',
-            value: tripId),
+          type: PostgresChangeFilterType.eq,
+          column: 'trip_id',
+          value: tripId,
+        ),
         callback: (_) => onChange(),
       )
       ..subscribe();
@@ -139,36 +227,42 @@ class CollaborationRepository {
       .from('trip_messages')
       .insert({'trip_id': tripId, 'sender_id': userId, 'body': body});
 
-  Future<void> setMute(
-          {required String tripId,
-          required String memberId,
-          required Duration duration}) =>
-      _client
-          .from('matchmaking_trip_members')
-          .update({
-            'muted_until':
-                DateTime.now().add(duration).toUtc().toIso8601String(),
-          })
-          .eq('trip_id', tripId)
-          .eq('user_id', memberId);
+  Future<void> setMute({
+    required String tripId,
+    required String memberId,
+    required Duration duration,
+  }) => _client
+      .from('trip_members')
+      .update({
+        'muted_until': DateTime.now().add(duration).toUtc().toIso8601String(),
+      })
+      .eq('trip_id', tripId)
+      .eq('user_id', memberId);
 
   Future<void> removeMember(String tripId, String memberId) => _client
-      .from('matchmaking_trip_members')
+      .from('trip_members')
       .delete()
       .eq('trip_id', tripId)
       .eq('user_id', memberId);
 
-  Future<void> addActivity(
-          {required String tripId,
-          required String title,
-          required DateTime startTime,
-          String? location}) =>
-      _client.from('trip_activities').insert({
+  Future<void> makeAdmin({required String tripId, required String memberId}) =>
+      _client.from('trip_member_roles').upsert({
         'trip_id': tripId,
-        'title': title,
-        'start_time': startTime.toUtc().toIso8601String(),
-        'location': location,
-      });
+        'user_id': memberId,
+        'role': 'admin',
+      }, onConflict: 'trip_id,user_id,role');
+
+  Future<void> addActivity({
+    required String tripId,
+    required String title,
+    required DateTime startTime,
+    String? location,
+  }) => _client.from('trip_activities').insert({
+    'trip_id': tripId,
+    'title': title,
+    'start_time': startTime.toUtc().toIso8601String(),
+    'location': location,
+  });
 
   Future<void> updateActivity(String activityId, Map<String, dynamic> values) =>
       _client.from('trip_activities').update(values).eq('id', activityId);
@@ -190,8 +284,10 @@ class CollaborationRepository {
   }
 
   Future<void> castVote({required String pollId, required String optionId}) =>
-      _client.rpc('cast_trip_poll_vote',
-          params: {'p_poll_id': pollId, 'p_option_id': optionId});
+      _client.rpc(
+        'cast_trip_poll_vote',
+        params: {'p_poll_id': pollId, 'p_option_id': optionId},
+      );
 
   Future<void> uploadFile({
     required String tripId,
@@ -204,8 +300,9 @@ class CollaborationRepository {
     await _client.storage
         .from('trip-documents')
         .uploadBinary(storagePath, bytes);
-    final url =
-        _client.storage.from('trip-documents').getPublicUrl(storagePath);
+    final url = _client.storage
+        .from('trip-documents')
+        .getPublicUrl(storagePath);
     await _client.from('trip_files').insert({
       'trip_id': tripId,
       'file_name': fileName,
@@ -216,7 +313,33 @@ class CollaborationRepository {
   }
 
   Future<void> startCall({required String tripId, required String type}) =>
-      _client
-          .from('trip_calls')
-          .insert({'trip_id': tripId, 'call_type': type, 'status': 'ringing'});
+      _client.from('trip_calls').insert({
+        'trip_id': tripId,
+        'call_type': type,
+        'status': 'ringing',
+      });
+
+  Future<void> addActivityComment({
+    required String tripId,
+    required String activityId,
+    required String authorId,
+    required String body,
+  }) => _client.from('trip_activity_comments').insert({
+    'trip_id': tripId,
+    'activity_id': activityId,
+    'author_id': authorId,
+    'body': body,
+  });
+
+  Future<void> recordEvent({
+    required String tripId,
+    required String actorId,
+    required String type,
+    required String summary,
+  }) => _client.from('trip_activity_events').insert({
+    'trip_id': tripId,
+    'actor_id': actorId,
+    'event_type': type,
+    'summary': summary,
+  });
 }
