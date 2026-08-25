@@ -129,6 +129,8 @@ class _ChatTab extends ConsumerStatefulWidget {
 
 class _ChatTabState extends ConsumerState<_ChatTab> {
   final _messageController = TextEditingController();
+  bool _isTyping = false;
+  bool _readMarked = false;
 
   @override
   void dispose() {
@@ -141,6 +143,12 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
     final viewModel = ref.read(
       groupCollaborationViewModelProvider(widget.state.tripId).notifier,
     );
+    if (!_readMarked && widget.state.messages.isNotEmpty) {
+      _readMarked = true;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => viewModel.markMessagesRead(),
+      );
+    }
     return Column(
       children: [
         Expanded(
@@ -155,7 +163,12 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
                           ? 'You'
                           : (message.senderName ?? 'Trip member'),
                     ),
-                    subtitle: Text(message.body),
+                    subtitle: Text(
+                      message.senderId == widget.state.currentUserId
+                          ? '${message.body}\nSeen by ${message.readByCount} member(s)'
+                          : message.body,
+                    ),
+                    isThreeLine: message.senderId == widget.state.currentUserId,
                   ),
                 ),
               ),
@@ -189,16 +202,24 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
                                 TextButton(
                                   onPressed: () => _confirmMemberAction(
                                     context: context,
-                                    title: 'Mute member?',
+                                    title: member.isMuted
+                                        ? 'Unmute member?'
+                                        : 'Mute member?',
                                     message:
                                         'This member cannot send chat messages for 30 minutes.',
-                                    confirmLabel: 'Mute',
-                                    onConfirm: () => viewModel.muteMember(
-                                      member.userId,
-                                      const Duration(minutes: 30),
-                                    ),
+                                    confirmLabel: member.isMuted
+                                        ? 'Unmute'
+                                        : 'Mute',
+                                    onConfirm: () => member.isMuted
+                                        ? viewModel.unmuteMember(member.userId)
+                                        : viewModel.muteMember(
+                                            member.userId,
+                                            const Duration(minutes: 30),
+                                          ),
                                   ),
-                                  child: const Text('Mute'),
+                                  child: Text(
+                                    member.isMuted ? 'Unmute' : 'Mute',
+                                  ),
                                 ),
                                 TextButton(
                                   onPressed: () => _confirmMemberAction(
@@ -226,11 +247,32 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
                                     ),
                                     child: const Text('Make admin'),
                                   ),
+                                if (widget.state.isCreator && member.isAdmin)
+                                  TextButton(
+                                    onPressed: () => _confirmMemberAction(
+                                      context: context,
+                                      title: 'Remove admin?',
+                                      message:
+                                          'This member will remain in the group but lose admin permissions.',
+                                      confirmLabel: 'Remove admin',
+                                      onConfirm: () =>
+                                          viewModel.removeAdmin(member.userId),
+                                    ),
+                                    child: const Text('Remove admin'),
+                                  ),
                               ],
                             )
                           : null,
                     ),
                   ),
+              if (widget.state.typingMemberNames.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    '${widget.state.typingMemberNames.join(', ')} ${widget.state.typingMemberNames.length == 1 ? 'is' : 'are'} typing…',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
             ],
           ),
         ),
@@ -241,13 +283,21 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
             child: Row(
               children: [
                 IconButton(
-                  onPressed: viewModel.pickAndShareFile,
+                  onPressed: () =>
+                      _runWorkspaceAction(context, viewModel.pickAndShareFile),
                   icon: const Icon(Icons.attach_file),
                   tooltip: 'Share file',
                 ),
                 Expanded(
                   child: TextField(
                     controller: _messageController,
+                    onChanged: (value) {
+                      final typing = value.trim().isNotEmpty;
+                      if (typing != _isTyping) {
+                        _isTyping = typing;
+                        viewModel.setTyping(typing);
+                      }
+                    },
                     enabled: !widget.state.isMuted,
                     decoration: const InputDecoration(
                       hintText: 'Message group',
@@ -261,6 +311,7 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
                       : () async {
                           await viewModel.sendMessage(_messageController.text);
                           _messageController.clear();
+                          _isTyping = false;
                         },
                   icon: const Icon(Icons.send),
                 ),
@@ -311,7 +362,7 @@ class _TimelineTab extends ConsumerWidget {
             child: ListTile(
               title: Text(activity.title),
               subtitle: Text(
-                '${activity.startTime}\n${state.comments.where((comment) => comment.activityId == activity.id).length} comment(s)',
+                '${activity.startTime}\n${state.comments.where((comment) => comment.activityId == activity.id).length} comment(s) · ${_rsvpSummary(state, activity.id)}',
               ),
               isThreeLine: true,
               trailing: Wrap(
@@ -321,6 +372,25 @@ class _TimelineTab extends ConsumerWidget {
                         _showComments(context, state, activity, viewModel),
                     icon: const Icon(Icons.comment_outlined),
                     tooltip: 'Activity comments',
+                  ),
+                  PopupMenuButton<String>(
+                    tooltip: 'Your RSVP',
+                    onSelected: (status) => _runWorkspaceAction(
+                      context,
+                      () => viewModel.setActivityRsvp(
+                        activityId: activity.id,
+                        status: status,
+                      ),
+                    ),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'going', child: Text('Going')),
+                      PopupMenuItem(value: 'maybe', child: Text('Maybe')),
+                      PopupMenuItem(
+                        value: 'not_going',
+                        child: Text('Not going'),
+                      ),
+                    ],
+                    child: Chip(label: Text(_currentRsvp(state, activity.id))),
                   ),
                   IconButton(
                     onPressed: () => viewModel.togglePin(activity),
@@ -501,12 +571,34 @@ class _FilesTab extends ConsumerWidget {
         ...state.files.map(
           (file) => ListTile(
             title: Text(file.name),
-            trailing: IconButton(
-              icon: const Icon(Icons.open_in_new),
-              onPressed: () => launchUrl(
-                Uri.parse(file.url),
-                mode: LaunchMode.externalApplication,
-              ),
+            subtitle: Text(
+              '${file.uploadedBy == state.currentUserId ? 'You' : (file.uploadedByName ?? 'Trip member')} · ${_shortDate(file.createdAt)} · ${_fileSize(file.sizeBytes)}',
+            ),
+            trailing: Wrap(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.open_in_new),
+                  onPressed: () => launchUrl(
+                    Uri.parse(file.url),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                ),
+                if (file.uploadedBy == state.currentUserId ||
+                    state.canManageMembers)
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip: 'Delete file',
+                    onPressed: () => _confirmMemberAction(
+                      context: context,
+                      title: 'Delete file?',
+                      message:
+                          '${file.name} will no longer be available to the group.',
+                      confirmLabel: 'Delete',
+                      isDestructive: true,
+                      onConfirm: () => viewModel.deleteFile(file),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
@@ -551,12 +643,35 @@ class _CallsTab extends ConsumerWidget {
               subtitle: Text(
                 '${call.initiatedBy == state.currentUserId ? 'You' : (call.initiatedByName ?? 'Trip member')} · ${_shortDate(call.createdAt)} · ${call.status}',
               ),
-              trailing: FilledButton(
-                onPressed: () => _runWorkspaceAction(
-                  context,
-                  () => viewModel.joinCall(call),
-                ),
-                child: const Text('Join'),
+              trailing: Wrap(
+                children: [
+                  FilledButton(
+                    onPressed: call.status == 'ended'
+                        ? null
+                        : () => _runWorkspaceAction(
+                            context,
+                            () => viewModel.joinCall(call),
+                          ),
+                    child: Text(call.status == 'ended' ? 'Ended' : 'Join'),
+                  ),
+                  if (call.initiatedBy == state.currentUserId ||
+                      state.canManageMembers)
+                    IconButton(
+                      tooltip: 'End call',
+                      onPressed: call.status == 'ended'
+                          ? null
+                          : () => _confirmMemberAction(
+                              context: context,
+                              title: 'End call?',
+                              message:
+                                  'This marks the call as ended in group history.',
+                              confirmLabel: 'End call',
+                              isDestructive: true,
+                              onConfirm: () => viewModel.endCall(call),
+                            ),
+                      icon: const Icon(Icons.call_end),
+                    ),
+                ],
               ),
             ),
           ),
@@ -678,3 +793,34 @@ Future<void> _runWorkspaceAction(
 
 String _shortDate(DateTime value) =>
     '${value.day}/${value.month}/${value.year} ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+
+String _currentRsvp(GroupCollaborationState state, String activityId) {
+  final ownRsvp = state.rsvps
+      .where(
+        (rsvp) =>
+            rsvp.activityId == activityId && rsvp.userId == state.currentUserId,
+      )
+      .map((rsvp) => rsvp.status)
+      .firstOrNull;
+  return switch (ownRsvp) {
+    'going' => 'Going',
+    'maybe' => 'Maybe',
+    'not_going' => 'Not going',
+    _ => 'RSVP',
+  };
+}
+
+String _rsvpSummary(GroupCollaborationState state, String activityId) {
+  final rsvps = state.rsvps.where((rsvp) => rsvp.activityId == activityId);
+  final going = rsvps.where((rsvp) => rsvp.status == 'going').length;
+  final maybe = rsvps.where((rsvp) => rsvp.status == 'maybe').length;
+  final notGoing = rsvps.where((rsvp) => rsvp.status == 'not_going').length;
+  return '$going going · $maybe maybe · $notGoing not going';
+}
+
+String _fileSize(int? bytes) {
+  if (bytes == null) return 'size unavailable';
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+}

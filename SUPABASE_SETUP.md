@@ -209,10 +209,12 @@ file path), and run it in Supabase Dashboard → SQL Editor.
 6. `supabase/migrations/20260825_collaboration_membership_sync.sql`
 7. `supabase/migrations/20260825_collaboration_api_grants.sql`
 8. `supabase/migrations/20260825_collaboration_polish.sql`
+9. `supabase/migrations/20260825_collaboration_engagement.sql`
 
-The last migration enables Call History and the expanded Activity History
-event types. If the app reports that `public.save_matchmaking_trip` is missing,
-run `20260824_matchmaking_hardening.sql`.
+The last two migrations enable Call History, Activity History, RSVP, typing,
+read receipts, and reversible member controls. If the app reports that
+`public.save_matchmaking_trip` is missing, run
+`20260824_matchmaking_hardening.sql`.
 
 ### Flutter web Google sign-in
 

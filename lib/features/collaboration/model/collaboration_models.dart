@@ -66,6 +66,7 @@ class TripMessage {
     required this.body,
     required this.sentAt,
     this.senderName,
+    this.readByCount = 0,
   });
 
   final String id;
@@ -73,15 +74,20 @@ class TripMessage {
   final String body;
   final DateTime sentAt;
   final String? senderName;
+  final int readByCount;
 
-  factory TripMessage.fromMap(Map<String, dynamic> map, {String? senderName}) =>
-      TripMessage(
-        id: map['id'] as String,
-        senderId: map['sender_id'] as String,
-        body: map['body'] as String,
-        sentAt: DateTime.parse(map['sent_at'] as String).toLocal(),
-        senderName: senderName,
-      );
+  factory TripMessage.fromMap(
+    Map<String, dynamic> map, {
+    String? senderName,
+    int readByCount = 0,
+  }) => TripMessage(
+    id: map['id'] as String,
+    senderId: map['sender_id'] as String,
+    body: map['body'] as String,
+    sentAt: DateTime.parse(map['sent_at'] as String).toLocal(),
+    senderName: senderName,
+    readByCount: readByCount,
+  );
 }
 
 class TripActivity {
@@ -108,6 +114,24 @@ class TripActivity {
     location: map['location'] as String?,
     isPinned: map['is_pinned'] as bool? ?? false,
     isLocked: map['is_locked'] as bool? ?? false,
+  );
+}
+
+class ActivityRsvp {
+  const ActivityRsvp({
+    required this.activityId,
+    required this.userId,
+    required this.status,
+  });
+
+  final String activityId;
+  final String userId;
+  final String status;
+
+  factory ActivityRsvp.fromMap(Map<String, dynamic> map) => ActivityRsvp(
+    activityId: map['activity_id'] as String,
+    userId: map['user_id'] as String,
+    status: map['status'] as String,
   );
 }
 
@@ -141,18 +165,33 @@ class SharedTripFile {
     required this.name,
     required this.url,
     required this.uploadedBy,
+    required this.createdAt,
+    required this.storagePath,
+    this.uploadedByName,
+    this.sizeBytes,
   });
 
   final String id;
   final String name;
   final String url;
   final String uploadedBy;
+  final String? uploadedByName;
+  final int? sizeBytes;
+  final DateTime createdAt;
+  final String storagePath;
 
-  factory SharedTripFile.fromMap(Map<String, dynamic> map) => SharedTripFile(
+  factory SharedTripFile.fromMap(
+    Map<String, dynamic> map, {
+    String? uploadedByName,
+  }) => SharedTripFile(
     id: map['id'] as String,
     name: map['file_name'] as String,
     url: map['file_url'] as String,
+    storagePath: map['storage_path'] as String,
     uploadedBy: map['uploaded_by'] as String,
+    uploadedByName: uploadedByName,
+    sizeBytes: map['file_size_bytes'] as int?,
+    createdAt: DateTime.parse(map['created_at'] as String).toLocal(),
   );
 }
 
@@ -219,6 +258,8 @@ class GroupCollaborationState {
     required this.comments,
     required this.notifications,
     required this.calls,
+    required this.rsvps,
+    required this.typingMemberNames,
   });
 
   final String tripId;
@@ -233,6 +274,8 @@ class GroupCollaborationState {
   final List<ActivityComment> comments;
   final List<CollaborationNotification> notifications;
   final List<TripCall> calls;
+  final List<ActivityRsvp> rsvps;
+  final List<String> typingMemberNames;
 
   bool get isCreator => currentUserId == creatorId;
   bool get canManageMembers => isCreator || isAdmin;

@@ -20,6 +20,8 @@ void main() {
     comments: const [],
     notifications: const [],
     calls: const [],
+    rsvps: const [],
+    typingMemberNames: const [],
   );
 
   test('only the creator or an admin can manage members', () {
@@ -76,5 +78,34 @@ void main() {
 
     expect(event.eventType, 'file_shared');
     expect(event.summary, contains('booking.pdf'));
+  });
+
+  test('represents RSVP and typing status from the real workspace', () {
+    final rsvp = ActivityRsvp.fromMap({
+      'activity_id': 'activity-1',
+      'user_id': 'member',
+      'status': 'going',
+    });
+    final state = workspace();
+
+    expect(rsvp.status, 'going');
+    expect(rsvp.activityId, 'activity-1');
+    expect(state.typingMemberNames, isEmpty);
+  });
+
+  test('shared file includes metadata used by uploader/admin controls', () {
+    final file = SharedTripFile.fromMap({
+      'id': 'file-1',
+      'file_name': 'booking.pdf',
+      'file_url': 'https://example.com/booking.pdf',
+      'storage_path': 'trip-1/booking.pdf',
+      'uploaded_by': 'member',
+      'file_size_bytes': 2048,
+      'created_at': '2026-08-25T12:00:00.000Z',
+    }, uploadedByName: 'Aina');
+
+    expect(file.uploadedByName, 'Aina');
+    expect(file.sizeBytes, 2048);
+    expect(file.storagePath, 'trip-1/booking.pdf');
   });
 }

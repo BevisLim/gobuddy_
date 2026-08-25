@@ -31,7 +31,7 @@ class CollaborationRepository {
           .eq('trip_id', tripId),
       _client
           .from('trip_messages')
-          .select()
+          .select('*, trip_message_reads(user_id)')
           .eq('trip_id', tripId)
           .order('sent_at'),
       _client
@@ -68,6 +68,21 @@ class CollaborationRepository {
           .eq('trip_id', tripId)
           .order('created_at', ascending: false)
           .limit(20),
+      _client
+          .from('trip_activity_rsvps')
+          .select('activity_id, user_id, status')
+          .eq('trip_id', tripId),
+      _client
+          .from('trip_typing_status')
+          .select('user_id')
+          .eq('trip_id', tripId)
+          .gt(
+            'updated_at',
+            DateTime.now()
+                .subtract(const Duration(seconds: 12))
+                .toUtc()
+                .toIso8601String(),
+          ),
     ]);
     final profileNames = <String, String>{
       for (final profile in results[8] as List<dynamic>)
@@ -126,6 +141,8 @@ class CollaborationRepository {
         return TripMessage.fromMap(
           row,
           senderName: profileNames[row['sender_id'] as String],
+          readByCount:
+              (row['trip_message_reads'] as List<dynamic>? ?? const []).length,
         );
       }).toList(),
       activities: (results[2] as List<dynamic>)
@@ -135,9 +152,13 @@ class CollaborationRepository {
           )
           .toList(),
       polls: polls,
-      files: (results[3] as List<dynamic>)
-          .map((file) => SharedTripFile.fromMap(file as Map<String, dynamic>))
-          .toList(),
+      files: (results[3] as List<dynamic>).map((file) {
+        final row = file as Map<String, dynamic>;
+        return SharedTripFile.fromMap(
+          row,
+          uploadedByName: profileNames[row['uploaded_by'] as String],
+        );
+      }).toList(),
       comments: (results[6] as List<dynamic>)
           .map(
             (comment) =>
@@ -158,6 +179,16 @@ class CollaborationRepository {
           initiatedByName: profileNames[row['initiated_by'] as String],
         );
       }).toList(),
+      rsvps: (results[10] as List<dynamic>)
+          .map((rsvp) => ActivityRsvp.fromMap(rsvp as Map<String, dynamic>))
+          .toList(),
+      typingMemberNames: (results[11] as List<dynamic>)
+          .map(
+            (typing) => (typing as Map<String, dynamic>)['user_id'] as String,
+          )
+          .where((userId) => userId != currentUserId)
+          .map((userId) => profileNames[userId] ?? 'A trip member')
+          .toList(),
     );
   }
 
@@ -246,6 +277,34 @@ class CollaborationRepository {
         ),
         callback: (_) => onChange(),
       )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'trip_typing_status',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'trip_id',
+          value: tripId,
+        ),
+        callback: (_) => onChange(),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'trip_message_reads',
+        callback: (_) => onChange(),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'trip_activity_rsvps',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'trip_id',
+          value: tripId,
+        ),
+        callback: (_) => onChange(),
+      )
       ..subscribe();
   }
 
@@ -265,6 +324,15 @@ class CollaborationRepository {
       .eq('trip_id', tripId)
       .eq('user_id', memberId);
 
+  Future<void> unmuteMember({
+    required String tripId,
+    required String memberId,
+  }) => _client
+      .from('trip_members')
+      .update({'muted_until': null})
+      .eq('trip_id', tripId)
+      .eq('user_id', memberId);
+
   Future<void> removeMember(String tripId, String memberId) => _client
       .from('trip_members')
       .delete()
@@ -277,6 +345,16 @@ class CollaborationRepository {
         'user_id': memberId,
         'role': 'admin',
       }, onConflict: 'trip_id,user_id,role');
+
+  Future<void> removeAdmin({
+    required String tripId,
+    required String memberId,
+  }) => _client
+      .from('trip_member_roles')
+      .delete()
+      .eq('trip_id', tripId)
+      .eq('user_id', memberId)
+      .eq('role', 'admin');
 
   Future<void> addActivity({
     required String tripId,
@@ -335,7 +413,13 @@ class CollaborationRepository {
       'file_url': url,
       'storage_path': storagePath,
       'uploaded_by': userId,
+      'file_size_bytes': bytes.length,
     });
+  }
+
+  Future<void> deleteFile(SharedTripFile file) async {
+    await _client.storage.from('trip-documents').remove([file.storagePath]);
+    await _client.from('trip_files').delete().eq('id', file.id);
   }
 
   Future<TripCall> startCall({
@@ -349,6 +433,43 @@ class CollaborationRepository {
         .single();
     return TripCall.fromMap(call);
   }
+
+  Future<void> updateCallStatus({
+    required String callId,
+    required String status,
+  }) => _client.from('trip_calls').update({'status': status}).eq('id', callId);
+
+  Future<void> setActivityRsvp({
+    required String tripId,
+    required String activityId,
+    required String userId,
+    required String status,
+  }) => _client.from('trip_activity_rsvps').upsert({
+    'trip_id': tripId,
+    'activity_id': activityId,
+    'user_id': userId,
+    'status': status,
+  }, onConflict: 'activity_id,user_id');
+
+  Future<void> setTyping({
+    required String tripId,
+    required String userId,
+    required bool isTyping,
+  }) async {
+    final query = _client.from('trip_typing_status');
+    if (isTyping) {
+      await query.upsert({
+        'trip_id': tripId,
+        'user_id': userId,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }, onConflict: 'trip_id,user_id');
+    } else {
+      await query.delete().eq('trip_id', tripId).eq('user_id', userId);
+    }
+  }
+
+  Future<void> markMessagesRead(String tripId) =>
+      _client.rpc('mark_trip_messages_read', params: {'p_trip_id': tripId});
 
   Future<void> addActivityComment({
     required String tripId,
