@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -20,6 +22,8 @@ class MessagesScreen extends ConsumerStatefulWidget {
 
 class _MessagesScreenState extends ConsumerState<MessagesScreen> {
   RealtimeChannel? _membershipChannel;
+  StreamSubscription<AuthState>? _authSubscription;
+  String? _subscribedUserId;
 
   @override
   void initState() {
@@ -27,26 +31,58 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(matchmakingViewModelProvider.notifier).refresh();
     });
-    final userId = supabase.auth.currentUser?.id;
-    if (userId != null) {
-      _membershipChannel = supabase
-          .channel('message-groups-$userId')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: 'matchmaking_trip_members',
-            callback: (_) {
-              if (mounted) {
-                ref.read(matchmakingViewModelProvider.notifier).refresh();
-              }
-            },
-          )
-          .subscribe();
-    }
+    _subscribeToGroupChanges(supabase.auth.currentUser?.id);
+    _authSubscription = supabase.auth.onAuthStateChange.listen((authState) {
+      _subscribeToGroupChanges(authState.session?.user.id);
+    });
+  }
+
+  Future<void> _subscribeToGroupChanges(String? userId) async {
+    if (!mounted || userId == _subscribedUserId) return;
+    final previousChannel = _membershipChannel;
+    _membershipChannel = null;
+    _subscribedUserId = null;
+    if (previousChannel != null) await supabase.removeChannel(previousChannel);
+    if (!mounted || userId == null) return;
+
+    _subscribedUserId = userId;
+    _membershipChannel = supabase
+        .channel('message-groups-$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'matchmaking_trip_members',
+          callback: (_) => _refreshGroups(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'trip_members',
+          callback: (_) => _refreshGroups(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'matchmaking_notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
+          callback: (_) => _refreshGroups(),
+        )
+        .subscribe((status, error) {
+          if (status == RealtimeSubscribeStatus.subscribed) _refreshGroups();
+        });
+  }
+
+  void _refreshGroups() {
+    if (mounted) ref.read(matchmakingViewModelProvider.notifier).refresh();
   }
 
   @override
   void dispose() {
+    _authSubscription?.cancel();
     final channel = _membershipChannel;
     if (channel != null) supabase.removeChannel(channel);
     super.dispose();
@@ -117,9 +153,15 @@ class _TripConversationCard extends StatelessWidget {
       ),
       subtitle: Text(
         '${_date(trip.startDate)} – ${_date(trip.endDate)} • '
-        '${trip.joined} ${trip.joined == 1 ? 'traveller' : 'travellers'}',
+        '${trip.groupMemberCount} '
+        '${trip.groupMemberCount == 1 ? 'member' : 'members'}',
       ),
-      trailing: const Icon(Icons.chevron_right_rounded),
+      trailing: wasRemoved
+          ? const Chip(
+              avatar: Icon(Icons.person_remove_outlined, size: 18),
+              label: Text('Removed from group'),
+            )
+          : const Icon(Icons.chevron_right_rounded),
       onTap: () {
         final path = '${Routes.groupCollaboration}?tripId=${trip.id}'
             '${wasRemoved ? '&removed=true' : ''}';

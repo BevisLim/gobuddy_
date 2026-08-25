@@ -51,32 +51,27 @@ class MatchmakingState {
   List<MatchmakingTrip> get joinedTrips => trips
       .where((trip) => joinedTripIds.contains(trip.id))
       .toList(growable: false);
+  List<MatchmakingTrip> get removedTrips => trips
+      .where((trip) => !trip.isOwned && wasRemovedFromTrip(trip.id))
+      .toList(growable: false);
   List<MatchmakingTrip> get groupTrips => trips
       .where(
         (trip) =>
             !dismissedGroupIds.contains(trip.id) &&
-            (trip.isOwned || joinedTripIds.contains(trip.id)),
+            (trip.isOwned ||
+                joinedTripIds.contains(trip.id) ||
+                wasRemovedFromTrip(trip.id)),
       )
       .toList(growable: false);
   List<JoinRequest> get myRequests => requests
       .where((request) => request.applicantId == currentUserId)
       .toList(growable: false);
   bool wasRemovedFromTrip(String tripId) {
-    final inactiveRequest = requests.any(
-      (request) =>
-          request.tripId == tripId &&
-          request.applicantId == currentUserId &&
-          const {
-            ApplicantDecision.declined,
-            ApplicantDecision.cancelled,
-          }.contains(request.decision),
-    );
-    final removalNotification = notifications.any(
+    return notifications.any(
       (notification) =>
           notification.tripId == tripId &&
           notification.title.toLowerCase().contains('removed'),
     );
-    return inactiveRequest || removalNotification;
   }
   List<MatchmakingTrip> get discoveryTrips => trips
       .where((trip) =>
