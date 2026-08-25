@@ -5,6 +5,7 @@ class SosState {
   const SosState({
     this.isLocating = false,
     this.isRefreshing = false,
+    this.isTriggering = false,
     this.location,
     this.countryCode,
     this.locationLabel,
@@ -15,6 +16,7 @@ class SosState {
 
   final bool isLocating;
   final bool isRefreshing;
+  final bool isTriggering;
   final LocationData? location;
   final String? countryCode;
   final String? locationLabel;
@@ -25,6 +27,7 @@ class SosState {
   SosState copyWith({
     bool? isLocating,
     bool? isRefreshing,
+    bool? isTriggering,
     LocationData? location,
     String? countryCode,
     String? locationLabel,
@@ -37,6 +40,7 @@ class SosState {
       SosState(
         isLocating: isLocating ?? this.isLocating,
         isRefreshing: isRefreshing ?? this.isRefreshing,
+        isTriggering: isTriggering ?? this.isTriggering,
         location: location ?? this.location,
         countryCode: clearEmergencyData ? null : countryCode ?? this.countryCode,
         locationLabel:

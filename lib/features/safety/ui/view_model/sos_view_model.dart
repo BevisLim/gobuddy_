@@ -14,6 +14,23 @@ class SosViewModel extends Notifier<SosState> {
   @override
   SosState build() => const SosState();
 
+  Future<void> triggerEmergency() async {
+    if (state.isTriggering) return;
+    state = state.copyWith(isTriggering: true, clearMessage: true);
+    try {
+      if (state.location == null || state.numbers == null) {
+        await activate();
+      }
+
+      // Launch the pre-addressed location alert first, followed by the phone
+      // dialler. Android and iOS require the user to confirm both actions.
+      await alertContacts();
+      await callPreferred();
+    } finally {
+      state = state.copyWith(isTriggering: false);
+    }
+  }
+
   Future<void> activate() async {
     if (state.isLocating) return;
     state = state.copyWith(

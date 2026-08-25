@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import 'package:flutter_mvvm_riverpod/core/environment/env.dart';
+import 'package:flutter_mvvm_riverpod/core/permissions/app_permission_service.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration_models.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/repository/collaboration_repository.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/jitsi_call_screen.dart';
@@ -232,6 +233,7 @@ class GroupInfoScreen extends ConsumerWidget {
                 onTap: () => _openInAppCall(
                   context,
                   state.tripId,
+                  'voice',
                   () => viewModel.startCall('voice'),
                 ),
               ),
@@ -241,6 +243,7 @@ class GroupInfoScreen extends ConsumerWidget {
                 onTap: () => _openInAppCall(
                   context,
                   state.tripId,
+                  'video',
                   () => viewModel.startCall('video'),
                 ),
               ),
@@ -769,6 +772,22 @@ class _TimelineTab extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        Card(
+          color: Theme.of(context).colorScheme.errorContainer,
+          child: ListTile(
+            leading: Icon(
+              Icons.sos,
+              color: Theme.of(context).colorScheme.onErrorContainer,
+            ),
+            title: const Text('Emergency SOS'),
+            subtitle: const Text(
+              'Share your location and call the local emergency number',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push(Routes.sos),
+          ),
+        ),
+        const SizedBox(height: 12),
         FilledButton.icon(
           onPressed: () => showDialog<void>(
             context: context,
@@ -1156,6 +1175,7 @@ class _CallsTab extends ConsumerWidget {
                         : () => _openInAppCall(
                             context,
                             state.tripId,
+                            call.callType,
                             () => viewModel.joinCall(call),
                           ),
                     child: Text(call.status == 'ended' ? 'Ended' : 'Join'),
@@ -1256,9 +1276,13 @@ Future<void> _runWorkspaceAction(
 Future<void> _openInAppCall(
   BuildContext context,
   String tripId,
+  String callType,
   Future<TripCall?> Function() action,
 ) async {
   try {
+    await const AppPermissionService().requireCallPermissions(
+      withVideo: callType == 'video',
+    );
     final call = await action();
     if (call == null || !context.mounted) return;
     await Navigator.of(context).push(
