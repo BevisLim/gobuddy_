@@ -20,6 +20,7 @@ class ForgotPasswordScreen extends ConsumerStatefulWidget {
 class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
+  String? _resetEmail;
 
   @override
   void dispose() {
@@ -30,25 +31,29 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   Future<void> _sendResetLink() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
-    await ref
+    final sent = await ref
         .read(authenticationViewModelProvider.notifier)
-        .resetPassword(_emailController.text.trim());
+        .sendPasswordResetEmail(_emailController.text.trim());
 
     if (!mounted) return;
-    final result = ref.read(authenticationViewModelProvider);
-    if (result case AsyncError(:final error)) {
-      context.showErrorSnackBar(_readableError(error));
+    if (!sent) {
+      final result = ref.read(authenticationViewModelProvider);
+      final message = switch (result) {
+        AsyncError(:final error) => _readableError(error),
+        _ => 'Unable to send the reset link. Please try again.',
+      };
+      context.showErrorSnackBar(message);
       return;
     }
-
-    context.showSuccessSnackBar(
-      'Password reset instructions have been sent to your email.',
-    );
+    setState(() => _resetEmail = _emailController.text.trim());
   }
 
   @override
   Widget build(BuildContext context) {
     final isLoading = ref.watch(authenticationViewModelProvider).isLoading;
+    if (_resetEmail case final email?) {
+      return _CheckResetEmailView(email: email, onBackToLogin: _goToLogin);
+    }
 
     return Scaffold(
       backgroundColor: AppColors.brandBackground,
@@ -228,6 +233,90 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   }
 
   void _goToLogin() => context.go(Routes.login);
+}
+
+class _CheckResetEmailView extends StatelessWidget {
+  const _CheckResetEmailView({
+    required this.email,
+    required this.onBackToLogin,
+  });
+
+  final String email;
+  final VoidCallback onBackToLogin;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: AppColors.brandBackground,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: const BoxDecoration(
+                    color: AppColors.brandBorder,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.mark_email_read_outlined,
+                    color: AppColors.brandSurface,
+                    size: 36,
+                  ),
+                ),
+                const SizedBox(height: 28),
+                Text(
+                  'Check Your Email',
+                  textAlign: TextAlign.center,
+                  style: AppTheme.title32.copyWith(
+                    color: AppColors.brandPrimary,
+                    fontFamily: 'Georgia',
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'If an account exists for this email, a password reset link '
+                  'has been sent to:',
+                  textAlign: TextAlign.center,
+                  style: AppTheme.body16.copyWith(
+                    color: AppColors.brandTextMuted,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  email,
+                  textAlign: TextAlign.center,
+                  style: AppTheme.title14.copyWith(
+                    color: AppColors.brandPrimary,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Open the email and tap the reset link to create a new '
+                  'password.',
+                  textAlign: TextAlign.center,
+                  style: AppTheme.body14.copyWith(
+                    color: AppColors.brandTextMuted,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 28),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: OutlinedButton(
+                    onPressed: onBackToLogin,
+                    child: const Text('Back to Login'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
 }
 
 final _inputBorder = OutlineInputBorder(

@@ -5,12 +5,13 @@ import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uuid/uuid.dart';
 
-
 import '../../common/ui/widgets/app_module_navigation.dart';
 import '../../../core/routing/routes.dart';
 import '../model/matchmaking_models.dart';
+import '../model/matchmaking_notification.dart';
 import '../model/matchmaking_page.dart';
-import 'view_model/matchmaking_view_model_v2.dart';
+import 'view_model/matchmaking_view_model.dart';
+import '../../safety/ui/widgets/user_safety_actions.dart';
 
 const _ink = Color(0xFF281950);
 const _violet = Color(0xFF7C3AED);
@@ -30,15 +31,34 @@ class _MatchmakingShellScreenState
     extends ConsumerState<MatchmakingShellScreen> {
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(matchmakingViewModelV2Provider);
-    final viewModel = ref.read(matchmakingViewModelV2Provider.notifier);
+    ref.listen<String?>(
+        matchmakingViewModelProvider.select((state) => state.successMessage),
+        (previous, next) {
+      if (next != null && next != previous) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(next)));
+        Future<void>.microtask(() => ref
+            .read(matchmakingViewModelProvider.notifier)
+            .clearSuccessMessage());
+      }
+    });
+    final state = ref.watch(matchmakingViewModelProvider);
+    final viewModel = ref.read(matchmakingViewModelProvider.notifier);
     final page = state.page;
     final content = switch (page) {
       MatchmakingPage.discover => DiscoverPage(
+          isAuthenticated: state.isAuthenticated,
+          isLoading: state.isLoading,
+          errorMessage: state.errorMessage,
           filter: state.selectedFilter,
           trips: state.discoveryTrips,
           savedTripIds: state.savedTripIds,
           filters: state.availableFilters,
+          notifications: state.notifications,
+          unreadNotificationCount: state.unreadNotificationCount,
+          onNotificationsRead: viewModel.markNotificationsRead,
+          onRetry: viewModel.refresh,
           onFilter: viewModel.selectFilter,
           onOpenFilters: () => viewModel.goTo(MatchmakingPage.filters),
           onDetails: (id) => viewModel.openTrip(id, MatchmakingPage.details),
@@ -64,11 +84,15 @@ class _MatchmakingShellScreenState
           onDelete: () => viewModel.deleteTrip(state.selectedTrip!.id)),
       MatchmakingPage.myTrips => MyTripsPage(
           trips: state.ownedTrips,
+          joinedTrips: state.joinedTrips,
+          allTrips: state.trips,
+          requests: state.myRequests,
           onBack: () => viewModel.goTo(MatchmakingPage.discover),
           onCreate: () => viewModel.goTo(MatchmakingPage.create),
           onManage: viewModel.openRequests,
           onEdit: (id) => viewModel.openTrip(id, MatchmakingPage.edit),
-          onDelete: viewModel.deleteTrip),
+          onDelete: viewModel.deleteTrip,
+          onCancelRequest: viewModel.cancelRequest),
       MatchmakingPage.request => RequestPage(
           trip: state.selectedTrip!,
           onCancel: () => viewModel.goTo(MatchmakingPage.details),
@@ -135,33 +159,94 @@ class _MatchmakingShellScreenState
                   },
                 )
               : null,
-      floatingActionButton: page == MatchmakingPage.discover
-          ? FloatingActionButton(
-              onPressed: () => viewModel.goTo(MatchmakingPage.create),
-              backgroundColor: _violet,
-              foregroundColor: Colors.white,
-              shape: const CircleBorder(),
-              child: const Icon(Icons.add),
-            )
-          : null,
+      floatingActionButton:
+          page == MatchmakingPage.discover && state.isAuthenticated
+              ? FloatingActionButton(
+                  onPressed: () => viewModel.goTo(MatchmakingPage.create),
+                  backgroundColor: _violet,
+                  foregroundColor: Colors.white,
+                  shape: const CircleBorder(),
+                  child: const Icon(Icons.add),
+                )
+              : null,
     );
   }
 }
 
+class _NotificationsDialog extends StatelessWidget {
+  const _NotificationsDialog({required this.notifications});
+
+  final List<MatchmakingNotification> notifications;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Notifications'),
+        content: SizedBox(
+          width: 420,
+          child: notifications.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Text('No notifications yet.'),
+                )
+              : ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: notifications.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final notification = notifications[index];
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        notification.isUnread
+                            ? Icons.notifications_active_rounded
+                            : Icons.notifications_none_rounded,
+                        color: notification.isUnread ? _violet : _muted,
+                      ),
+                      title: Text(notification.title,
+                          style: TextStyle(
+                              fontWeight: notification.isUnread
+                                  ? FontWeight.w700
+                                  : FontWeight.w500)),
+                      subtitle: Text(notification.body),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'))
+        ],
+      );
+}
+
 class DiscoverPage extends StatelessWidget {
+  final bool isAuthenticated, isLoading;
+  final String? errorMessage;
   final String filter;
   final List<MatchmakingTrip> trips;
   final Set<String> savedTripIds;
   final List<String> filters;
+  final List<MatchmakingNotification> notifications;
+  final int unreadNotificationCount;
+  final Future<void> Function() onNotificationsRead;
+  final Future<void> Function() onRetry;
   final ValueChanged<String> onFilter;
   final VoidCallback onOpenFilters;
   final ValueChanged<String> onDetails, onRequest, onSave;
   const DiscoverPage(
       {super.key,
+      required this.isAuthenticated,
+      required this.isLoading,
+      required this.errorMessage,
       required this.filter,
       required this.trips,
       required this.savedTripIds,
       required this.filters,
+      required this.notifications,
+      required this.unreadNotificationCount,
+      required this.onNotificationsRead,
+      required this.onRetry,
       required this.onFilter,
       required this.onOpenFilters,
       required this.onDetails,
@@ -187,10 +272,20 @@ class DiscoverPage extends StatelessWidget {
                     onPressed: onOpenFilters,
                     icon: const Icon(Icons.tune_rounded, color: _ink)),
                 IconButton(
-                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('No new notifications.'))),
-                    icon: const Icon(Icons.notifications_none_rounded,
-                        color: _ink)),
+                    onPressed: () async {
+                      await showDialog<void>(
+                          context: context,
+                          builder: (context) => _NotificationsDialog(
+                              notifications: notifications));
+                      await onNotificationsRead();
+                    },
+                    icon: Badge(
+                        isLabelVisible: unreadNotificationCount > 0,
+                        label: Text(unreadNotificationCount > 99
+                            ? '99+'
+                            : '$unreadNotificationCount'),
+                        child: const Icon(Icons.notifications_none_rounded,
+                            color: _ink))),
                 InkWell(
                     onTap: () => context.go(Routes.userAccount),
                     customBorder: const CircleBorder(),
@@ -228,7 +323,25 @@ class DiscoverPage extends StatelessWidget {
                       onRequest: () => onRequest(trip.id)),
                   const SizedBox(height: 18),
                 ],
-                if (trips.isEmpty) const _NoTripsFound(),
+                if (!isAuthenticated)
+                  const _DiscoveryMessage(
+                    icon: Icons.lock_outline_rounded,
+                    title: 'Sign in to discover trips',
+                    message:
+                        'Matchmaking uses your account to keep requests and memberships separate.',
+                  )
+                else if (isLoading && trips.isEmpty)
+                  const _DiscoveryLoading()
+                else if (errorMessage != null && trips.isEmpty)
+                  _DiscoveryMessage(
+                    icon: Icons.cloud_off_rounded,
+                    title: 'Could not load trips',
+                    message: 'Check your connection and try again.',
+                    actionLabel: 'Retry',
+                    onAction: onRetry,
+                  )
+                else if (trips.isEmpty)
+                  const _NoTripsFound(),
               ])),
         ]),
       );
@@ -244,10 +357,56 @@ class _NoTripsFound extends StatelessWidget {
         const SizedBox(height: 14),
         const Text('No trips found', style: _heading),
         const SizedBox(height: 7),
-        Text('Try another travel style.',
+        Text('No active trips match your current filters.',
             textAlign: TextAlign.center,
             style: TextStyle(color: _muted.withValues(alpha: .9))),
       ]));
+}
+
+class _DiscoveryLoading extends StatelessWidget {
+  const _DiscoveryLoading();
+
+  @override
+  Widget build(BuildContext context) => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 80),
+        child: Center(child: CircularProgressIndicator()),
+      );
+}
+
+class _DiscoveryMessage extends StatelessWidget {
+  const _DiscoveryMessage({
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final IconData icon;
+  final String title, message;
+  final String? actionLabel;
+  final Future<void> Function()? onAction;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 80, horizontal: 24),
+        child: Column(children: [
+          Icon(icon, size: 48, color: _muted),
+          const SizedBox(height: 14),
+          Text(title, style: _heading, textAlign: TextAlign.center),
+          const SizedBox(height: 7),
+          Text(message,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: _muted.withValues(alpha: .9))),
+          if (actionLabel != null && onAction != null) ...[
+            const SizedBox(height: 16),
+            OutlinedButton(
+              onPressed: onAction,
+              child: Text(actionLabel!),
+            ),
+          ],
+        ]),
+      );
 }
 
 class TripCard extends StatelessWidget {
@@ -591,7 +750,21 @@ class TripDetailsPage extends StatelessWidget {
               height: 240,
               child: Stack(fit: StackFit.expand, children: [
                 TravelImage(url: trip.imageUrl),
-                Positioned(top: 16, left: 16, child: RoundBack(onTap: onBack))
+                Positioned(top: 16, left: 16, child: RoundBack(onTap: onBack)),
+                if (!trip.isOwned)
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: Material(
+                      color: Colors.white,
+                      shape: const CircleBorder(),
+                      child: UserSafetyActionsButton(
+                        targetUserId: trip.hostId,
+                        targetDisplayName: trip.hostName,
+                        onBlocked: onBack,
+                      ),
+                    ),
+                  ),
               ])),
           Padding(
               padding: const EdgeInsets.fromLTRB(20, 22, 20, 100),
@@ -641,7 +814,10 @@ class TripDetailsPage extends StatelessWidget {
             bottom: 16,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               OutlinedButton.icon(
-                onPressed: () => context.push(Routes.groupCollaboration),
+                onPressed: () => context.push(
+                  '${Routes.groupCollaboration}?tripId='
+                  '${Uri.encodeQueryComponent(trip.id)}',
+                ),
                 icon: const Icon(Icons.groups_outlined),
                 label: const Text('Open group workspace'),
               ),
@@ -967,16 +1143,22 @@ class _DateInputFormatter extends TextInputFormatter {
 
 class MyTripsPage extends StatelessWidget {
   final VoidCallback onBack, onCreate;
-  final List<MatchmakingTrip> trips;
+  final List<MatchmakingTrip> trips, joinedTrips, allTrips;
+  final List<JoinRequest> requests;
   final ValueChanged<String> onManage, onEdit, onDelete;
+  final Future<void> Function(String) onCancelRequest;
   const MyTripsPage(
       {super.key,
       required this.trips,
+      required this.joinedTrips,
+      required this.allTrips,
+      required this.requests,
       required this.onBack,
       required this.onCreate,
       required this.onManage,
       required this.onDelete,
-      required this.onEdit});
+      required this.onEdit,
+      required this.onCancelRequest});
   @override
   Widget build(BuildContext context) =>
       ListView(padding: const EdgeInsets.fromLTRB(20, 18, 20, 100), children: [
@@ -991,7 +1173,8 @@ class MyTripsPage extends StatelessWidget {
         const SizedBox(height: 16),
         OutlineButton(label: '+ Create a new trip', onTap: onCreate),
         const SizedBox(height: 24),
-        if (trips.isEmpty) const _NoTripsFound(),
+        if (trips.isEmpty && joinedTrips.isEmpty && requests.isEmpty)
+          const _NoTripsFound(),
         for (final trip in trips) ...[
           CompactTrip(
               destination: trip.destination,
@@ -1003,6 +1186,43 @@ class MyTripsPage extends StatelessWidget {
               onManage: () => onManage(trip.id),
               onDelete: () => onDelete(trip.id)),
           const SizedBox(height: 14),
+        ],
+        if (joinedTrips.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          const Text('Joined trips', style: _heading),
+          const SizedBox(height: 12),
+          for (final trip in joinedTrips)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.group_outlined, color: _violet),
+                title: Text(trip.destination),
+                subtitle: Text(_dateRange(trip.startDate, trip.endDate)),
+                trailing: const Chip(label: Text('Joined')),
+              ),
+            ),
+        ],
+        if (requests.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          const Text('Join requests', style: _heading),
+          const SizedBox(height: 12),
+          for (final request in requests)
+            if (allTrips.where((trip) => trip.id == request.tripId).firstOrNull
+                case final trip?)
+              Card(
+                child: ListTile(
+                  title: Text(trip.destination),
+                  subtitle: Text(_decisionLabel(request.decision)),
+                  trailing: const {
+                    ApplicantDecision.pending,
+                    ApplicantDecision.held,
+                  }.contains(request.decision)
+                      ? TextButton(
+                          onPressed: () => onCancelRequest(request.id),
+                          child: const Text('Cancel'),
+                        )
+                      : null,
+                ),
+              ),
         ],
       ]);
 }
@@ -1180,7 +1400,15 @@ class ApplicantPage extends StatelessWidget {
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    RoundBack(onTap: onBack),
+                    Row(children: [
+                      RoundBack(onTap: onBack),
+                      const Spacer(),
+                      UserSafetyActionsButton(
+                        targetUserId: applicant.id,
+                        targetDisplayName: applicant.name,
+                        onBlocked: onBack,
+                      ),
+                    ]),
                     const SizedBox(height: 22),
                     Center(
                         child: Avatar(
@@ -1922,5 +2150,6 @@ String _decisionLabel(ApplicantDecision? decision) => switch (decision) {
       ApplicantDecision.accepted => 'Accepted',
       ApplicantDecision.held => 'Held',
       ApplicantDecision.declined => 'Declined',
+      ApplicantDecision.cancelled => 'Cancelled',
       _ => 'Pending',
     };

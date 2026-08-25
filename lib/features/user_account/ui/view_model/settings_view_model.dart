@@ -2,8 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
+import '../../repository/authentication_repository.dart';
 import '../state/settings_state.dart';
-import 'authentication_view_model.dart';
 
 final settingsViewModelProvider =
     AsyncNotifierProvider<SettingsViewModel, SettingsState>(
@@ -35,9 +35,7 @@ class SettingsViewModel extends AsyncNotifier<SettingsState> {
     final current = state.value ?? const SettingsState();
     state = AsyncData(current.copyWith(isSigningOut: true, clearError: true));
     try {
-      await ref.read(authenticationViewModelProvider.notifier).signOut();
-      final authentication = ref.read(authenticationViewModelProvider);
-      if (authentication case AsyncError(:final error)) throw error;
+      await ref.read(authenticationRepositoryProvider).signOut();
       state = AsyncData(current.copyWith(isSigningOut: false));
       return true;
     } catch (error) {

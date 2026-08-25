@@ -1,4 +1,5 @@
 import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
+import 'package:flutter_mvvm_riverpod/features/user_account/repository/authentication_repository.dart';
 import 'package:flutter_mvvm_riverpod/features/user_account/ui/view_model/settings_view_model.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,12 +9,17 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({
       Constants.tripMatchNotificationsKey: true,
-      Constants.isLoginKey: true,
     });
   });
 
-  test('persists Trip Matches preference and signs out locally', () async {
-    final container = ProviderContainer();
+  test('persists Trip Matches preference and delegates Supabase sign-out',
+      () async {
+    final repository = _FakeAuthenticationRepository();
+    final container = ProviderContainer(
+      overrides: [
+        authenticationRepositoryProvider.overrideWithValue(repository),
+      ],
+    );
     addTearDown(container.dispose);
 
     await container.read(settingsViewModelProvider.future);
@@ -35,7 +41,15 @@ void main() {
     );
 
     expect(await notifier.signOut(), isTrue);
-    preferences = await SharedPreferences.getInstance();
-    expect(preferences.getBool(Constants.isLoginKey), isFalse);
+    expect(repository.didSignOut, isTrue);
   });
+}
+
+class _FakeAuthenticationRepository extends AuthenticationRepository {
+  bool didSignOut = false;
+
+  @override
+  Future<void> signOut() async {
+    didSignOut = true;
+  }
 }

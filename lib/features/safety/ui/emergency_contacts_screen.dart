@@ -76,10 +76,33 @@ class EmergencyContactsScreen extends ConsumerWidget {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push(Routes.addEmergencyContact),
-        icon: const Icon(Icons.person_add_alt_1),
-        label: const Text('Add contact'),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'emergency-sos',
+            backgroundColor: AppColors.error,
+            foregroundColor: Colors.white,
+            onPressed: () => context.push(Routes.sos),
+            icon: const Icon(Icons.sos),
+            label: const Text('Emergency SOS'),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton.extended(
+            heroTag: 'live-location',
+            onPressed: () => context.push(Routes.liveLocation),
+            icon: const Icon(Icons.location_on_outlined),
+            label: const Text('Share live location'),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton.extended(
+            heroTag: 'add-contact',
+            onPressed: () => context.push(Routes.addEmergencyContact),
+            icon: const Icon(Icons.person_add_alt_1),
+            label: const Text('Add contact'),
+          ),
+        ],
       ),
     );
   }

@@ -128,6 +128,21 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 28),
+                const _SectionHeader(
+                  title: 'Safety',
+                  description: 'Manage your personal safety preferences',
+                ),
+                const SizedBox(height: 12),
+                _SettingsCard(
+                  child: _SettingsTile(
+                    icon: Icons.health_and_safety_outlined,
+                    title: 'Safety Check-In',
+                    subtitle: 'Configure automatic safety check-in reminders',
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => context.push(Routes.safetyCheckInSettings),
+                  ),
+                ),
+                const SizedBox(height: 28),
                 const _SectionHeader(title: 'Privacy'),
                 const SizedBox(height: 8),
                 _SettingsCard(

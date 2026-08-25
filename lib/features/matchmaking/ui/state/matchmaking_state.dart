@@ -1,112 +1,152 @@
+import '../../model/matchmaking_models.dart';
+import '../../model/matchmaking_notification.dart';
 import '../../model/matchmaking_page.dart';
 
-enum ApplicantDecision { pending, accepted, held, declined }
-
-class MatchmakingTrip {
-  const MatchmakingTrip(
-      {required this.destination,
-      required this.startDate,
-      required this.endDate,
-      required this.budget,
-      required this.styles,
-      required this.gender,
-      required this.minAge,
-      required this.maxAge,
-      required this.vacancies,
-      required this.description});
-
-  final String destination, startDate, endDate, budget, gender, description;
-  final Set<String> styles;
-  final int minAge, maxAge, vacancies;
-}
-
-const defaultMatchmakingTrip = MatchmakingTrip(
-  destination: 'Tokyo, Japan',
-  startDate: '12/08/2025',
-  endDate: '20/08/2025',
-  budget: '1800',
-  styles: {'Adventure', 'Nature'},
-  gender: 'Any',
-  minAge: 22,
-  maxAge: 40,
-  vacancies: 2,
-  description: 'Looking for a calm travel companion to explore Tokyo.',
-);
-
-class MatchmakingFilters {
-  const MatchmakingFilters(
-      {this.destination = '',
-      this.startDate,
-      this.endDate,
-      this.minBudget = 500,
-      this.maxBudget = 2500,
-      this.minAge = 22,
-      this.maxAge = 35,
-      this.gender = 'Any',
-      this.styles = const {}});
-  final String destination;
-  final DateTime? startDate, endDate;
-  final int minBudget, maxBudget, minAge, maxAge;
-  final String gender;
-  final Set<String> styles;
-}
-
 class MatchmakingState {
-  const MatchmakingState({
-    this.page = MatchmakingPage.discover,
-    this.selectedTab = 0,
-    this.selectedFilter = 'All',
-    this.selectedStyles = const {'Adventure', 'Nature'},
-    this.availableFilters = const [],
-    this.savedTripIds = const {},
-    this.requestMessages = const {},
-    this.applicantDecisions = const {},
-    this.myTrip = defaultMatchmakingTrip,
-    this.hasMyTrip = true,
-    this.deletedTripIds = const {},
-    this.filters = const MatchmakingFilters(),
-  });
-
+  const MatchmakingState(
+      {this.page = MatchmakingPage.discover,
+      this.selectedFilter = 'All',
+      this.availableFilters = const [],
+      this.filters = const MatchmakingFilters(),
+      this.trips = const [],
+      this.applicants = const [],
+      this.requests = const [],
+      this.currentUserId = '',
+      this.joinedTripIds = const {},
+      this.notifications = const [],
+      this.savedTripIds = const {},
+      this.isLoading = false,
+      this.errorMessage,
+      this.successMessage,
+      this.selectedTripId,
+      this.selectedApplicantId,
+      this.managedTripId});
   final MatchmakingPage page;
-  final int selectedTab;
   final String selectedFilter;
-  final Set<String> selectedStyles;
   final List<String> availableFilters;
-  final Set<String> savedTripIds;
-  final Map<String, String> requestMessages;
-  final Map<String, ApplicantDecision> applicantDecisions;
-  final MatchmakingTrip myTrip;
-  final bool hasMyTrip;
-  final Set<String> deletedTripIds;
   final MatchmakingFilters filters;
+  final List<MatchmakingTrip> trips;
+  final List<MatchmakingApplicant> applicants;
+  final List<JoinRequest> requests;
+  final String currentUserId;
+  final Set<String> joinedTripIds;
+  final List<MatchmakingNotification> notifications;
+  final Set<String> savedTripIds;
+  final bool isLoading;
+  final String? errorMessage;
+  final String? successMessage;
+  final String? selectedTripId, selectedApplicantId, managedTripId;
+  int get unreadNotificationCount =>
+      notifications.where((notification) => notification.isUnread).length;
+  bool get isAuthenticated => currentUserId.isNotEmpty;
 
-  MatchmakingState copyWith({
-    MatchmakingPage? page,
-    int? selectedTab,
-    String? selectedFilter,
-    Set<String>? selectedStyles,
-    List<String>? availableFilters,
-    Set<String>? savedTripIds,
-    Map<String, String>? requestMessages,
-    Map<String, ApplicantDecision>? applicantDecisions,
-    MatchmakingTrip? myTrip,
-    bool? hasMyTrip,
-    Set<String>? deletedTripIds,
-    MatchmakingFilters? filters,
-  }) {
-    return MatchmakingState(
-      page: page ?? this.page,
-      selectedTab: selectedTab ?? this.selectedTab,
-      selectedFilter: selectedFilter ?? this.selectedFilter,
-      selectedStyles: selectedStyles ?? this.selectedStyles,
-      availableFilters: availableFilters ?? this.availableFilters,
-      savedTripIds: savedTripIds ?? this.savedTripIds,
-      requestMessages: requestMessages ?? this.requestMessages,
-      applicantDecisions: applicantDecisions ?? this.applicantDecisions,
-      myTrip: myTrip ?? this.myTrip,
-      hasMyTrip: hasMyTrip ?? this.hasMyTrip,
-      deletedTripIds: deletedTripIds ?? this.deletedTripIds,
-      filters: filters ?? this.filters,
-    );
+  MatchmakingTrip? get selectedTrip => _tripById(selectedTripId);
+  MatchmakingTrip? get managedTrip => _tripById(managedTripId);
+  MatchmakingApplicant? get selectedApplicant =>
+      applicants.where((item) => item.id == selectedApplicantId).firstOrNull;
+  List<MatchmakingTrip> get ownedTrips =>
+      trips.where((trip) => trip.isOwned).toList(growable: false);
+  List<MatchmakingTrip> get joinedTrips => trips
+      .where((trip) => joinedTripIds.contains(trip.id))
+      .toList(growable: false);
+  List<JoinRequest> get myRequests => requests
+      .where((request) => request.applicantId == currentUserId)
+      .toList(growable: false);
+  List<MatchmakingTrip> get discoveryTrips => trips
+      .where((trip) =>
+          !trip.isOwned &&
+          trip.isDiscoverable &&
+          !joinedTripIds.contains(trip.id) &&
+          !_hasActiveRequestFor(trip.id) &&
+          _matchesFilters(trip))
+      .toList(growable: false);
+
+  bool _hasActiveRequestFor(String tripId) => requests.any((request) =>
+      request.tripId == tripId &&
+      request.applicantId == currentUserId &&
+      const {
+        ApplicantDecision.pending,
+        ApplicantDecision.held,
+        ApplicantDecision.accepted,
+      }.contains(request.decision));
+  List<JoinRequest> get managedRequests => requests
+      .where((request) => request.tripId == managedTripId)
+      .toList(growable: false);
+  MatchmakingTrip? _tripById(String? id) =>
+      trips.where((trip) => trip.id == id).firstOrNull;
+
+  bool _matchesFilters(MatchmakingTrip trip) {
+    final query = filters.destination.trim().toLowerCase();
+    if (query.isNotEmpty && !trip.destination.toLowerCase().contains(query)) {
+      return false;
+    }
+    if (trip.budget < filters.minBudget || trip.budget > filters.maxBudget) {
+      return false;
+    }
+    if (filters.startDate != null &&
+        trip.endDate.isBefore(filters.startDate!)) {
+      return false;
+    }
+    if (filters.endDate != null && trip.startDate.isAfter(filters.endDate!)) {
+      return false;
+    }
+    if (trip.maxAge < filters.minAge || trip.minAge > filters.maxAge) {
+      return false;
+    }
+    if (filters.gender != 'Any' &&
+        trip.gender != 'Any' &&
+        trip.gender != filters.gender) {
+      return false;
+    }
+    if (filters.styles.isNotEmpty &&
+        !trip.styles.any(filters.styles.contains)) {
+      return false;
+    }
+    return selectedFilter == 'All' || trip.styles.contains(selectedFilter);
   }
+
+  MatchmakingState copyWith(
+          {MatchmakingPage? page,
+          String? selectedFilter,
+          List<String>? availableFilters,
+          MatchmakingFilters? filters,
+          List<MatchmakingTrip>? trips,
+          List<MatchmakingApplicant>? applicants,
+          List<JoinRequest>? requests,
+          String? currentUserId,
+          Set<String>? joinedTripIds,
+          List<MatchmakingNotification>? notifications,
+          Set<String>? savedTripIds,
+          bool? isLoading,
+          String? errorMessage,
+          String? successMessage,
+          String? selectedTripId,
+          String? selectedApplicantId,
+          String? managedTripId,
+          bool clearSelectedTrip = false,
+          bool clearSelectedApplicant = false,
+          bool clearError = false,
+          bool clearSuccess = false}) =>
+      MatchmakingState(
+          page: page ?? this.page,
+          selectedFilter: selectedFilter ?? this.selectedFilter,
+          availableFilters: availableFilters ?? this.availableFilters,
+          filters: filters ?? this.filters,
+          trips: trips ?? this.trips,
+          applicants: applicants ?? this.applicants,
+          requests: requests ?? this.requests,
+          currentUserId: currentUserId ?? this.currentUserId,
+          joinedTripIds: joinedTripIds ?? this.joinedTripIds,
+          notifications: notifications ?? this.notifications,
+          savedTripIds: savedTripIds ?? this.savedTripIds,
+          isLoading: isLoading ?? this.isLoading,
+          errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
+          successMessage:
+              clearSuccess ? null : successMessage ?? this.successMessage,
+          selectedTripId:
+              clearSelectedTrip ? null : selectedTripId ?? this.selectedTripId,
+          selectedApplicantId: clearSelectedApplicant
+              ? null
+              : selectedApplicantId ?? this.selectedApplicantId,
+          managedTripId: managedTripId ?? this.managedTripId);
 }

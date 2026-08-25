@@ -19,10 +19,11 @@ class UserAccountState {
     bool? isLoading,
     String? error,
     bool clearError = false,
+    bool clearUser = false,
   }) {
     return UserAccountState(
       page: page ?? this.page,
-      user: user ?? this.user,
+      user: clearUser ? null : user ?? this.user,
       isLoading: isLoading ?? this.isLoading,
       error: clearError ? null : error ?? this.error,
     );

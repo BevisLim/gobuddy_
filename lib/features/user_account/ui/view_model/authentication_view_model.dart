@@ -1,10 +1,7 @@
 import 'package:easy_localization/easy_localization.dart';
-import 'package:flutter/material.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
-import 'package:flutter_mvvm_riverpod/features/profile/ui/view_model/profile_view_model.dart';
 import 'package:flutter_mvvm_riverpod/generated/locale_keys.g.dart';
 import '../../repository/authentication_repository.dart';
 import '../state/authentication_state.dart';
@@ -21,53 +18,73 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
     return const AuthenticationState();
   }
 
-  Future<void> signInWithMagicLink(String email) async {
+  Future<bool> sendRegistrationLink(String email) async {
     state = const AsyncValue.loading();
-    final result =
-        await AsyncValue.guard(() => _repository.signInWithMagicLink(email));
-
-    if (result is AsyncError) {
-      state = AsyncError(result.error.toString(), StackTrace.current);
-      return;
-    }
-
-    state = const AsyncData(AuthenticationState());
-  }
-
-  Future<void> resetPassword(String email) async {
-    state = const AsyncValue.loading();
-    final result =
-        await AsyncValue.guard(() => _repository.resetPassword(email.trim()));
+    final result = await AsyncValue.guard(
+      () => _repository.sendRegistrationLink(email),
+    );
 
     if (result case AsyncError(:final error, :final stackTrace)) {
       state = AsyncError(error, stackTrace);
-      return;
+      return false;
     }
 
     state = const AsyncData(AuthenticationState());
+    return true;
   }
 
-  Future<void> verifyOtp({
-    required String email,
-    required String token,
-    required bool isRegister,
-  }) async {
+  Future<bool> setPassword(String password) async {
+    state = const AsyncValue.loading();
+    final result =
+        await AsyncValue.guard(() => _repository.setPassword(password));
+    if (result case AsyncError(:final error, :final stackTrace)) {
+      state = AsyncError(error, stackTrace);
+      return false;
+    }
+    state = const AsyncData(AuthenticationState());
+    return true;
+  }
+
+  Future<bool> sendPasswordResetEmail(String email) async {
     state = const AsyncValue.loading();
     final result = await AsyncValue.guard(
-      () => _repository.verifyOtp(
-        email: email,
-        token: token,
-        isRegister: isRegister,
-      ),
+      () => _repository.sendPasswordResetEmail(email.trim()),
     );
-    handleResult(result);
+
+    if (result case AsyncError(:final error, :final stackTrace)) {
+      state = AsyncError(error, stackTrace);
+      return false;
+    }
+
+    state = const AsyncData(AuthenticationState());
+    return true;
   }
 
-  Future<void> signInWithGoogle() async {
+  Future<bool> updateRecoveredPassword(String password) async {
+    state = const AsyncValue.loading();
+    final result = await AsyncValue.guard(
+      () => _repository.updateRecoveredPassword(password),
+    );
+    if (result case AsyncError(:final error, :final stackTrace)) {
+      state = AsyncError(error, stackTrace);
+      return false;
+    }
+    state = const AsyncData(AuthenticationState());
+    return true;
+  }
+
+  Future<bool> signInWithGoogle() async {
     state = const AsyncValue.loading();
     final result = await AsyncValue.guard(_repository.signInWithGoogle);
-    handleResult(result);
+    if (result case AsyncError(:final error, :final stackTrace)) {
+      state = AsyncError(error, stackTrace);
+      return false;
+    }
+    state = const AsyncData(AuthenticationState());
+    return true;
   }
+
+  Future<bool> hasCurrentUserProfile() => _repository.hasCurrentUserProfile();
 
   Future<void> signInWithApple() async {
     state = const AsyncValue.loading();
@@ -88,16 +105,12 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
   }
 
   void handleResult(AsyncValue result) async {
-    debugPrint(
-        '${Constants.tag} [AuthenticationViewModel.handleResult] result: $result');
     if (result is AsyncError) {
       state = AsyncError(result.error.toString(), StackTrace.current);
       return;
     }
 
     final AuthResponse? authResponse = result.value;
-    debugPrint(
-        '${Constants.tag} [AuthenticationViewModel.handleResult] authResponse: ${authResponse?.user?.toJson()}');
     if (authResponse == null) {
       state = AsyncError(
           LocaleKeys.unexpectedErrorOccurred.tr(), StackTrace.current);
@@ -109,9 +122,6 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
     if (!isExistAccount) {
       _repository.setIsExistAccount(true);
     }
-    if (authResponse.user != null) {
-      updateProfile(authResponse.user!);
-    }
     _repository.setIsLogin(true);
     // END TODO
 
@@ -122,21 +132,6 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
         isSignInSuccessfully: true,
       ),
     );
-  }
-
-  Future<void> updateProfile(User user) async {
-    String? name;
-    String? avatar;
-    final metaData = user.userMetadata;
-    if (metaData != null) {
-      name = metaData['full_name'];
-      avatar = metaData['avatar_url'];
-    }
-    ref.read(profileViewModelProvider.notifier).updateProfile(
-          email: user.email,
-          name: name,
-          avatar: avatar,
-        );
   }
 
   Future<bool> isLogin() async {
