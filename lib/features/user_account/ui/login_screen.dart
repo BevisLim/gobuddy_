@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -10,6 +11,7 @@ import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../common/remote/supabase_client.dart';
 import '../repository/authentication_repository.dart';
+import 'view_model/authentication_view_model.dart';
 
 const _purple = AppColors.brandSurface;
 const _ink = AppColors.brandPrimary;
@@ -17,7 +19,7 @@ const _lightPurple = AppColors.brandBorder;
 const _muted = AppColors.brandTextMuted;
 
 /// A self-contained sign-in interface for the User Account module.
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({
     super.key,
     this.onContinue,
@@ -32,26 +34,27 @@ class LoginScreen extends StatefulWidget {
   final VoidCallback? onSignUp;
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isSigningIn = false;
+  bool _isRoutingAfterGoogleSignIn = false;
   late final StreamSubscription<AuthState> _authSubscription;
 
   @override
   void initState() {
     super.initState();
     _authSubscription = supabase.auth.onAuthStateChange.listen((state) {
-      if (state.session != null) _continuePendingRegistration();
+      if (state.session != null) _handleAuthenticatedSession();
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (supabase.auth.currentSession != null) {
-        _continuePendingRegistration();
+        _handleAuthenticatedSession();
       }
     });
   }
@@ -64,10 +67,67 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _continuePendingRegistration() async {
-    final pending =
-        await const AuthenticationRepository().isRegistrationPending();
-    if (mounted && pending) context.go(Routes.setPassword);
+  Future<void> _handleAuthenticatedSession() async {
+    if (_isRoutingAfterGoogleSignIn) return;
+
+    final repository = ref.read(authenticationRepositoryProvider);
+    final pending = await repository.isRegistrationPending();
+    if (!mounted) return;
+    if (pending) {
+      context.go(Routes.setPassword);
+      return;
+    }
+
+    final user = supabase.auth.currentUser;
+    final provider = user?.appMetadata['provider'];
+    final providers = user?.appMetadata['providers'];
+    final hasGoogleIdentity = provider == 'google' ||
+        (providers is List && providers.contains('google')) ||
+        (user?.identities?.any((identity) => identity.provider == 'google') ??
+            false);
+    if (!hasGoogleIdentity) return;
+
+    _isRoutingAfterGoogleSignIn = true;
+    try {
+      final hasProfile = await ref
+          .read(authenticationViewModelProvider.notifier)
+          .hasCurrentUserProfile();
+      if (mounted) {
+        context.go(hasProfile ? Routes.main : Routes.userAccount);
+      }
+    } catch (_) {
+      _isRoutingAfterGoogleSignIn = false;
+      if (mounted) {
+        _showMessage(
+          'Google sign-in succeeded, but your profile could not be loaded. '
+          'Please try again.',
+        );
+      }
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    if (widget.onGoogleSignIn != null) {
+      widget.onGoogleSignIn!();
+      return;
+    }
+
+    final started = await ref
+        .read(authenticationViewModelProvider.notifier)
+        .signInWithGoogle();
+    if (started || !mounted) return;
+    final result = ref.read(authenticationViewModelProvider);
+    final message = switch (result) {
+      AsyncError(:final error) => _readableError(error),
+      _ => 'Unable to start Google sign-in. Please try again.',
+    };
+    _showMessage(message);
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _submit() async {
@@ -104,169 +164,186 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.white,
-        body: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: MediaQuery.sizeOf(context).height - 104,
-              ),
-              child: IntrinsicHeight(
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const _BrandHeader(),
-                      const SizedBox(height: 38),
-                      const Text(
-                        'Welcome back!',
-                        style: TextStyle(
-                          color: _ink,
-                          fontSize: 32,
-                          height: 1.1,
-                          fontWeight: FontWeight.w800,
+  Widget build(BuildContext context) {
+    final isGoogleSigningIn =
+        ref.watch(authenticationViewModelProvider).isLoading;
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: MediaQuery.sizeOf(context).height - 104,
+            ),
+            child: IntrinsicHeight(
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const _BrandHeader(),
+                    const SizedBox(height: 38),
+                    const Text(
+                      'Welcome back!',
+                      style: TextStyle(
+                        color: _ink,
+                        fontSize: 32,
+                        height: 1.1,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 9),
+                    const Text(
+                      'Sign in to continue your adventure',
+                      style: TextStyle(color: _muted, fontSize: 15),
+                    ),
+                    const SizedBox(height: 34),
+                    _LoginField(
+                      label: 'Email Address',
+                      controller: _emailController,
+                      hint: 'example@email.com',
+                      keyboardType: TextInputType.emailAddress,
+                      validator: _validateEmail,
+                    ),
+                    const SizedBox(height: 20),
+                    _LoginField(
+                      label: 'Password',
+                      controller: _passwordController,
+                      hint: 'Enter your password',
+                      obscureText: _obscurePassword,
+                      validator: _validatePassword,
+                      suffixIcon: IconButton(
+                        tooltip: _obscurePassword
+                            ? 'Show password'
+                            : 'Hide password',
+                        onPressed: () => setState(
+                          () => _obscurePassword = !_obscurePassword,
+                        ),
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                          color: _muted,
                         ),
                       ),
-                      const SizedBox(height: 9),
-                      const Text(
-                        'Sign in to continue your adventure',
-                        style: TextStyle(color: _muted, fontSize: 15),
-                      ),
-                      const SizedBox(height: 34),
-                      _LoginField(
-                        label: 'Email Address',
-                        controller: _emailController,
-                        hint: 'example@email.com',
-                        keyboardType: TextInputType.emailAddress,
-                        validator: _validateEmail,
-                      ),
-                      const SizedBox(height: 20),
-                      _LoginField(
-                        label: 'Password',
-                        controller: _passwordController,
-                        hint: 'Enter your password',
-                        obscureText: _obscurePassword,
-                        validator: _validatePassword,
-                        suffixIcon: IconButton(
-                          tooltip: _obscurePassword
-                              ? 'Show password'
-                              : 'Hide password',
-                          onPressed: () => setState(
-                            () => _obscurePassword = !_obscurePassword,
-                          ),
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                            color: _muted,
+                    ),
+                    const SizedBox(height: 28),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: _isSigningIn ? null : _submit,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _purple,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 28),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: ElevatedButton(
-                          onPressed: _isSigningIn ? null : _submit,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _purple,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                          child: _isSigningIn
-                              ? const SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Text(
-                                  'Continue',
-                                  style: TextStyle(fontWeight: FontWeight.w700),
+                        child: _isSigningIn
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
                                 ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: OutlinedButton(
-                          onPressed: widget.onForgotPassword ??
-                              () => context.push(Routes.forgotPassword),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: _purple,
-                            side: const BorderSide(color: _lightPurple),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                          child: const Text('Forgot Password?',
-                              style: TextStyle(fontWeight: FontWeight.w700)),
-                        ),
-                      ),
-                      const SizedBox(height: 30),
-                      const _SocialDivider(),
-                      const SizedBox(height: 22),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: OutlinedButton.icon(
-                          onPressed: widget.onGoogleSignIn,
-                          icon: SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: SvgPicture.asset(Assets.googleLogo),
-                          ),
-                          label: const Text('Google',
-                              style: TextStyle(
-                                  color: _ink, fontWeight: FontWeight.w700)),
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: _lightPurple),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      Center(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text("Don't have an account? ",
-                                style: TextStyle(color: _muted)),
-                            TextButton(
-                              onPressed: widget.onSignUp ??
-                                  () => context.push(Routes.register),
-                              style: TextButton.styleFrom(
-                                foregroundColor: _purple,
-                                padding: EdgeInsets.zero,
-                                minimumSize: Size.zero,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              )
+                            : const Text(
+                                'Continue',
+                                style: TextStyle(fontWeight: FontWeight.w700),
                               ),
-                              child: const Text('Sign up now',
-                                  style:
-                                      TextStyle(fontWeight: FontWeight.w800)),
-                            ),
-                          ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: OutlinedButton(
+                        onPressed: widget.onForgotPassword ??
+                            () => context.push(Routes.forgotPassword),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _purple,
+                          side: const BorderSide(color: _lightPurple),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: const Text('Forgot Password?',
+                            style: TextStyle(fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                    const SizedBox(height: 30),
+                    const _SocialDivider(),
+                    const SizedBox(height: 22),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: OutlinedButton.icon(
+                        onPressed: isGoogleSigningIn || _isSigningIn
+                            ? null
+                            : _signInWithGoogle,
+                        icon: SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: SvgPicture.asset(Assets.googleLogo),
+                        ),
+                        label: isGoogleSigningIn
+                            ? const SizedBox.square(
+                                dimension: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: _purple,
+                                ),
+                              )
+                            : const Text(
+                                'Continue with Google',
+                                style: TextStyle(
+                                  color: _ink,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: _lightPurple),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 24),
+                    Center(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text("Don't have an account? ",
+                              style: TextStyle(color: _muted)),
+                          TextButton(
+                            onPressed: widget.onSignUp ??
+                                () => context.push(Routes.register),
+                            style: TextButton.styleFrom(
+                              foregroundColor: _purple,
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: const Text('Sign up now',
+                                style: TextStyle(fontWeight: FontWeight.w800)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
         ),
-      );
+      ),
+    );
+  }
 }
 
 String? _validateEmail(String? value) {
@@ -300,6 +377,13 @@ String _friendlyLoginError(AuthException error) {
     return 'Unable to connect. Check your internet connection and try again.';
   }
   return 'Unable to sign in. Please try again.';
+}
+
+String _readableError(Object error) {
+  final message = error.toString();
+  return message.startsWith('Exception: ')
+      ? message.substring('Exception: '.length)
+      : message;
 }
 
 class _BrandHeader extends StatelessWidget {

@@ -1,9 +1,7 @@
 import 'package:easy_localization/easy_localization.dart';
-import 'package:flutter/material.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
 import 'package:flutter_mvvm_riverpod/generated/locale_keys.g.dart';
 import '../../repository/authentication_repository.dart';
 import '../state/authentication_state.dart';
@@ -60,11 +58,18 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
     state = const AsyncData(AuthenticationState());
   }
 
-  Future<void> signInWithGoogle() async {
+  Future<bool> signInWithGoogle() async {
     state = const AsyncValue.loading();
     final result = await AsyncValue.guard(_repository.signInWithGoogle);
-    handleResult(result);
+    if (result case AsyncError(:final error, :final stackTrace)) {
+      state = AsyncError(error, stackTrace);
+      return false;
+    }
+    state = const AsyncData(AuthenticationState());
+    return true;
   }
+
+  Future<bool> hasCurrentUserProfile() => _repository.hasCurrentUserProfile();
 
   Future<void> signInWithApple() async {
     state = const AsyncValue.loading();
@@ -85,16 +90,12 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
   }
 
   void handleResult(AsyncValue result) async {
-    debugPrint(
-        '${Constants.tag} [AuthenticationViewModel.handleResult] result: $result');
     if (result is AsyncError) {
       state = AsyncError(result.error.toString(), StackTrace.current);
       return;
     }
 
     final AuthResponse? authResponse = result.value;
-    debugPrint(
-        '${Constants.tag} [AuthenticationViewModel.handleResult] authResponse: ${authResponse?.user?.toJson()}');
     if (authResponse == null) {
       state = AsyncError(
           LocaleKeys.unexpectedErrorOccurred.tr(), StackTrace.current);

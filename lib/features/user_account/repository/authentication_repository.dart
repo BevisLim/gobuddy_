@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:easy_localization/easy_localization.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter/foundation.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,7 +10,6 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
-import 'package:flutter_mvvm_riverpod/core/environment/env.dart';
 import 'package:flutter_mvvm_riverpod/generated/locale_keys.g.dart';
 import 'package:flutter_mvvm_riverpod/features/common/remote/supabase_client.dart';
 
@@ -23,9 +22,6 @@ AuthenticationRepository authenticationRepository(Ref ref) {
 
 class AuthenticationRepository {
   const AuthenticationRepository();
-
-  static final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
-  static Future<void>? _googleSignInInitialization;
 
   Future<void> sendRegistrationLink(String email) async {
     try {
@@ -99,54 +95,44 @@ class AuthenticationRepository {
     }
   }
 
-  Future<AuthResponse> signInWithGoogle() async {
-    // TODO: fake data
-    return AuthResponse(
-      user: User(
-        id: '',
-        appMetadata: {},
-        userMetadata: {},
-        aud: '',
-        createdAt: '',
-        email: 'henry@google.com',
-      ),
-    );
-
-    // ignore: dead_code
+  Future<void> signInWithGoogle() async {
     try {
-      const List<String> scopes = <String>[
-        Constants.googleEmailScope,
-        Constants.googleUserInfoScope,
-      ];
-
-      _googleSignInInitialization ??= _googleSignIn.initialize(
-        clientId: Env.googleClientId,
-        serverClientId: Env.googleServerClientId,
+      // A pending email-link registration must never send a Google user to
+      // the email-only Set Password flow.
+      await setRegistrationPending(false);
+      final launched = await supabase.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: kIsWeb ? null : Constants.supabaseLoginCallback,
       );
-      await _googleSignInInitialization;
-
-      if (!_googleSignIn.supportsAuthenticate()) {
-        throw UnsupportedError(
-            'Google Sign-In is not supported on this platform.');
+      if (!launched) {
+        throw Exception('Unable to open Google sign-in. Please try again.');
       }
-
-      final googleUser = await _googleSignIn.authenticate(scopeHint: scopes);
-      final googleAuth = googleUser.authentication;
-      final idToken = googleAuth.idToken;
-
-      if (idToken == null) {
-        throw Exception(LocaleKeys.idTokenNotFound.tr());
-      }
-
-      final result = await supabase.auth.signInWithIdToken(
-        provider: OAuthProvider.google,
-        idToken: idToken,
-      );
-      return result;
     } on AuthException catch (error) {
-      throw Exception(error.message);
-    } catch (error) {
-      throw Exception(LocaleKeys.unexpectedErrorOccurred.tr());
+      throw Exception(_friendlyGoogleSignInError(error));
+    } on Exception {
+      rethrow;
+    } catch (_) {
+      throw Exception('Unable to start Google sign-in. Please try again.');
+    }
+  }
+
+  Future<bool> hasCurrentUserProfile() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Your sign-in session is missing. Please try again.');
+    }
+
+    try {
+      final profile = await supabase
+          .from('user_accounts')
+          .select('id')
+          .eq('id', userId)
+          .maybeSingle();
+      return profile != null;
+    } on PostgrestException {
+      throw Exception(
+        'Unable to load your profile. Check your connection and try again.',
+      );
     }
   }
 
@@ -267,4 +253,17 @@ String _friendlyRegistrationError(AuthException error) {
     return 'Unable to connect. Check your internet connection and try again.';
   }
   return 'Unable to send the verification link. Please try again.';
+}
+
+String _friendlyGoogleSignInError(AuthException error) {
+  final message = error.message.toLowerCase();
+  if (message.contains('cancel') || message.contains('denied')) {
+    return 'Google sign-in was cancelled.';
+  }
+  if (message.contains('network') ||
+      message.contains('socket') ||
+      message.contains('connection')) {
+    return 'Unable to connect. Check your internet connection and try again.';
+  }
+  return 'Google sign-in failed. Please try again.';
 }
