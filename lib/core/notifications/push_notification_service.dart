@@ -1,16 +1,31 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_mvvm_riverpod/core/environment/env.dart';
 import 'package:flutter_mvvm_riverpod/core/routing/router.dart';
 import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import 'package:flutter_mvvm_riverpod/features/common/remote/supabase_client.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_mvvm_riverpod/features/safety/model/safety_check_in.dart';
+import 'package:flutter_mvvm_riverpod/features/safety/repository/safety_check_in_repository.dart';
+import 'package:flutter_mvvm_riverpod/features/safety/repository/safety_check_in_configuration_repository.dart';
+import 'package:flutter_mvvm_riverpod/features/safety/ui/widgets/safety_check_in_prompt.dart';
 
 import '../../firebase_options.dart';
+
+const _checkInAction = 'safety_check_in_safe';
+const _localCheckInNotificationId = 74001;
+const _localCheckInChannelId = 'gobuddy_safety_check_in_alarm_v2';
+
+@pragma('vm:entry-point')
+Future<void> notificationTapBackground(NotificationResponse response) async {
+  await PushNotificationService.handleNotificationResponse(response);
+}
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -32,19 +47,34 @@ class PushNotificationService {
     if (_initialized || !_isSupported) return;
     _initialized = true;
 
-    await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform);
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-
     const androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
-    const iosSettings = DarwinInitializationSettings();
-    await _localNotifications.initialize(
-      settings: const InitializationSettings(
-          android: androidSettings, iOS: iosSettings),
-      onDidReceiveNotificationResponse: (response) =>
-          _openTrip(response.payload),
+    final iosSettings = DarwinInitializationSettings(
+      notificationCategories: [
+        DarwinNotificationCategory(
+          'safety_check_in',
+          actions: [
+            DarwinNotificationAction.plain(_checkInAction, "I'm safe"),
+          ],
+        ),
+      ],
     );
+    await _localNotifications.initialize(
+      settings:
+          InitializationSettings(android: androidSettings, iOS: iosSettings),
+      onDidReceiveNotificationResponse: handleNotificationResponse,
+      onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
+    );
+    final launchDetails =
+        await _localNotifications.getNotificationAppLaunchDetails();
+    final launchResponse = launchDetails?.notificationResponse;
+    if (launchDetails?.didNotificationLaunchApp == true &&
+        launchResponse != null) {
+      Future<void>.delayed(
+        const Duration(milliseconds: 500),
+        () => handleNotificationResponse(launchResponse),
+      );
+    }
 
     const channel = AndroidNotificationChannel(
       'gobuddy_updates',
@@ -56,16 +86,34 @@ class PushNotificationService {
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
-
-    await FirebaseMessaging.instance.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
+    const safetyChannel = AndroidNotificationChannel(
+      'gobuddy_safety_check_ins',
+      'Safety check-ins',
+      description: 'Time-sensitive prompts asking you to confirm you are safe',
+      importance: Importance.max,
     );
     await _localNotifications
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
+        ?.createNotificationChannel(safetyChannel);
+
+    // Ask once during app startup because notifications are also used by
+    // non-safety features. The operating system will not display the prompt
+    // again when permission has already been decided.
+    await requestNotificationPermission();
+
+    final savedConfiguration =
+        await SharedPreferencesSafetyCheckInConfigurationRepository().load();
+    await scheduleSafetyCheckIns(
+      savedConfiguration,
+      requestAlarmPermissions: false,
+    );
+
+    if (!Env.hasSupabase) return;
+
+    await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform);
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
     FirebaseMessaging.onMessage.listen(_showForegroundNotification);
     FirebaseMessaging.onMessageOpenedApp.listen(_openRemoteMessage);
@@ -81,6 +129,97 @@ class PushNotificationService {
       if (event.session != null) unawaited(_registerCurrentToken());
     });
     await _registerCurrentToken();
+  }
+
+  static Future<bool> requestNotificationPermission() async {
+    if (!_isSupported) return false;
+
+    if (Platform.isAndroid) {
+      return await _localNotifications
+              .resolvePlatformSpecificImplementation<
+                  AndroidFlutterLocalNotificationsPlugin>()
+              ?.requestNotificationsPermission() ??
+          true;
+    }
+
+    final settings = await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+    return settings.authorizationStatus == AuthorizationStatus.authorized ||
+        settings.authorizationStatus == AuthorizationStatus.provisional;
+  }
+
+  static Future<bool> scheduleSafetyCheckIns(
+    SafetyCheckInConfiguration configuration, {
+    bool requestAlarmPermissions = true,
+  }) async {
+    if (!_isSupported) return false;
+    if (!_initialized) await initialize();
+
+    await _localNotifications.cancel(id: _localCheckInNotificationId);
+    if (!configuration.enabled) return true;
+
+    if (requestAlarmPermissions &&
+        !await requestNotificationPermission()) {
+      return false;
+    }
+
+    var scheduleMode = AndroidScheduleMode.inexactAllowWhileIdle;
+    if (Platform.isAndroid) {
+      final android = _localNotifications.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      if (requestAlarmPermissions) {
+        await android?.requestExactAlarmsPermission();
+        await android?.requestFullScreenIntentPermission();
+      }
+      if (await android?.canScheduleExactNotifications() == true) {
+        scheduleMode = AndroidScheduleMode.exactAllowWhileIdle;
+      }
+    }
+
+    await _localNotifications.periodicallyShowWithDuration(
+      id: _localCheckInNotificationId,
+      title: 'Safety check-in',
+      body: 'Are you safe? Tap to confirm your safety.',
+      repeatDurationInterval: Duration(
+        minutes: configuration.intervalMinutes,
+      ),
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _localCheckInChannelId,
+          'Safety check-in alarms',
+          channelDescription:
+              'Recurring alarm-style reminders asking you to confirm you are safe',
+          importance: Importance.max,
+          priority: Priority.max,
+          category: AndroidNotificationCategory.alarm,
+          fullScreenIntent: true,
+          playSound: true,
+          enableVibration: true,
+          audioAttributesUsage: AudioAttributesUsage.alarm,
+          visibility: NotificationVisibility.public,
+          actions: [
+            AndroidNotificationAction(
+              _checkInAction,
+              "I'm safe",
+              showsUserInterface: true,
+              cancelNotification: true,
+            ),
+          ],
+        ),
+        iOS: DarwinNotificationDetails(
+          categoryIdentifier: 'safety_check_in',
+          presentAlert: true,
+          presentSound: true,
+          interruptionLevel: InterruptionLevel.timeSensitive,
+        ),
+      ),
+      androidScheduleMode: scheduleMode,
+      payload: jsonEncode({'type': 'safety_check_in', 'local': true}),
+    );
+    return true;
   }
 
   static Future<void> _registerCurrentToken() async {
@@ -111,6 +250,12 @@ class PushNotificationService {
   }
 
   static Future<void> _showForegroundNotification(RemoteMessage message) async {
+    if (message.data['type'] == 'safety_check_in') {
+      await _showCheckInNotification(message);
+      _openCheckIn(message.data['check_in_id'] as String?,
+          message.data['trip_id'] as String?);
+      return;
+    }
     final notification = message.notification;
     if (notification == null) return;
     await _localNotifications.show(
@@ -131,8 +276,100 @@ class PushNotificationService {
     );
   }
 
-  static void _openRemoteMessage(RemoteMessage message) =>
-      _openTrip(message.data['trip_id'] as String?);
+  static Future<void> _showCheckInNotification(RemoteMessage message) async {
+    final payload = jsonEncode({
+      'type': 'safety_check_in',
+      'check_in_id': message.data['check_in_id'],
+      'trip_id': message.data['trip_id'],
+    });
+    await _localNotifications.show(
+      id: message.messageId.hashCode,
+      title: message.notification?.title ?? 'Safety check-in',
+      body: message.notification?.body ??
+          'Are you safe? Please respond within 15 minutes.',
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'gobuddy_safety_check_ins',
+          'Safety check-ins',
+          channelDescription:
+              'Time-sensitive prompts asking you to confirm you are safe',
+          importance: Importance.max,
+          priority: Priority.max,
+          category: AndroidNotificationCategory.alarm,
+          actions: [
+            AndroidNotificationAction(
+              _checkInAction,
+              "I'm safe",
+              showsUserInterface: true,
+              cancelNotification: true,
+            ),
+          ],
+        ),
+        iOS: DarwinNotificationDetails(categoryIdentifier: 'safety_check_in'),
+      ),
+      payload: payload,
+    );
+  }
+
+  static Future<void> handleNotificationResponse(
+      NotificationResponse response) async {
+    final payload = response.payload;
+    if (payload == null || payload.isEmpty) return;
+    Map<String, dynamic>? data;
+    try {
+      data = Map<String, dynamic>.from(jsonDecode(payload) as Map);
+    } catch (_) {
+      _openTrip(payload);
+      return;
+    }
+    if (data['type'] != 'safety_check_in') return;
+    final checkInId = data['check_in_id'] as String?;
+    final isLocal = data['local'] == true;
+    if (response.actionId == _checkInAction && isLocal) {
+      return;
+    }
+    if (response.actionId == _checkInAction && checkInId != null) {
+      try {
+        await SupabaseSafetyCheckInRepository(supabase)
+            .respond(checkInId, SafetyCheckInStatus.safe);
+        return;
+      } catch (_) {
+        // Open the prompt so the user can retry if the direct action failed.
+      }
+    }
+    _openCheckIn(
+      checkInId,
+      data['trip_id'] as String?,
+      localOnly: isLocal,
+    );
+  }
+
+  static void _openRemoteMessage(RemoteMessage message) {
+    if (message.data['type'] == 'safety_check_in') {
+      _openCheckIn(message.data['check_in_id'] as String?,
+          message.data['trip_id'] as String?);
+      return;
+    }
+    _openTrip(message.data['trip_id'] as String?);
+  }
+
+  static void _openCheckIn(
+    String? checkInId,
+    String? tripId, {
+    bool localOnly = false,
+  }) {
+    Future<void>.delayed(const Duration(milliseconds: 300), () {
+      final context = rootNavigatorKey.currentContext;
+      if (context != null && context.mounted) {
+        showSafetyCheckInPrompt(
+          context,
+          checkInId: checkInId,
+          tripId: tripId,
+          createRecord: !localOnly,
+        );
+      }
+    });
+  }
 
   static void _openTrip(String? tripId) {
     if (tripId == null || tripId.isEmpty) return;

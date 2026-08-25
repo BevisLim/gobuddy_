@@ -26,6 +26,7 @@ class Routes {
   static const groupCollaboration = '/group-collaboration';
   static const identityVerification = '/identity-verification';
   static const settings = '/settings';
+  static const safetyCheckInSettings = '/settings/safety-check-in';
   static const blockedUsers = '/settings/blocked-users';
   static const termsOfService = '/terms-of-service';
   static const privacyPolicy = '/privacy-policy';

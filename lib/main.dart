@@ -34,7 +34,7 @@ Future<void> main() async {
   );
 
   unawaited(PushNotificationService.initialize().catchError((error, stack) {
-    debugPrint('Push notification setup failed: $error');
+    debugPrint('Notification setup failed: $error');
   }));
 }
 

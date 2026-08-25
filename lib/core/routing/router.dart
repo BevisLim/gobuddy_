@@ -34,6 +34,7 @@ import '../../features/safety/ui/add_emergency_contact_screen.dart';
 import '../../features/safety/ui/emergency_contacts_screen.dart';
 import '../../features/safety/ui/live_location_screen.dart';
 import '../../features/safety/ui/sos_screen.dart';
+import '../../features/safety/ui/safety_check_in_settings_screen.dart';
 
 import 'routes.dart';
 
@@ -95,7 +96,10 @@ class SlideRouteTransition extends CustomTransitionPage<void> {
         );
 }
 
+final rootNavigatorKey = GlobalKey<NavigatorState>();
+
 final GoRouter router = GoRouter(
+  navigatorKey: rootNavigatorKey,
   initialLocation: Routes.splash,
   routes: [
     GoRoute(
@@ -264,6 +268,11 @@ final GoRouter router = GoRouter(
     GoRoute(
       path: Routes.settings,
       pageBuilder: (context, state) => state.slidePage(const SettingsScreen()),
+    ),
+    GoRoute(
+      path: Routes.safetyCheckInSettings,
+      pageBuilder: (context, state) =>
+          state.slidePage(const SafetyCheckInSettingsScreen()),
     ),
     GoRoute(
       path: Routes.blockedUsers,
