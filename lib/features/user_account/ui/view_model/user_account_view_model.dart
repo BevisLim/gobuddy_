@@ -58,17 +58,9 @@ class UserAccountViewModel extends Notifier<UserAccountState> {
     final repository = ref.read(userAccountRepositoryProvider);
 
     try {
-      await repository.updateProfile(state.user!.uid, update);
-
-      // Full name and date of birth are intentionally absent from the normal
-      // update contract. They can only be changed by identity verification.
-      final updatedUser = state.user!.copyWith(
-        backgroundPhoto: update.backgroundPhoto,
-        profilePhoto: update.profilePhoto,
-        username: update.username.trim(),
-        gender: update.gender,
-        country: update.country,
-        bio: update.bio.trim(),
+      final updatedUser = await repository.updateProfile(
+        state.user!.uid,
+        update,
       );
       state = state.copyWith(
         user: updatedUser,
@@ -88,27 +80,20 @@ class UserAccountViewModel extends Notifier<UserAccountState> {
     return image?.path;
   }
 
-  Future<bool> completeIdentityVerification() async {
+  Future<String?> startIdentityVerification() async {
     final user = state.user;
-    if (user == null || state.isLoading) return false;
+    if (user == null || state.isLoading) return null;
 
     state = state.copyWith(isLoading: true, clearError: true);
     final repository = ref.read(userAccountRepositoryProvider);
 
     try {
-      final verified = await repository.completeMockIdentityVerification();
-      state = state.copyWith(
-        user: user.copyWith(
-          fullName: verified.fullName,
-          dateOfBirth: verified.dateOfBirth,
-          isVerified: true,
-        ),
-        isLoading: false,
-      );
-      return true;
+      final verificationUrl = await repository.createDiditSession();
+      state = state.copyWith(isLoading: false);
+      return verificationUrl;
     } catch (error) {
       state = state.copyWith(error: error.toString(), isLoading: false);
-      return false;
+      return null;
     }
   }
 }

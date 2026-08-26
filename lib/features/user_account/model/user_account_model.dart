@@ -11,7 +11,7 @@ class UserAccount {
   final String? gender;
   final DateTime? dateOfBirth;
   final DateTime? joinedAt;
-  final String? country;
+  final String? nationality;
   final String bio;
   final bool isVerified;
 
@@ -26,7 +26,7 @@ class UserAccount {
     this.gender,
     this.dateOfBirth,
     this.joinedAt,
-    this.country,
+    this.nationality,
     this.bio = '',
     this.isVerified = false,
   });
@@ -42,7 +42,7 @@ class UserAccount {
     String? gender,
     DateTime? dateOfBirth,
     DateTime? joinedAt,
-    String? country,
+    String? nationality,
     String? bio,
     bool? isVerified,
   }) {
@@ -57,13 +57,12 @@ class UserAccount {
       gender: gender ?? this.gender,
       dateOfBirth: dateOfBirth ?? this.dateOfBirth,
       joinedAt: joinedAt ?? this.joinedAt,
-      country: country ?? this.country,
+      nationality: nationality ?? this.nationality,
       bio: bio ?? this.bio,
       isVerified: isVerified ?? this.isVerified,
     );
   }
 }
-
 class UserAccountProfileUpdate {
   const UserAccountProfileUpdate({
     required this.username,
@@ -71,23 +70,13 @@ class UserAccountProfileUpdate {
     this.backgroundPhoto,
     this.profilePhoto,
     this.gender,
-    this.country,
+    this.nationality,
   });
 
   final String? backgroundPhoto;
   final String? profilePhoto;
   final String username;
   final String? gender;
-  final String? country;
+  final String? nationality;
   final String bio;
-}
-
-class IdentityVerificationResult {
-  const IdentityVerificationResult({
-    required this.fullName,
-    required this.dateOfBirth,
-  });
-
-  final String fullName;
-  final DateTime dateOfBirth;
 }

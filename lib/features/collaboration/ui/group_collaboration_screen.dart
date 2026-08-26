@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import 'package:flutter_mvvm_riverpod/core/environment/env.dart';
+import 'package:flutter_mvvm_riverpod/core/permissions/app_permission_service.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration_models.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/repository/collaboration_repository.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/jitsi_call_screen.dart';
@@ -15,6 +16,8 @@ import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/activity
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_recorder.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_message_player.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/view_model/matchmaking_view_model.dart';
+import 'package:flutter_mvvm_riverpod/features/safety/ui/widgets/block_user_action.dart';
+import 'package:flutter_mvvm_riverpod/features/safety/ui/widgets/report_user_action.dart';
 
 class GroupCollaborationScreen extends ConsumerWidget {
   const GroupCollaborationScreen({
@@ -234,6 +237,7 @@ class GroupInfoScreen extends ConsumerWidget {
                 onTap: () => _openInAppCall(
                   context,
                   state.tripId,
+                  'voice',
                   () => viewModel.startCall('voice'),
                 ),
               ),
@@ -243,6 +247,7 @@ class GroupInfoScreen extends ConsumerWidget {
                 onTap: () => _openInAppCall(
                   context,
                   state.tripId,
+                  'video',
                   () => viewModel.startCall('video'),
                 ),
               ),
@@ -302,8 +307,14 @@ class GroupInfoScreen extends ConsumerWidget {
               .map(
                 (member) => ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    child: Text((member.displayName ?? 'M')[0].toUpperCase()),
+                  leading: _MemberAvatar(
+                    member: member,
+                    currentUserId: state.currentUserId,
+                    onTap: () => _showMemberSafetyActions(
+                      context: context,
+                      ref: ref,
+                      member: member,
+                    ),
                   ),
                   title: Text(member.displayName ?? 'Trip member'),
                   subtitle: Text(
@@ -397,8 +408,14 @@ class _MembersInfoTab extends ConsumerWidget {
         const SizedBox(height: 8),
         ...state.members.map(
           (member) => ListTile(
-            leading: CircleAvatar(
-              child: Text((member.displayName ?? 'M')[0].toUpperCase()),
+            leading: _MemberAvatar(
+              member: member,
+              currentUserId: state.currentUserId,
+              onTap: () => _showMemberSafetyActions(
+                context: context,
+                ref: ref,
+                member: member,
+              ),
             ),
             subtitle: Text(
               member.userId == state.creatorId
@@ -484,6 +501,90 @@ class _MembersInfoTab extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _MemberAvatar extends StatelessWidget {
+  const _MemberAvatar({
+    required this.member,
+    required this.currentUserId,
+    required this.onTap,
+  });
+
+  final CollaborationMember member;
+  final String currentUserId;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final displayName = member.displayName?.trim();
+    final photoUrl = member.profilePhotoUrl?.trim();
+    final avatar = CircleAvatar(
+      foregroundImage: photoUrl == null || photoUrl.isEmpty
+          ? null
+          : NetworkImage(photoUrl),
+      child: Text(
+        displayName == null || displayName.isEmpty
+            ? 'M'
+            : displayName[0].toUpperCase(),
+      ),
+    );
+    if (member.userId == currentUserId) return avatar;
+
+    return Tooltip(
+      message: 'User options',
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: avatar,
+      ),
+    );
+  }
+}
+
+Future<void> _showMemberSafetyActions({
+  required BuildContext context,
+  required WidgetRef ref,
+  required CollaborationMember member,
+}) async {
+  final action = await showModalBottomSheet<String>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.block, color: Colors.red),
+            title: const Text('Block user'),
+            onTap: () => Navigator.pop(sheetContext, 'block'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.flag_outlined),
+            title: const Text('Report user'),
+            onTap: () => Navigator.pop(sheetContext, 'report'),
+          ),
+        ],
+      ),
+    ),
+  );
+  if (action == null || !context.mounted) return;
+
+  final displayName = member.displayName ?? 'Trip member';
+  if (action == 'block') {
+    await BlockUserAction.show(
+      context: context,
+      ref: ref,
+      targetUserId: member.userId,
+      targetDisplayName: displayName,
+    );
+  } else if (action == 'report') {
+    await ReportUserAction.show(
+      context: context,
+      ref: ref,
+      targetUserId: member.userId,
+      targetDisplayName: displayName,
     );
   }
 }
@@ -2115,6 +2216,7 @@ class _CallsTab extends ConsumerWidget {
                         : () => _openInAppCall(
                             context,
                             state.tripId,
+                            call.callType,
                             () => viewModel.joinCall(call),
                           ),
                     child: Text(call.status == 'ended' ? 'Ended' : 'Join'),
@@ -2215,9 +2317,13 @@ Future<void> _runWorkspaceAction(
 Future<void> _openInAppCall(
   BuildContext context,
   String tripId,
+  String callType,
   Future<TripCall?> Function() action,
 ) async {
   try {
+    await const AppPermissionService().requireCallPermissions(
+      withVideo: callType == 'video',
+    );
     final call = await action();
     if (call == null || !context.mounted) return;
     await Navigator.of(context).push(

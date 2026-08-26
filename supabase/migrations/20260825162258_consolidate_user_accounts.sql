@@ -1,8 +1,8 @@
 insert into public.user_accounts as destination (
-  id, display_name, date_of_birth, gender, bio, profile_photo_url,
+  id, display_name, date_of_birth, gender, bio, profile_photo_path,
   verification_status, created_at, updated_at
 )
-select id, display_name, date_of_birth, gender, bio, profile_photo_url,
+select id, display_name, date_of_birth, gender, bio, profile_photo_path,
        verification_status, created_at, updated_at
 from public.matchmaking_profiles
 on conflict (id) do update
@@ -10,7 +10,7 @@ set display_name = excluded.display_name,
     date_of_birth = excluded.date_of_birth,
     gender = excluded.gender,
     bio = excluded.bio,
-    profile_photo_url = excluded.profile_photo_url,
+    profile_photo_path = excluded.profile_photo_path,
     verification_status = excluded.verification_status,
     created_at = least(destination.created_at, excluded.created_at),
     updated_at = excluded.updated_at

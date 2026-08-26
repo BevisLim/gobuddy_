@@ -126,7 +126,6 @@ class LiveLocationViewModel extends Notifier<LiveLocationState> {
     await _positionSubscription?.cancel();
     _positionSubscription = null;
     final shareId = _shareId;
-    _shareId = null;
     if (shareId != null) {
       try {
         await ref.read(liveLocationRepositoryProvider).stopShare(shareId);
@@ -134,8 +133,13 @@ class LiveLocationViewModel extends Notifier<LiveLocationState> {
         state = state.copyWith(error: 'Could not stop sharing: $error');
         return;
       }
+      _shareId = null;
     }
-    state = state.copyWith(isSharing: false, clearShare: true);
+    state = state.copyWith(
+      isSharing: false,
+      clearShare: true,
+      clearError: true,
+    );
   }
 
   void clearError() => state = state.copyWith(clearError: true);

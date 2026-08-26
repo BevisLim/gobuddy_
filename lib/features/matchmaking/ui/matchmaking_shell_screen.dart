@@ -17,6 +17,7 @@ import '../model/matchmaking_models.dart';
 import '../model/matchmaking_notification.dart';
 import '../model/matchmaking_page.dart';
 import 'view_model/matchmaking_view_model.dart';
+import '../../safety/repository/safety_check_in_configuration_repository.dart';
 import '../../safety/ui/widgets/user_safety_actions.dart';
 
 const _ink = Color(0xFF281950);
@@ -105,6 +106,49 @@ class _MatchmakingShellScreenState
     }
   }
 
+  Future<void> _offerSafetyCheckIn() async {
+    final configuration = await ref
+        .read(safetyCheckInConfigurationRepositoryProvider)
+        .load();
+    if (!mounted || configuration.enabled) return;
+
+    final enableNow = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Turn on safety check-ins?'),
+        content: const Text(
+          'Get regular reminders during your trip to confirm that you are safe.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Yes'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+
+    if (enableNow == true) {
+      await context.push(Routes.safetyCheckInSettings);
+    } else if (enableNow == false) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'You can turn on Safety Check-In anytime in the Settings.',
+            ),
+          ),
+        );
+    }
+  }
+
   @override
   void dispose() {
     _authSubscription?.cancel();
@@ -160,6 +204,7 @@ class _MatchmakingShellScreenState
       MatchmakingPage.create => InteractiveTripFormPage(
           onBack: () => viewModel.goTo(MatchmakingPage.discover),
           onPublish: viewModel.saveTrip,
+          onTripStarted: _offerSafetyCheckIn,
           onUploadImage: viewModel.uploadTripCover),
       MatchmakingPage.edit => InteractiveTripFormPage(
           edit: true,
@@ -243,7 +288,7 @@ class _MatchmakingShellScreenState
                       case 3:
                         context.go(Routes.expenseDashboard);
                       default:
-                        context.go(Routes.userAccount);
+                        context.push(Routes.userAccount);
                     }
                   },
                 )
@@ -262,8 +307,8 @@ class _MatchmakingShellScreenState
   }
 }
 
-class _NotificationsDialog extends StatelessWidget {
-  const _NotificationsDialog({required this.notifications});
+class MatchmakingNotificationsDialog extends StatelessWidget {
+  const MatchmakingNotificationsDialog({super.key, required this.notifications});
 
   final List<MatchmakingNotification> notifications;
 
@@ -364,7 +409,7 @@ class DiscoverPage extends StatelessWidget {
                     onPressed: () async {
                       await showDialog<void>(
                           context: context,
-                          builder: (context) => _NotificationsDialog(
+                          builder: (context) => MatchmakingNotificationsDialog(
                               notifications: notifications));
                       await onNotificationsRead();
                     },
@@ -376,7 +421,7 @@ class DiscoverPage extends StatelessWidget {
                         child: const Icon(Icons.notifications_none_rounded,
                             color: _ink))),
                 InkWell(
-                    onTap: () => context.go(Routes.userAccount),
+                    onTap: () => context.push(Routes.userAccount),
                     customBorder: const CircleBorder(),
                     child: const Avatar(letter: 'M', size: 34)),
               ])),
@@ -919,6 +964,7 @@ class TripDetailsPage extends StatelessWidget {
 class InteractiveTripFormPage extends StatefulWidget {
   final VoidCallback onBack;
   final ValueChanged<MatchmakingTrip> onPublish;
+  final Future<void> Function()? onTripStarted;
   final Future<String> Function(String, Uint8List, String) onUploadImage;
   final VoidCallback? onDelete;
   final MatchmakingTrip? initialTrip;
@@ -927,6 +973,7 @@ class InteractiveTripFormPage extends StatefulWidget {
       {super.key,
       required this.onBack,
       required this.onPublish,
+      this.onTripStarted,
       required this.onUploadImage,
       this.onDelete,
       this.initialTrip,
@@ -1113,6 +1160,9 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
       status: widget.initialTrip?.status ?? TripStatus.active,
       isOwned: true,
     ));
+    if (!widget.edit) {
+      await widget.onTripStarted?.call();
+    }
   }
 
   DateTime? _parseDate(String value) {
@@ -1716,7 +1766,7 @@ class ProfilePage extends StatelessWidget {
             width: 260,
             child: OutlineButton(
                 label: 'Open account',
-                onTap: () => context.go(Routes.userAccount)))
+                onTap: () => context.push(Routes.userAccount)))
       ]));
 }
 
