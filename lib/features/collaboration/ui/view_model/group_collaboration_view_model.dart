@@ -33,11 +33,7 @@ class GroupCollaborationViewModel
       throw StateError('Please sign in before opening a trip workspace.');
     }
     _repository = ref.read(collaborationRepositoryProvider);
-    _channel ??= _repository.subscribe(_tripId, () => ref.invalidateSelf());
-    ref.onDispose(() {
-      if (_channel != null) supabase.removeChannel(_channel!);
-    });
-    return _repository
+    final workspace = await _repository
         .loadWorkspace(tripId: _tripId, currentUserId: userId)
         .timeout(
           const Duration(seconds: 15),
@@ -45,6 +41,16 @@ class GroupCollaborationViewModel
             'The trip workspace took too long to load. Check your Supabase connection and trip membership.',
           ),
         );
+    final channel = _repository.subscribe(
+      _tripId,
+      () => ref.invalidateSelf(),
+    );
+    _channel = channel;
+    ref.onDispose(() {
+      supabase.removeChannel(channel);
+      if (identical(_channel, channel)) _channel = null;
+    });
+    return workspace;
   }
 
   GroupCollaborationState? get _current {
@@ -192,6 +198,13 @@ class GroupCollaborationViewModel
     ref.invalidateSelf();
   }
 
+  Future<void> addTimelineDay(DateTime day) async {
+    final current = _current;
+    if (current == null) return;
+    await _repository.addTimelineDay(current.tripId, day);
+    ref.invalidateSelf();
+  }
+
   Future<void> togglePin(TripActivity activity) async {
     final current = _current;
     if (current == null) return;
@@ -259,6 +272,45 @@ class GroupCollaborationViewModel
       actorId: current.currentUserId,
       type: 'activity_edited',
       summary: 'Activity updated: ${title.trim()}.',
+    );
+    ref.invalidateSelf();
+  }
+
+  Future<void> deleteActivity(TripActivity activity) async {
+    final current = _current;
+    if (current == null) return;
+    if (activity.isLocked && !current.isCreator) {
+      throw StateError('Only the trip creator can remove a locked activity.');
+    }
+    await _repository.deleteActivity(activity.id);
+    await _repository.sendMessage(
+      current.tripId,
+      current.currentUserId,
+      '[system]Activity removed: ${activity.title}',
+    );
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: 'activity_removed',
+      summary: 'Activity removed: ${activity.title}.',
+    );
+    ref.invalidateSelf();
+  }
+
+  Future<void> shareActivityToChat(TripActivity activity) async {
+    final current = _current;
+    if (current == null) return;
+    final location = activity.location?.trim();
+    await _repository.sendMessage(
+      current.tripId,
+      current.currentUserId,
+      '[activity_share]${activity.id}|${activity.title}|${activity.startTime.toIso8601String()}|${location ?? ''}',
+    );
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: 'activity_shared',
+      summary: 'Shared ${activity.title} to the group chat.',
     );
     ref.invalidateSelf();
   }

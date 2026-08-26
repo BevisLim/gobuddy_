@@ -204,17 +204,20 @@ file path), and run it in Supabase Dashboard → SQL Editor.
 1. `supabase/migrations/20260816_group_collaboration.sql`
 2. `supabase/migrations/20260820_group_collaboration_permissions.sql`
 3. `supabase/migrations/20260821_accept_request_adds_member.sql`
-4. `supabase/migrations/20260824_matchmaking_hardening.sql`
-5. `supabase/migrations/20260825_collaboration_enhancements.sql`
-6. `supabase/migrations/20260825_collaboration_membership_sync.sql`
-7. `supabase/migrations/20260825_collaboration_api_grants.sql`
-8. `supabase/migrations/20260825_collaboration_polish.sql`
-9. `supabase/migrations/20260825_collaboration_engagement.sql`
+4. `supabase/migrations/20260824000100_matchmaking_hardening.sql`
+5. `supabase/migrations/20260825000100_collaboration_engagement.sql`
+6. `supabase/migrations/20260825000200_collaboration_enhancements.sql`
+7. `supabase/migrations/20260825000300_collaboration_member_management.sql`
+8. `supabase/migrations/20260825000400_collaboration_membership_sync.sql`
+9. `supabase/migrations/20260825000500_collaboration_polish.sql`
+10. `supabase/migrations/20260825_collaboration_api_grants.sql`
+11. `supabase/migrations/20260826100000_collaboration_event_reads.sql`
 
-The last two migrations enable Call History, Activity History, RSVP, typing,
-read receipts, and reversible member controls. If the app reports that
-`public.save_matchmaking_trip` is missing, run
-`20260824_matchmaking_hardening.sql`.
+The collaboration engagement, enhancement, and API-grant migrations are
+required for Add Activity, Pin, Lock, Create Poll, Vote, RSVP, activity
+history, typing, read receipts, and reversible member controls. If the app
+reports that `public.save_matchmaking_trip` is missing, run
+`20260824000100_matchmaking_hardening.sql`.
 
 ### Flutter web Google sign-in
 

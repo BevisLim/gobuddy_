@@ -257,6 +257,7 @@ class GroupCollaborationState {
     required this.members,
     required this.messages,
     required this.activities,
+    this.timelineDays = const [],
     required this.polls,
     required this.files,
     required this.comments,
@@ -274,6 +275,7 @@ class GroupCollaborationState {
   final List<CollaborationMember> members;
   final List<TripMessage> messages;
   final List<TripActivity> activities;
+  final List<DateTime> timelineDays;
   final List<ActivityPoll> polls;
   final List<SharedTripFile> files;
   final List<ActivityComment> comments;
