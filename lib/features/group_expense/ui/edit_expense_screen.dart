@@ -10,8 +10,8 @@ class EditExpenseScreen extends StatelessWidget {
     required this.tripId,
     required this.expenseId,
   });
-  final int tripId;
-  final int expenseId;
+  final String tripId;
+  final String expenseId;
 
   @override
   Widget build(BuildContext context) => Scaffold(

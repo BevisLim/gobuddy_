@@ -4,8 +4,18 @@ import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/matchmaking_shell_
 import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/view_model/matchmaking_view_model.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
+  setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
+    await Supabase.initialize(
+      url: 'https://test.supabase.co',
+      publishableKey: 'test-publishable-key',
+    );
+  });
+
   test('Matchmaking route starts on Discover after My Trips was selected', () {
     final parent = ProviderContainer();
     addTearDown(parent.dispose);
@@ -61,8 +71,9 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const ProviderScope(
-        child: MaterialApp(home: MatchmakingShellScreen())));
+    await tester.pumpWidget(
+      const ProviderScope(child: MaterialApp(home: MatchmakingShellScreen())),
+    );
     await tester.pump();
     expect(find.text('Tokyo, Japan'), findsNothing);
     expect(find.text('Kyoto, Japan'), findsNothing);
@@ -75,8 +86,9 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const ProviderScope(
-        child: MaterialApp(home: MatchmakingShellScreen())));
+    await tester.pumpWidget(
+      const ProviderScope(child: MaterialApp(home: MatchmakingShellScreen())),
+    );
     await tester.tap(find.byIcon(Icons.luggage_outlined));
     await tester.pump();
 
@@ -90,8 +102,9 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const ProviderScope(
-        child: MaterialApp(home: MatchmakingShellScreen())));
+    await tester.pumpWidget(
+      const ProviderScope(child: MaterialApp(home: MatchmakingShellScreen())),
+    );
     expect(find.text('GoBuddy'), findsOneWidget);
     expect(find.text('Sign in to discover trips'), findsOneWidget);
     expect(find.byIcon(Icons.add), findsNothing);

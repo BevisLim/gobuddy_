@@ -25,9 +25,9 @@ class RecordSettlementScreen extends ConsumerStatefulWidget {
     this.initialPayeeId,
   });
 
-  final int tripId;
-  final int? initialPayerId;
-  final int? initialPayeeId;
+  final String tripId;
+  final String? initialPayerId;
+  final String? initialPayeeId;
 
   @override
   ConsumerState<RecordSettlementScreen> createState() =>
@@ -39,8 +39,8 @@ class _RecordSettlementScreenState
   final _formKey = GlobalKey<FormState>();
   final _amount = TextEditingController();
   final _notes = TextEditingController();
-  int? _payerId;
-  int? _payeeId;
+  String? _payerId;
+  String? _payeeId;
   String _paymentMethod = 'DuitNow';
   DateTime _date = DateTime.now();
   String? _receiptPath;
@@ -100,7 +100,7 @@ class _RecordSettlementScreenState
                     ),
                     const SizedBox(height: 14),
                   ],
-                  DropdownButtonFormField<int>(
+                  DropdownButtonFormField<String>(
                     initialValue: _payerId,
                     isExpanded: true,
                     decoration: const InputDecoration(
@@ -111,7 +111,7 @@ class _RecordSettlementScreenState
                         .map((item) => DropdownMenuItem(
                               value: item.userId,
                               child: Text(
-                                item.name,
+                                item.displayName,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ))
@@ -119,7 +119,7 @@ class _RecordSettlementScreenState
                     onChanged: null,
                   ),
                   const SizedBox(height: 14),
-                  DropdownButtonFormField<int>(
+                  DropdownButtonFormField<String>(
                     key: ValueKey(_payeeId),
                     initialValue: _payeeId,
                     isExpanded: true,
@@ -129,7 +129,7 @@ class _RecordSettlementScreenState
                         .map((item) => DropdownMenuItem(
                               value: item.userId,
                               child: Text(
-                                item.name,
+                                item.displayName,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ))

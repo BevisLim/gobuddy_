@@ -20,12 +20,12 @@ class SettlementState {
     this.errorMessage,
   });
 
-  final int tripId;
+  final String tripId;
   final String currency;
-  final int currentUserId;
+  final String currentUserId;
   final List<Traveller> travellers;
   final List<Settlement> settlements;
-  final Map<int, SettlementReceipt> receipts;
+  final Map<String, SettlementReceipt> receipts;
   final List<SettlementSuggestion> suggestions;
   final SettlementFilter filter;
   final String query;
@@ -33,14 +33,14 @@ class SettlementState {
   final String? successMessage;
   final String? errorMessage;
 
-  String travellerName(int userId) {
+  String travellerName(String userId) {
     for (final traveller in travellers) {
-      if (traveller.userId == userId) return traveller.name;
+      if (traveller.userId == userId) return traveller.displayName;
     }
     return 'Traveller';
   }
 
-  double outstandingFor(int payerId, int payeeId) {
+  double outstandingFor(String payerId, String payeeId) {
     var suggestedAmount = 0.0;
     for (final suggestion in suggestions) {
       if (suggestion.payerId == payerId && suggestion.payeeId == payeeId) {
@@ -67,7 +67,7 @@ class SettlementState {
 
   SettlementState copyWith({
     List<Settlement>? settlements,
-    Map<int, SettlementReceipt>? receipts,
+    Map<String, SettlementReceipt>? receipts,
     List<SettlementSuggestion>? suggestions,
     SettlementFilter? filter,
     String? query,

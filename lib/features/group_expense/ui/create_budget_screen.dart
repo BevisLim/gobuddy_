@@ -15,7 +15,7 @@ import 'widgets/group_expense_app_bar.dart';
 class CreateBudgetScreen extends ConsumerStatefulWidget {
   const CreateBudgetScreen({super.key, required this.tripId});
 
-  final int tripId;
+  final String tripId;
 
   @override
   ConsumerState<CreateBudgetScreen> createState() => _CreateBudgetScreenState();
@@ -56,7 +56,7 @@ class _CreateBudgetScreenState extends ConsumerState<CreateBudgetScreen> {
               padding: const EdgeInsets.all(20),
               children: [
                 Text(
-                  state.trip?.tripName ?? 'Current Trip',
+                  state.trip?.destination ?? 'Current Trip',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                         color: const Color(0xFF281958),
                         fontWeight: FontWeight.w800,

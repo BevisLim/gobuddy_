@@ -18,22 +18,26 @@ import 'widgets/group_expense_app_bar.dart';
 import 'widgets/summary_metric_card.dart';
 
 class ExpenseDashboardScreen extends ConsumerWidget {
-  const ExpenseDashboardScreen({super.key});
+  const ExpenseDashboardScreen({super.key, required this.tripId});
+
+  final String tripId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final dashboard = ref.watch(expenseDashboardViewModelProvider);
+    final dashboard = ref.watch(expenseDashboardViewModelProvider(tripId));
     return Scaffold(
       appBar: const GroupExpenseAppBar(title: 'Group Expenses'),
       body: SafeArea(
         child: dashboard.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (_, __) => _DashboardError(
-            onRetry: () => ref.invalidate(expenseDashboardViewModelProvider),
+            onRetry: () =>
+                ref.invalidate(expenseDashboardViewModelProvider(tripId)),
           ),
           data: (state) => RefreshIndicator(
-            onRefresh: () =>
-                ref.read(expenseDashboardViewModelProvider.notifier).refresh(),
+            onRefresh: () => ref
+                .read(expenseDashboardViewModelProvider(tripId).notifier)
+                .refresh(),
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
@@ -75,7 +79,7 @@ class ExpenseDashboardScreen extends ConsumerWidget {
                         currency: expense.currencyCode,
                       ),
                       onTap: () => context.push(
-                        '${Routes.expenseDetails}/${state.tripId}/${expense.expenseId}',
+                        '${Routes.groupExpense}/${state.tripId}/${Routes.expenseDetails}/${expense.expenseId}',
                       ),
                     ),
                   ),
@@ -88,7 +92,7 @@ class ExpenseDashboardScreen extends ConsumerWidget {
           ? null
           : FloatingActionButton.extended(
               onPressed: () => context.push(
-                '${Routes.addExpense}/${dashboard.value!.tripId}',
+                '${Routes.groupExpense}/${dashboard.value!.tripId}/${Routes.addExpense}',
               ),
               backgroundColor: const Color(0xFF7C3AED),
               foregroundColor: Colors.white,
@@ -126,7 +130,7 @@ class _TripHeader extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          trip?.tripName ?? 'Current Trip',
+          trip?.destination ?? 'Current Trip',
           style: const TextStyle(
             color: Colors.white,
             fontSize: 24,
@@ -191,27 +195,30 @@ class _QuickActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final actions = <(IconData, String, String)>[
-      (Icons.add_card, 'Expense', '${Routes.addExpense}/${state.tripId}'),
+      (
+        Icons.add_card,
+        'Expense',
+        '${Routes.groupExpense}/${state.tripId}/${Routes.addExpense}'
+      ),
       (
         Icons.swap_horiz,
         'Settle',
-        '${Routes.recordSettlement}/${state.tripId}'
+        '${Routes.groupExpense}/${state.tripId}/${Routes.recordSettlement}'
       ),
       (
         Icons.account_balance_wallet_outlined,
         'Budget',
-        '${state.hasBudget ? Routes.editBudget : Routes.createBudget}/${state.tripId}'
+        '${Routes.groupExpense}/${state.tripId}/${state.hasBudget ? Routes.editBudget : Routes.createBudget}'
       ),
       (
         Icons.balance_outlined,
         'Balance',
-        '${Routes.outstandingBalance}/${state.tripId}'
+        '${Routes.groupExpense}/${state.tripId}/${Routes.outstandingBalance}'
       ),
-      (Icons.history, 'History', '${Routes.settlementHistory}/${state.tripId}'),
       (
-        Icons.analytics_outlined,
-        'Analytics',
-        '${Routes.budgetAnalytics}/${state.tripId}'
+        Icons.history,
+        'History',
+        '${Routes.groupExpense}/${state.tripId}/${Routes.settlementHistory}'
       ),
     ];
     return Wrap(
@@ -288,7 +295,7 @@ class _BalancePreview extends StatelessWidget {
               text: 'View',
               backgroundColor: const Color(0xFF7C3AED),
               onPressed: () => context.push(
-                '${Routes.outstandingBalance}/${state.tripId}',
+                '${Routes.groupExpense}/${state.tripId}/${Routes.outstandingBalance}',
               ),
             ),
           ),

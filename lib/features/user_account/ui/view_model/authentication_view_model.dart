@@ -37,8 +37,9 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
 
   Future<bool> setPassword(String password) async {
     state = const AsyncValue.loading();
-    final result =
-        await AsyncValue.guard(() => _repository.setPassword(password));
+    final result = await AsyncValue.guard(
+      () => _repository.setPassword(password),
+    );
     if (result case AsyncError(:final error, :final stackTrace)) {
       state = AsyncError(error, stackTrace);
       return false;
@@ -117,22 +118,16 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
     final AuthResponse? authResponse = result.value;
     if (authResponse == null) {
       state = AsyncError(
-          LocaleKeys.unexpectedErrorOccurred.tr(), StackTrace.current);
+        LocaleKeys.unexpectedErrorOccurred.tr(),
+        StackTrace.current,
+      );
       return;
     }
-
-    // TODO: fake data, remove this when connect to real auth
-    final isExistAccount = await _repository.isExistAccount();
-    if (!isExistAccount) {
-      _repository.setIsExistAccount(true);
-    }
-    _repository.setIsLogin(true);
-    // END TODO
 
     state = AsyncData(
       AuthenticationState(
         authResponse: authResponse,
-        isRegisterSuccessfully: !isExistAccount,
+        isRegisterSuccessfully: false,
         isSignInSuccessfully: true,
       ),
     );

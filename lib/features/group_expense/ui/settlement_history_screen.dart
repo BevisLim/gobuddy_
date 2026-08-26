@@ -18,7 +18,7 @@ import 'widgets/group_expense_app_bar.dart';
 
 class SettlementHistoryScreen extends ConsumerWidget {
   const SettlementHistoryScreen({super.key, required this.tripId});
-  final int tripId;
+  final String tripId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -27,7 +27,9 @@ class SettlementHistoryScreen extends ConsumerWidget {
     return Scaffold(
       appBar: const GroupExpenseAppBar(title: 'Settlement History'),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('${Routes.recordSettlement}/$tripId'),
+        onPressed: () => context.push(
+          '${Routes.groupExpense}/$tripId/${Routes.recordSettlement}',
+        ),
         backgroundColor: const Color(0xFF7C3AED),
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add),
@@ -147,7 +149,7 @@ class SettlementHistoryScreen extends ConsumerWidget {
   Future<void> _replaceReceipt(
     BuildContext context,
     WidgetRef ref,
-    int settlementId,
+    String settlementId,
   ) async {
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
@@ -179,7 +181,7 @@ class SettlementHistoryScreen extends ConsumerWidget {
   Future<void> _delete(
     BuildContext context,
     WidgetRef ref,
-    int settlementId,
+    String settlementId,
   ) async {
     final confirmed = await showDialog<bool>(
       context: context,

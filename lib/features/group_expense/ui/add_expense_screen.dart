@@ -7,7 +7,7 @@ import 'widgets/group_expense_app_bar.dart';
 
 class AddExpenseScreen extends StatelessWidget {
   const AddExpenseScreen({super.key, required this.tripId});
-  final int tripId;
+  final String tripId;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -17,7 +17,8 @@ class AddExpenseScreen extends StatelessWidget {
             tripId: tripId,
             onSaved: (expenseId) => context.go(
               Uri(
-                path: '${Routes.expenseDetails}/$tripId/$expenseId',
+                path:
+                    '${Routes.groupExpense}/$tripId/${Routes.expenseDetails}/$expenseId',
                 queryParameters: const {
                   'message': 'Expense added successfully',
                 },

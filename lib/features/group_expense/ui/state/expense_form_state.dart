@@ -20,7 +20,7 @@ class ExpenseFormState {
     this.successMessage,
   });
 
-  final int tripId;
+  final String tripId;
   final String baseCurrency;
   final Expense? expense;
   final List<ExpenseCategory> categories;
@@ -28,7 +28,7 @@ class ExpenseFormState {
   final List<ExpenseParticipant> participants;
   final ExpenseReceipt? receipt;
   final bool isSaving;
-  final int? savedExpenseId;
+  final String? savedExpenseId;
   final bool isDeleted;
   final String? errorMessage;
   final String? successMessage;
@@ -39,7 +39,7 @@ class ExpenseFormState {
     ExpenseReceipt? receipt,
     bool clearReceipt = false,
     bool? isSaving,
-    int? savedExpenseId,
+    String? savedExpenseId,
     bool? isDeleted,
     String? errorMessage,
     String? successMessage,

@@ -25,10 +25,10 @@ void main() {
     tearDown(() => container.dispose());
 
     test('creates a valid budget and exposes calculated totals', () async {
-      await container.read(budgetViewModelProvider(7).future);
+      await container.read(budgetViewModelProvider('7').future);
 
       final created = await container
-          .read(budgetViewModelProvider(7).notifier)
+          .read(budgetViewModelProvider('7').notifier)
           .createBudget(
             name: 'Penang Trip',
             amount: '3000',
@@ -36,7 +36,7 @@ void main() {
             notes: 'Food weekend',
           );
 
-      final state = container.read(budgetViewModelProvider(7)).value!;
+      final state = container.read(budgetViewModelProvider('7')).value!;
       expect(created, isTrue);
       expect(state.budget?.budgetName, 'Penang Trip');
       expect(state.remaining, 945);
@@ -45,17 +45,17 @@ void main() {
     });
 
     test('rejects invalid input without writing', () async {
-      await container.read(budgetViewModelProvider(7).future);
+      await container.read(budgetViewModelProvider('7').future);
 
       final created = await container
-          .read(budgetViewModelProvider(7).notifier)
+          .read(budgetViewModelProvider('7').notifier)
           .createBudget(
             name: '',
             amount: '0',
             currency: '',
           );
 
-      final state = container.read(budgetViewModelProvider(7)).value!;
+      final state = container.read(budgetViewModelProvider('7')).value!;
       expect(created, isFalse);
       expect(budgetRepository.createCalls, 0);
       expect(state.errorMessage, 'Budget name is required');
@@ -63,13 +63,13 @@ void main() {
 
     test('updates amount and removes blank notes', () async {
       budgetRepository.budget = _budget(amount: 3000, notes: 'Old notes');
-      await container.read(budgetViewModelProvider(7).future);
+      await container.read(budgetViewModelProvider('7').future);
 
       final updated = await container
-          .read(budgetViewModelProvider(7).notifier)
+          .read(budgetViewModelProvider('7').notifier)
           .updateBudget(amount: '3500', notes: '   ');
 
-      final state = container.read(budgetViewModelProvider(7)).value!;
+      final state = container.read(budgetViewModelProvider('7')).value!;
       expect(updated, isTrue);
       expect(state.budget?.budgetAmount, 3500);
       expect(state.budget?.notes, isNull);
@@ -79,8 +79,8 @@ void main() {
 }
 
 TripBudget _budget({required double amount, String? notes}) => TripBudget(
-      budgetId: 1,
-      tripId: 7,
+      budgetId: '1',
+      tripId: '7',
       budgetName: 'Penang Trip',
       budgetAmount: amount,
       baseCurrency: 'MYR',
@@ -94,17 +94,17 @@ class _FakeBudgetRepository implements BudgetRepository {
   int createCalls = 0;
 
   @override
-  Future<int> createBudget(TripBudget budget) async {
+  Future<String> createBudget(TripBudget budget) async {
     createCalls++;
-    this.budget = budget.copyWith(budgetId: 1);
-    return 1;
+    this.budget = budget.copyWith(budgetId: '1');
+    return '1';
   }
 
   @override
-  Future<TripBudget?> getBudgetForTrip(int tripId) async => budget;
+  Future<TripBudget?> getBudgetForTrip(String tripId) async => budget;
 
   @override
-  Future<double> getTotalSpent(int tripId) async => 2055;
+  Future<double> getTotalSpent(String tripId) async => 2055;
 
   @override
   Future<void> updateBudget(TripBudget budget) async {
@@ -116,9 +116,8 @@ class _FakeTripRepository implements TripRepository {
   const _FakeTripRepository();
 
   @override
-  Future<Trip?> getTripById(int tripId) async => Trip(
+  Future<Trip?> getTripById(String tripId) async => Trip(
         tripId: tripId,
-        tripName: 'Penang MY',
         destination: 'Penang, Malaysia',
         startDate: DateTime(2025, 8, 1),
         endDate: DateTime(2025, 8, 3),

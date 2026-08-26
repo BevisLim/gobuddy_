@@ -16,7 +16,7 @@ import 'widgets/group_expense_app_bar.dart';
 class BudgetAnalyticsScreen extends ConsumerWidget {
   const BudgetAnalyticsScreen({super.key, required this.tripId});
 
-  final int tripId;
+  final String tripId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

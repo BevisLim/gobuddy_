@@ -226,6 +226,8 @@ class _MatchmakingShellScreenState
           onFinish: viewModel.finishTrip,
           onOpenGroup: (id) => context.push(
               '${Routes.groupCollaboration}?tripId=${Uri.encodeQueryComponent(id)}'),
+          onOpenExpenses: (id) => context.push(
+              '${Routes.groupExpense}/${Uri.encodeComponent(id)}'),
           onCancelRequest: viewModel.cancelRequest),
       MatchmakingPage.request => RequestPage(
           trip: state.selectedTrip!,
@@ -286,7 +288,8 @@ class _MatchmakingShellScreenState
                       case 2:
                         context.go(Routes.messages);
                       case 3:
-                        context.go(Routes.expenseDashboard);
+                        // Group Expense opens only from an explicit trip UUID.
+                        viewModel.goTo(MatchmakingPage.myTrips);
                       default:
                         context.push(Routes.userAccount);
                     }
@@ -1361,7 +1364,7 @@ class MyTripsPage extends StatelessWidget {
   final List<MatchmakingTrip> trips, joinedTrips, removedTrips, allTrips;
   final List<JoinRequest> requests;
   final ValueChanged<String> onManage, onEdit, onFinish;
-  final ValueChanged<String> onOpenGroup;
+  final ValueChanged<String> onOpenGroup, onOpenExpenses;
   final Future<void> Function(String) onCancelRequest;
   const MyTripsPage(
       {super.key,
@@ -1376,6 +1379,7 @@ class MyTripsPage extends StatelessWidget {
       required this.onFinish,
       required this.onEdit,
       required this.onOpenGroup,
+      required this.onOpenExpenses,
       required this.onCancelRequest});
   @override
   Widget build(BuildContext context) =>
@@ -1409,6 +1413,7 @@ class MyTripsPage extends StatelessWidget {
               status: _statusLabel(trip.status),
               onEdit: () => onEdit(trip.id),
               onManage: () => onManage(trip.id),
+              onExpenses: () => onOpenExpenses(trip.id),
               onFinish: trip.status == TripStatus.closed
                   ? null
                   : () => onFinish(trip.id)),
@@ -1424,10 +1429,20 @@ class MyTripsPage extends StatelessWidget {
                 leading: const Icon(Icons.group_outlined, color: _violet),
                 title: Text(trip.destination),
                 subtitle: Text(_dateRange(trip.startDate, trip.endDate)),
-                trailing: FilledButton.tonalIcon(
-                  onPressed: () => onOpenGroup(trip.id),
-                  icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
-                  label: const Text('Group'),
+                trailing: Wrap(
+                  spacing: 4,
+                  children: [
+                    IconButton(
+                      tooltip: 'Group chat',
+                      onPressed: () => onOpenGroup(trip.id),
+                      icon: const Icon(Icons.chat_bubble_outline_rounded),
+                    ),
+                    IconButton(
+                      tooltip: 'Group expenses',
+                      onPressed: () => onOpenExpenses(trip.id),
+                      icon: const Icon(Icons.receipt_long_outlined),
+                    ),
+                  ],
                 ),
                 onTap: () => onOpenGroup(trip.id),
               ),
@@ -2084,6 +2099,7 @@ class CompactTrip extends StatelessWidget {
   final VoidCallback? onManage;
   final VoidCallback? onEdit;
   final VoidCallback? onFinish;
+  final VoidCallback? onExpenses;
   const CompactTrip({
     super.key,
     required this.destination,
@@ -2094,6 +2110,7 @@ class CompactTrip extends StatelessWidget {
     this.onManage,
     this.onEdit,
     this.onFinish,
+    this.onExpenses,
   });
 
   Future<void> _confirmFinish(BuildContext context) async {
@@ -2159,6 +2176,10 @@ class CompactTrip extends StatelessWidget {
               Expanded(
                   child: TextButton(
                       onPressed: onManage, child: const Text('Requests'))),
+              Expanded(
+                  child: TextButton(
+                      onPressed: onExpenses,
+                      child: const Text('Expenses'))),
               Expanded(
                   child: TextButton(
                       onPressed: onFinish == null

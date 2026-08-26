@@ -6,8 +6,8 @@ class ExpenseReceipt {
     required this.uploadedAt,
   });
 
-  final int? receiptId;
-  final int expenseId;
+  final String? receiptId;
+  final String expenseId;
   final String imagePath;
   final DateTime uploadedAt;
 
@@ -19,8 +19,8 @@ class ExpenseReceipt {
       };
 
   factory ExpenseReceipt.fromMap(Map<String, Object?> map) => ExpenseReceipt(
-        receiptId: map['receipt_id']! as int,
-        expenseId: map['expense_id']! as int,
+        receiptId: map['receipt_id']!.toString(),
+        expenseId: map['expense_id']!.toString(),
         imagePath: map['image_path']! as String,
         uploadedAt: DateTime.parse(map['uploaded_at']! as String),
       );

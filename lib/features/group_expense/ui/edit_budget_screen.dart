@@ -17,7 +17,7 @@ import 'widgets/group_expense_app_bar.dart';
 class EditBudgetScreen extends ConsumerStatefulWidget {
   const EditBudgetScreen({super.key, required this.tripId});
 
-  final int tripId;
+  final String tripId;
 
   @override
   ConsumerState<EditBudgetScreen> createState() => _EditBudgetScreenState();
@@ -27,7 +27,7 @@ class _EditBudgetScreenState extends ConsumerState<EditBudgetScreen> {
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController();
   final _notesController = TextEditingController();
-  int? _initializedBudgetId;
+  String? _initializedBudgetId;
 
   @override
   void dispose() {
@@ -76,7 +76,7 @@ class _EditBudgetScreenState extends ConsumerState<EditBudgetScreen> {
                 padding: const EdgeInsets.all(20),
                 children: [
                   Text(
-                    state.trip?.tripName ?? 'Current Trip',
+                    state.trip?.destination ?? 'Current Trip',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                           color: const Color(0xFF281958),
                           fontWeight: FontWeight.w800,

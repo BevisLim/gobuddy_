@@ -1,62 +1,73 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../common/local/database_provider.dart';
-import '../model/app_session.dart';
+import '../../common/remote/supabase_client.dart';
 import 'budget_repository.dart';
 import 'analytics_repository.dart';
 import 'currency_service.dart';
 import 'expense_repository.dart';
 import 'local_currency_service.dart';
-import 'local_traveller_repository.dart';
-import 'local_trip_repository.dart';
-import 'local_receipt_file_service.dart';
 import 'receipt_file_service.dart';
+import 'receipt_storage_service.dart';
 import 'settlement_repository.dart';
-import 'sqlite_budget_repository.dart';
-import 'sqlite_analytics_repository.dart';
-import 'sqlite_expense_repository.dart';
-import 'sqlite_settlement_repository.dart';
+import 'supabase_budget_repository.dart';
+import 'supabase_analytics_repository.dart';
+import 'supabase_expense_repository.dart';
+import 'supabase_receipt_storage_service.dart';
+import 'supabase_settlement_repository.dart';
+import 'supabase_traveller_repository.dart';
+import 'supabase_trip_repository.dart';
 import 'traveller_repository.dart';
 import 'trip_repository.dart';
 
-final appSessionProvider = Provider<AppSession>((ref) => const AppSession());
+/// Shared-auth boundary for Group Expense.
+///
+/// Tests may override this provider without coupling the feature to the
+/// authentication module's temporary fake-login implementation.
+final authenticatedUserIdProvider = Provider<String?>((ref) {
+  return supabase.auth.currentUser?.id;
+});
 
 final currencyServiceProvider =
     Provider<CurrencyService>((ref) => LocalCurrencyService());
 
-final receiptFileServiceProvider =
-    Provider<ReceiptFileService>((ref) => LocalReceiptFileService());
+final receiptStorageServiceProvider = Provider<ReceiptStorageService>((ref) {
+  return SupabaseReceiptStorageService(supabase);
+});
+
+final receiptFileServiceProvider = Provider<ReceiptFileService>((ref) {
+  return SupabaseReceiptStorageService(supabase);
+});
 
 final travellerRepositoryProvider =
     FutureProvider<TravellerRepository>((ref) async {
-  final database = await ref.watch(databaseProvider.future);
-  return LocalTravellerRepository(database);
+  return SupabaseTravellerRepository(supabase);
 });
 
 final tripRepositoryProvider = FutureProvider<TripRepository>((ref) async {
-  final database = await ref.watch(databaseProvider.future);
-  return LocalTripRepository(database);
+  return SupabaseTripRepository(supabase);
 });
 
 final budgetRepositoryProvider = FutureProvider<BudgetRepository>((ref) async {
-  final database = await ref.watch(databaseProvider.future);
-  return SqliteBudgetRepository(database);
+  return SupabaseBudgetRepository(supabase);
 });
 
 final analyticsRepositoryProvider =
     FutureProvider<AnalyticsRepository>((ref) async {
-  final database = await ref.watch(databaseProvider.future);
-  return SqliteAnalyticsRepository(database);
+  return SupabaseAnalyticsRepository(supabase);
 });
 
 final expenseRepositoryProvider =
     FutureProvider<ExpenseRepository>((ref) async {
-  final database = await ref.watch(databaseProvider.future);
-  return SqliteExpenseRepository(database);
+  return SupabaseExpenseRepository(
+    supabase,
+    ref.watch(receiptStorageServiceProvider),
+  );
 });
 
 final settlementRepositoryProvider =
     FutureProvider<SettlementRepository>((ref) async {
-  final database = await ref.watch(databaseProvider.future);
-  return SqliteSettlementRepository(database);
+  return SupabaseSettlementRepository(
+    supabase,
+    ref.watch(receiptStorageServiceProvider),
+  );
 });

@@ -1,4 +1,3 @@
-import 'package:flutter_mvvm_riverpod/features/group_expense/model/app_session.dart';
 import 'package:flutter_mvvm_riverpod/features/group_expense/repository/group_expense_database_schema.dart';
 import 'package:flutter_mvvm_riverpod/features/group_expense/repository/group_expense_providers.dart';
 import 'package:flutter_mvvm_riverpod/features/group_expense/repository/local_traveller_repository.dart';
@@ -25,9 +24,7 @@ void main() {
     );
     await GroupExpenseDatabaseSchema.createAndSeed(database);
     container = ProviderContainer(overrides: [
-      appSessionProvider.overrideWithValue(
-        const AppSession(currentTripId: 1, currentUserId: 2),
-      ),
+      authenticatedUserIdProvider.overrideWithValue('2'),
       expenseRepositoryProvider.overrideWith(
         (ref) async => SqliteExpenseRepository(database),
       ),
@@ -53,12 +50,12 @@ void main() {
 
   test('dashboard summary uses repository data correctly', () async {
     final subscription =
-        container.listen(expenseDashboardViewModelProvider, (_, __) {});
+        container.listen(expenseDashboardViewModelProvider('1'), (_, __) {});
     addTearDown(subscription.close);
     final state =
-        await container.read(expenseDashboardViewModelProvider.future);
+        await container.read(expenseDashboardViewModelProvider('1').future);
 
-    expect(state.trip?.tripName, 'Kuala Lumpur MY');
+    expect(state.trip?.destination, 'Kuala Lumpur, Malaysia');
     expect(state.travellerCount, 4);
     expect(state.budgetAmount, 3000);
     expect(state.totalSpent, 2055);

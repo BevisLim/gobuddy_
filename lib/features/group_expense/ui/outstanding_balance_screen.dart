@@ -13,7 +13,7 @@ import 'widgets/group_expense_app_bar.dart';
 class OutstandingBalanceScreen extends ConsumerWidget {
   const OutstandingBalanceScreen({super.key, required this.tripId});
 
-  final int tripId;
+  final String tripId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -120,7 +120,7 @@ class OutstandingBalanceScreen extends ConsumerWidget {
                                 width: double.infinity,
                                 child: FilledButton.icon(
                                   onPressed: () => context.push(
-                                    '${Routes.recordSettlement}/$tripId?payerId=${suggestion.payerId}&payeeId=${suggestion.payeeId}',
+                                    '${Routes.groupExpense}/$tripId/${Routes.recordSettlement}?payerId=${suggestion.payerId}&payeeId=${suggestion.payeeId}',
                                   ),
                                   icon: const Icon(Icons.payments_outlined),
                                   label: const Text('Record Settlement'),

@@ -1,16 +1,10 @@
-import 'dart:convert';
-
-import 'package:crypto/crypto.dart';
-import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/foundation.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
-import 'package:flutter_mvvm_riverpod/generated/locale_keys.g.dart';
 import 'package:flutter_mvvm_riverpod/features/common/remote/supabase_client.dart';
 
 part 'authentication_repository.g.dart';
@@ -22,6 +16,12 @@ AuthenticationRepository authenticationRepository(Ref ref) {
 
 class AuthenticationRepository {
   const AuthenticationRepository();
+
+  Future<AuthResponse> signInWithPassword({
+    required String email,
+    required String password,
+  }) =>
+      supabase.auth.signInWithPassword(email: email.trim(), password: password);
 
   Future<void> sendRegistrationLink(String email) async {
     try {
@@ -69,8 +69,9 @@ class AuthenticationRepository {
   Future<bool> isRegistrationPending() async {
     final prefs = await SharedPreferences.getInstance();
     final pending = prefs.getBool(Constants.registrationPendingKey) ?? false;
-    final pendingEmail =
-        prefs.getString(Constants.registrationPendingEmailKey)?.toLowerCase();
+    final pendingEmail = prefs
+        .getString(Constants.registrationPendingEmailKey)
+        ?.toLowerCase();
     final currentEmail = supabase.auth.currentUser?.email?.toLowerCase();
     return pending && pendingEmail != null && pendingEmail == currentEmail;
   }
@@ -179,47 +180,9 @@ class AuthenticationRepository {
   }
 
   Future<AuthResponse> signInWithApple() async {
-    // TODO: fake data
-    return AuthResponse(
-      user: User(
-        id: '',
-        appMetadata: {},
-        userMetadata: {},
-        aud: '',
-        createdAt: '',
-        email: 'henry@apple.com',
-      ),
+    throw UnsupportedError(
+      'Apple sign-in is not configured yet. Use email or Google sign-in.',
     );
-
-    // ignore: dead_code
-    try {
-      final rawNonce = supabase.auth.generateRawNonce();
-      final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
-
-      final credential = await SignInWithApple.getAppleIDCredential(
-        scopes: [
-          AppleIDAuthorizationScopes.email,
-          AppleIDAuthorizationScopes.fullName,
-        ],
-        nonce: hashedNonce,
-      );
-
-      final idToken = credential.identityToken;
-      if (idToken == null) {
-        throw Exception(LocaleKeys.idTokenNotFound.tr());
-      }
-
-      final result = await supabase.auth.signInWithIdToken(
-        provider: OAuthProvider.apple,
-        idToken: idToken,
-        nonce: rawNonce,
-      );
-      return result;
-    } on AuthException catch (error) {
-      throw Exception(error.message);
-    } catch (error) {
-      throw Exception(LocaleKeys.unexpectedErrorOccurred.tr());
-    }
   }
 
   Future<void> signOut() async {
@@ -244,31 +207,8 @@ class AuthenticationRepository {
   }
 
   Future<bool> isLogin() async {
-    // TODO: fake data, remove this when integrating real auth
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(Constants.isLoginKey) ?? false;
-    // END TODO
-
-    // ignore: dead_code
     return supabase.auth.currentUser != null;
   }
-
-  // TODO: remove this when integrating real auth
-  Future<void> setIsLogin(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(Constants.isLoginKey, value);
-  }
-
-  Future<bool> isExistAccount() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(Constants.isExistAccountKey) ?? false;
-  }
-
-  Future<void> setIsExistAccount(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(Constants.isExistAccountKey, value);
-  }
-  // END TODO
 
   Future<bool> isGuestMode() async {
     final prefs = await SharedPreferences.getInstance();
