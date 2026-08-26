@@ -19,19 +19,27 @@ create index if not exists emergency_contacts_user_created_idx
 
 alter table public.emergency_contacts enable row level security;
 
+drop policy if exists "users read their emergency contacts"
+  on public.emergency_contacts;
 create policy "users read their emergency contacts"
 on public.emergency_contacts for select to authenticated
 using (user_id = auth.uid());
 
+drop policy if exists "users create their emergency contacts"
+  on public.emergency_contacts;
 create policy "users create their emergency contacts"
 on public.emergency_contacts for insert to authenticated
 with check (user_id = auth.uid());
 
+drop policy if exists "users update their emergency contacts"
+  on public.emergency_contacts;
 create policy "users update their emergency contacts"
 on public.emergency_contacts for update to authenticated
 using (user_id = auth.uid())
 with check (user_id = auth.uid());
 
+drop policy if exists "users delete their emergency contacts"
+  on public.emergency_contacts;
 create policy "users delete their emergency contacts"
 on public.emergency_contacts for delete to authenticated
 using (user_id = auth.uid());

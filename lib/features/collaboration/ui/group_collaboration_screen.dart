@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import 'package:flutter_mvvm_riverpod/core/environment/env.dart';
+import 'package:flutter_mvvm_riverpod/core/permissions/app_permission_service.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration_models.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/repository/collaboration_repository.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/jitsi_call_screen.dart';
@@ -13,6 +14,8 @@ import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/activity
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_recorder.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_message_player.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/view_model/matchmaking_view_model.dart';
+import 'package:flutter_mvvm_riverpod/features/safety/ui/widgets/block_user_action.dart';
+import 'package:flutter_mvvm_riverpod/features/safety/ui/widgets/report_user_action.dart';
 
 class GroupCollaborationScreen extends ConsumerWidget {
   const GroupCollaborationScreen({
@@ -90,8 +93,9 @@ class _RemovedGroupScreen extends ConsumerWidget {
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: () {
-                final matchmaking =
-                    ref.read(matchmakingViewModelProvider.notifier);
+                final matchmaking = ref.read(
+                  matchmakingViewModelProvider.notifier,
+                );
                 matchmaking.dismissGroup(tripId);
                 ref.invalidate(groupCollaborationViewModelProvider(tripId));
                 context.go(Routes.messages);
@@ -170,7 +174,9 @@ class _WorkspaceState extends ConsumerState<_Workspace> {
                 if (!context.mounted) return;
                 setState(() => _seenNotificationIds.removeAll(newlySeenIds));
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Could not mark updates read: $error')),
+                  SnackBar(
+                    content: Text('Could not mark updates read: $error'),
+                  ),
                 );
               }
             },
@@ -229,6 +235,7 @@ class GroupInfoScreen extends ConsumerWidget {
                 onTap: () => _openInAppCall(
                   context,
                   state.tripId,
+                  'voice',
                   () => viewModel.startCall('voice'),
                 ),
               ),
@@ -238,6 +245,7 @@ class GroupInfoScreen extends ConsumerWidget {
                 onTap: () => _openInAppCall(
                   context,
                   state.tripId,
+                  'video',
                   () => viewModel.startCall('video'),
                 ),
               ),
@@ -297,16 +305,22 @@ class GroupInfoScreen extends ConsumerWidget {
               .map(
                 (member) => ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    child: Text((member.displayName ?? 'M')[0].toUpperCase()),
+                  leading: _MemberAvatar(
+                    member: member,
+                    currentUserId: state.currentUserId,
+                    onTap: () => _showMemberSafetyActions(
+                      context: context,
+                      ref: ref,
+                      member: member,
+                    ),
                   ),
                   title: Text(member.displayName ?? 'Trip member'),
                   subtitle: Text(
                     member.userId == state.creatorId
                         ? 'Leader'
                         : member.isAdmin
-                            ? 'Admin'
-                            : 'Member',
+                        ? 'Admin'
+                        : 'Member',
                   ),
                 ),
               ),
@@ -392,17 +406,23 @@ class _MembersInfoTab extends ConsumerWidget {
         const SizedBox(height: 8),
         ...state.members.map(
           (member) => ListTile(
-            leading: CircleAvatar(
-              child: Text((member.displayName ?? 'M')[0].toUpperCase()),
+            leading: _MemberAvatar(
+              member: member,
+              currentUserId: state.currentUserId,
+              onTap: () => _showMemberSafetyActions(
+                context: context,
+                ref: ref,
+                member: member,
+              ),
             ),
             subtitle: Text(
               member.userId == state.creatorId
                   ? 'Leader'
                   : member.isMuted
-                      ? 'Muted'
-                      : member.isAdmin
-                          ? 'Admin'
-                          : 'Member',
+                  ? 'Muted'
+                  : member.isAdmin
+                  ? 'Admin'
+                  : 'Member',
             ),
             trailing:
                 member.userId == state.currentUserId || !state.canManageMembers
@@ -483,6 +503,90 @@ class _MembersInfoTab extends ConsumerWidget {
   }
 }
 
+class _MemberAvatar extends StatelessWidget {
+  const _MemberAvatar({
+    required this.member,
+    required this.currentUserId,
+    required this.onTap,
+  });
+
+  final CollaborationMember member;
+  final String currentUserId;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final displayName = member.displayName?.trim();
+    final photoUrl = member.profilePhotoUrl?.trim();
+    final avatar = CircleAvatar(
+      foregroundImage: photoUrl == null || photoUrl.isEmpty
+          ? null
+          : NetworkImage(photoUrl),
+      child: Text(
+        displayName == null || displayName.isEmpty
+            ? 'M'
+            : displayName[0].toUpperCase(),
+      ),
+    );
+    if (member.userId == currentUserId) return avatar;
+
+    return Tooltip(
+      message: 'User options',
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: avatar,
+      ),
+    );
+  }
+}
+
+Future<void> _showMemberSafetyActions({
+  required BuildContext context,
+  required WidgetRef ref,
+  required CollaborationMember member,
+}) async {
+  final action = await showModalBottomSheet<String>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.block, color: Colors.red),
+            title: const Text('Block user'),
+            onTap: () => Navigator.pop(sheetContext, 'block'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.flag_outlined),
+            title: const Text('Report user'),
+            onTap: () => Navigator.pop(sheetContext, 'report'),
+          ),
+        ],
+      ),
+    ),
+  );
+  if (action == null || !context.mounted) return;
+
+  final displayName = member.displayName ?? 'Trip member';
+  if (action == 'block') {
+    await BlockUserAction.show(
+      context: context,
+      ref: ref,
+      targetUserId: member.userId,
+      targetDisplayName: displayName,
+    );
+  } else if (action == 'report') {
+    await ReportUserAction.show(
+      context: context,
+      ref: ref,
+      targetUserId: member.userId,
+      targetDisplayName: displayName,
+    );
+  }
+}
+
 class _ChatTab extends ConsumerStatefulWidget {
   const _ChatTab({required this.state});
   final GroupCollaborationState state;
@@ -493,14 +597,30 @@ class _ChatTab extends ConsumerStatefulWidget {
 
 class _ChatTabState extends ConsumerState<_ChatTab> {
   final _messageController = TextEditingController();
+  final _messagesController = ScrollController();
   final _voiceRecorder = VoiceRecorder();
   bool _isTyping = false;
   bool _readMarked = false;
   bool _isRecordingVoice = false;
 
   @override
+  void initState() {
+    super.initState();
+    _scheduleScrollToBottom();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChatTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.state.messages.length != widget.state.messages.length) {
+      _scheduleScrollToBottom();
+    }
+  }
+
+  @override
   void dispose() {
     _voiceRecorder.dispose();
+    _messagesController.dispose();
     _messageController.dispose();
     super.dispose();
   }
@@ -520,6 +640,7 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
       children: [
         Expanded(
           child: ListView(
+            controller: _messagesController,
             padding: const EdgeInsets.all(16),
             children: [
               ...widget.state.messages.map(
@@ -623,6 +744,17 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
         ),
       ],
     );
+  }
+
+  void _scheduleScrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_messagesController.hasClients) return;
+      _messagesController.animateTo(
+        _messagesController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   Future<void> _toggleVoiceRecording(
@@ -738,6 +870,22 @@ class _TimelineTab extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        Card(
+          color: Theme.of(context).colorScheme.errorContainer,
+          child: ListTile(
+            leading: Icon(
+              Icons.sos,
+              color: Theme.of(context).colorScheme.onErrorContainer,
+            ),
+            title: const Text('Emergency SOS'),
+            subtitle: const Text(
+              'Share your location and call the local emergency number',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push(Routes.sos),
+          ),
+        ),
+        const SizedBox(height: 12),
         FilledButton.icon(
           onPressed: () => showDialog<void>(
             context: context,
@@ -1125,6 +1273,7 @@ class _CallsTab extends ConsumerWidget {
                         : () => _openInAppCall(
                             context,
                             state.tripId,
+                            call.callType,
                             () => viewModel.joinCall(call),
                           ),
                     child: Text(call.status == 'ended' ? 'Ended' : 'Join'),
@@ -1225,9 +1374,13 @@ Future<void> _runWorkspaceAction(
 Future<void> _openInAppCall(
   BuildContext context,
   String tripId,
+  String callType,
   Future<TripCall?> Function() action,
 ) async {
   try {
+    await const AppPermissionService().requireCallPermissions(
+      withVideo: callType == 'video',
+    );
     final call = await action();
     if (call == null || !context.mounted) return;
     await Navigator.of(context).push(

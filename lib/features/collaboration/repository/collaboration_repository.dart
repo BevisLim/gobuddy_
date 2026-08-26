@@ -68,7 +68,9 @@ class CollaborationRepository {
           .eq('trip_id', tripId)
           .order('created_at', ascending: false)
           .limit(20),
-      _client.from('user_accounts').select('id, display_name'),
+      _client
+          .from('user_accounts')
+          .select('id, display_name, profile_photo_path'),
       _client
           .from('trip_calls')
           .select()
@@ -100,6 +102,11 @@ class CollaborationRepository {
       for (final profile in results[8] as List<dynamic>)
         (profile as Map<String, dynamic>)['id'] as String:
             profile['display_name'] as String,
+    };
+    final profilePhotoUrls = <String, String?>{
+      for (final profile in results[8] as List<dynamic>)
+        (profile as Map<String, dynamic>)['id'] as String:
+            profile['profile_photo_path'] as String?,
     };
     final adminIds = (results[5] as List<dynamic>)
         .where((role) => (role as Map<String, dynamic>)['role'] == 'admin')
@@ -145,6 +152,7 @@ class CollaborationRepository {
         return CollaborationMember.fromMap(
           row,
           displayName: profileNames[row['user_id'] as String],
+          profilePhotoUrl: profilePhotoUrls[row['user_id'] as String],
           isAdmin: adminIds.contains(row['user_id'] as String),
         );
       }).toList(),
@@ -334,9 +342,7 @@ class CollaborationRepository {
     required DateTime? mutedUntil,
   }) => _client
       .from('trip_members')
-      .update({
-        'muted_until': mutedUntil?.toUtc().toIso8601String(),
-      })
+      .update({'muted_until': mutedUntil?.toUtc().toIso8601String()})
       .eq('trip_id', tripId)
       .eq('user_id', memberId);
 
@@ -492,10 +498,8 @@ class CollaborationRepository {
     params: {'p_trip_id': tripId},
   );
 
-  Future<void> dismissRemovedGroup(String tripId) => _client.rpc(
-    'dismiss_removed_trip_group',
-    params: {'p_trip_id': tripId},
-  );
+  Future<void> dismissRemovedGroup(String tripId) =>
+      _client.rpc('dismiss_removed_trip_group', params: {'p_trip_id': tripId});
 
   Future<void> addActivityComment({
     required String tripId,

@@ -93,11 +93,11 @@ class SupabaseLiveLocationRepository implements LiveLocationRepository {
 
   @override
   Future<void> stopShare(String shareId) async {
-    await _client
-        .from('live_location_shares')
-        .update({'is_active': false})
-        .eq('id', shareId)
-        .eq('user_id', _currentUserId());
+    _currentUserId();
+    await _client.rpc(
+      'stop_live_location_share',
+      params: {'p_share_id': shareId},
+    );
   }
 
   void _requireUser(String userId) {

@@ -2,12 +2,14 @@ class CollaborationMember {
   const CollaborationMember({
     required this.userId,
     this.displayName,
+    this.profilePhotoUrl,
     this.mutedUntil,
     this.isAdmin = false,
   });
 
   final String userId;
   final String? displayName;
+  final String? profilePhotoUrl;
   final DateTime? mutedUntil;
   final bool isAdmin;
 
@@ -16,10 +18,12 @@ class CollaborationMember {
   factory CollaborationMember.fromMap(
     Map<String, dynamic> map, {
     String? displayName,
+    String? profilePhotoUrl,
     bool isAdmin = false,
   }) => CollaborationMember(
     userId: map['user_id'] as String,
     displayName: displayName,
+    profilePhotoUrl: profilePhotoUrl,
     isAdmin: isAdmin,
     mutedUntil: map['muted_until'] == null
         ? null

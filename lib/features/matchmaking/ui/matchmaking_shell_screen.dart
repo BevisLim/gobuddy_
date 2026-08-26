@@ -17,6 +17,7 @@ import '../model/matchmaking_models.dart';
 import '../model/matchmaking_notification.dart';
 import '../model/matchmaking_page.dart';
 import 'view_model/matchmaking_view_model.dart';
+import '../../safety/repository/safety_check_in_configuration_repository.dart';
 import '../../safety/ui/widgets/user_safety_actions.dart';
 
 const _ink = Color(0xFF281950);
@@ -71,6 +72,23 @@ class _MatchmakingShellScreenState
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
+          table: 'matchmaking_join_requests',
+          callback: (_) => _refreshTrips(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'matchmaking_notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
+          callback: (_) => _refreshTrips(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
           table: 'trip_members',
           callback: (_) => _refreshTrips(),
         )
@@ -85,6 +103,49 @@ class _MatchmakingShellScreenState
   void _refreshTrips() {
     if (mounted) {
       ref.read(matchmakingViewModelProvider.notifier).refresh();
+    }
+  }
+
+  Future<void> _offerSafetyCheckIn() async {
+    final configuration = await ref
+        .read(safetyCheckInConfigurationRepositoryProvider)
+        .load();
+    if (!mounted || configuration.enabled) return;
+
+    final enableNow = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Turn on safety check-ins?'),
+        content: const Text(
+          'Get regular reminders during your trip to confirm that you are safe.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Yes'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+
+    if (enableNow == true) {
+      await context.push(Routes.safetyCheckInSettings);
+    } else if (enableNow == false) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'You can turn on Safety Check-In anytime in the Settings.',
+            ),
+          ),
+        );
     }
   }
 
@@ -143,6 +204,7 @@ class _MatchmakingShellScreenState
       MatchmakingPage.create => InteractiveTripFormPage(
           onBack: () => viewModel.goTo(MatchmakingPage.discover),
           onPublish: viewModel.saveTrip,
+          onTripStarted: _offerSafetyCheckIn,
           onUploadImage: viewModel.uploadTripCover),
       MatchmakingPage.edit => InteractiveTripFormPage(
           edit: true,
@@ -902,6 +964,7 @@ class TripDetailsPage extends StatelessWidget {
 class InteractiveTripFormPage extends StatefulWidget {
   final VoidCallback onBack;
   final ValueChanged<MatchmakingTrip> onPublish;
+  final Future<void> Function()? onTripStarted;
   final Future<String> Function(String, Uint8List, String) onUploadImage;
   final VoidCallback? onDelete;
   final MatchmakingTrip? initialTrip;
@@ -910,6 +973,7 @@ class InteractiveTripFormPage extends StatefulWidget {
       {super.key,
       required this.onBack,
       required this.onPublish,
+      this.onTripStarted,
       required this.onUploadImage,
       this.onDelete,
       this.initialTrip,
@@ -1096,6 +1160,9 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
       status: widget.initialTrip?.status ?? TripStatus.active,
       isOwned: true,
     ));
+    if (!widget.edit) {
+      await widget.onTripStarted?.call();
+    }
   }
 
   DateTime? _parseDate(String value) {

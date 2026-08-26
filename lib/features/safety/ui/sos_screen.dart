@@ -29,9 +29,12 @@ class _SosScreenState extends ConsumerState<SosScreen>
       duration: const Duration(seconds: 3),
     )..addStatusListener((status) {
         if (status == AnimationStatus.completed) {
-          ref.read(sosViewModelProvider.notifier).activate();
+          ref.read(sosViewModelProvider.notifier).triggerEmergency();
         }
       });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.read(sosViewModelProvider.notifier).activate();
+    });
   }
 
   @override
@@ -62,7 +65,7 @@ class _SosScreenState extends ConsumerState<SosScreen>
                 Center(
                   child: _HoldButton(
                     controller: _holdController,
-                    isLoading: state.isLocating,
+                    isLoading: state.isTriggering || state.isLocating,
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -148,7 +151,7 @@ class _SosScreenState extends ConsumerState<SosScreen>
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  'Numbers are provided as guidance. GoBuddy opens your phone app and never places a call without your confirmation.',
+                  'After the 3-second hold, GoBuddy prepares a location alert for your emergency contacts and opens the emergency number in your phone app. Your phone requires confirmation before sending or calling.',
                   textAlign: TextAlign.center,
                   style: AppTheme.body12.copyWith(color: AppColors.mono60),
                 ),
@@ -194,7 +197,7 @@ class _EmergencyContent extends StatelessWidget {
               const Icon(Icons.public, size: 38),
               const SizedBox(height: 10),
               const Text(
-                'Hold SOS to detect your country and load its emergency numbers.',
+                'Finding the emergency numbers for your current location.',
                 textAlign: TextAlign.center,
               ),
               if (state.countryCode != null) ...[

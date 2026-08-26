@@ -45,22 +45,52 @@ alter table public.trip_member_roles enable row level security;
 alter table public.trip_activity_comments enable row level security;
 alter table public.trip_activity_events enable row level security;
 
+drop policy if exists "members read trip roles" on public.trip_member_roles;
 create policy "members read trip roles" on public.trip_member_roles
   for select using (public.is_trip_member(trip_id));
+drop policy if exists "creator assigns trip admins" on public.trip_member_roles;
 create policy "creator assigns trip admins" on public.trip_member_roles
   for all using (public.is_trip_creator(trip_id)) with check (public.is_trip_creator(trip_id));
+drop policy if exists "members read activity comments" on public.trip_activity_comments;
 create policy "members read activity comments" on public.trip_activity_comments
   for select using (public.is_trip_member(trip_id));
+drop policy if exists "members add activity comments" on public.trip_activity_comments;
 create policy "members add activity comments" on public.trip_activity_comments
   for insert with check (author_id = auth.uid() and public.is_trip_member(trip_id));
+drop policy if exists "members read activity events" on public.trip_activity_events;
 create policy "members read activity events" on public.trip_activity_events
   for select using (public.is_trip_member(trip_id));
+drop policy if exists "members add activity events" on public.trip_activity_events;
 create policy "members add activity events" on public.trip_activity_events
   for insert with check (actor_id = auth.uid() and public.is_trip_member(trip_id));
 
 -- Admins, as well as the creator, can mute and remove members.
 drop policy if exists "creator can manage membership" on public.trip_members;
+drop policy if exists "admins can manage membership" on public.trip_members;
 create policy "admins can manage membership" on public.trip_members
   for all using (public.is_trip_admin(trip_id)) with check (public.is_trip_admin(trip_id));
 
-alter publication supabase_realtime add table public.trip_activity_comments, public.trip_activity_events, public.trip_member_roles;
+do $$
+declare
+  table_name text;
+begin
+  foreach table_name in array array[
+    'trip_activity_comments',
+    'trip_activity_events',
+    'trip_member_roles'
+  ] loop
+    if not exists (
+      select 1
+      from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = table_name
+    ) then
+      execute format(
+        'alter publication supabase_realtime add table public.%I',
+        table_name
+      );
+    end if;
+  end loop;
+end;
+$$;
