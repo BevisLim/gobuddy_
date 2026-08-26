@@ -41,6 +41,7 @@ class UserAccountRepository {
         profilePhoto: _publicStorageUrl(
           'profile-images',
           row['profile_photo_path'] as String?,
+          cacheBust: true,
         ),
         backgroundPhoto: _publicStorageUrl(
           'background-images',
@@ -120,6 +121,61 @@ class UserAccountRepository {
     }
   }
 
+  Future<UserAccount> updateProfilePhoto(String localPath) async {
+    final authUser = supabase.auth.currentUser;
+    if (authUser == null) {
+      throw const ProfilePhotoUpdateException(
+        'Your session has expired. Please sign in again.',
+      );
+    }
+
+    try {
+      final file = File(localPath);
+      final fileSize = await file.length();
+      if (fileSize <= 0 || fileSize > 5 * 1024 * 1024) {
+        throw const ProfilePhotoUpdateException(
+          'Select a JPEG, PNG, or WebP image smaller than 5 MB.',
+        );
+      }
+
+      final extension = _validatedImageExtension(localPath);
+      final objectPath = '${authUser.id}/profile.$extension';
+      await supabase.storage.from('profile-images').uploadBinary(
+            objectPath,
+            await file.readAsBytes(),
+            fileOptions: FileOptions(
+              upsert: true,
+              contentType: _imageContentType(extension),
+            ),
+          );
+
+      await supabase.from('user_accounts').update(<String, Object?>{
+        'profile_photo_path': objectPath,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', authUser.id);
+
+      return fetchCurrentAccount();
+    } on ProfilePhotoUpdateException {
+      rethrow;
+    } on StorageException {
+      throw const ProfilePhotoUpdateException(
+        'Unable to update profile photo. Please try again.',
+      );
+    } on PostgrestException {
+      throw const ProfilePhotoUpdateException(
+        'Unable to update profile photo. Please try again.',
+      );
+    } on FileSystemException {
+      throw const ProfilePhotoUpdateException(
+        'Unable to read the selected image. Please choose another image.',
+      );
+    } catch (_) {
+      throw const ProfilePhotoUpdateException(
+        'Unable to update profile photo. Please try again.',
+      );
+    }
+  }
+
   Future<String?> _storagePathForUpdate({
     required String uid,
     required String? value,
@@ -191,11 +247,18 @@ class UserAccountRepository {
   }
 }
 
-String? _publicStorageUrl(String bucket, String? path) {
+String? _publicStorageUrl(
+  String bucket,
+  String? path, {
+  bool cacheBust = false,
+}) {
   final value = path?.trim();
   if (value == null || value.isEmpty) return null;
   if (!_isLocalPath(value)) return value;
-  return supabase.storage.from(bucket).getPublicUrl(value);
+  final url = supabase.storage.from(bucket).getPublicUrl(value);
+  return cacheBust
+      ? '$url?v=${DateTime.now().millisecondsSinceEpoch}'
+      : url;
 }
 
 String _extractStoragePath(String value, String bucket) {
@@ -226,6 +289,16 @@ String _imageExtension(String path) {
   return 'jpg';
 }
 
+String _validatedImageExtension(String path) {
+  final cleanPath = path.split('?').first.toLowerCase();
+  if (cleanPath.endsWith('.jpg') || cleanPath.endsWith('.jpeg')) return 'jpg';
+  if (cleanPath.endsWith('.png')) return 'png';
+  if (cleanPath.endsWith('.webp')) return 'webp';
+  throw const ProfilePhotoUpdateException(
+    'Select a JPEG, PNG, or WebP image.',
+  );
+}
+
 String _imageContentType(String extension) => switch (extension) {
       'png' => 'image/png',
       'webp' => 'image/webp',
@@ -248,6 +321,15 @@ class UserAccountLoadException implements Exception {
 
 class IdentityVerificationException implements Exception {
   const IdentityVerificationException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+class ProfilePhotoUpdateException implements Exception {
+  const ProfilePhotoUpdateException(this.message);
 
   final String message;
 

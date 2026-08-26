@@ -73,11 +73,32 @@ class UserAccountViewModel extends Notifier<UserAccountState> {
   }
 
   Future<String?> selectProfileImage() async {
-    final image = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
-    );
-    return image?.path;
+    if (state.user == null || state.isLoading) return null;
+
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final image = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+      );
+      if (image == null) {
+        state = state.copyWith(isLoading: false);
+        return null;
+      }
+
+      final repository = ref.read(userAccountRepositoryProvider);
+      final updatedUser = await repository.updateProfilePhoto(image.path);
+      state = state.copyWith(user: updatedUser, isLoading: false);
+      return updatedUser.profilePhoto;
+    } catch (error) {
+      state = state.copyWith(
+        error: error is ProfilePhotoUpdateException
+            ? error.message
+            : 'Unable to update profile photo. Please try again.',
+        isLoading: false,
+      );
+      return null;
+    }
   }
 
   Future<String?> startIdentityVerification() async {
