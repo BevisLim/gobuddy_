@@ -6,7 +6,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/routing/routes.dart';
 import '../../common/ui/widgets/app_module_navigation.dart';
+import '../../matchmaking/ui/matchmaking_shell_screen.dart';
+import '../../matchmaking/ui/view_model/matchmaking_view_model.dart';
 import '../model/user_account_model.dart';
+import 'edit_profile_view.dart';
 import 'view_model/user_account_view_model.dart';
 
 // ==========================================================================
@@ -72,6 +75,9 @@ class _UserAccountScreenState extends ConsumerState<UserAccountScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(userAccountViewModelProvider);
     final viewModel = ref.read(userAccountViewModelProvider.notifier);
+    final matchmakingState = ref.watch(matchmakingViewModelProvider);
+    final matchmakingViewModel =
+        ref.read(matchmakingViewModelProvider.notifier);
 
     final Widget body;
     if (state.isLoading && state.user == null) {
@@ -87,8 +93,20 @@ class _UserAccountScreenState extends ConsumerState<UserAccountScreen> {
             user: state.user!,
             onNavigate: viewModel.goTo,
             onRefresh: viewModel.refresh,
+            onVerify: () => context.push(Routes.identityVerification),
+            unreadNotificationCount:
+                matchmakingState.unreadNotificationCount,
+            onNotifications: () async {
+              await showDialog<void>(
+                context: context,
+                builder: (context) => MatchmakingNotificationsDialog(
+                  notifications: matchmakingState.notifications,
+                ),
+              );
+              await matchmakingViewModel.markNotificationsRead();
+            },
           ),
-        UserAccountPage.editProfile => _AccountEditView(
+        UserAccountPage.editProfile => EditProfileView(
             user: state.user!,
             isSaving: state.isLoading,
             onBack: () => viewModel.goTo(UserAccountPage.profile),
@@ -149,11 +167,17 @@ class _AccountDashboardView extends StatelessWidget {
   final UserAccount user;
   final ValueChanged<UserAccountPage> onNavigate;
   final Future<void> Function() onRefresh;
+  final VoidCallback onVerify;
+  final int unreadNotificationCount;
+  final Future<void> Function() onNotifications;
 
   const _AccountDashboardView({
     required this.user,
     required this.onNavigate,
     required this.onRefresh,
+    required this.onVerify,
+    required this.unreadNotificationCount,
+    required this.onNotifications,
   });
 
   @override
@@ -166,13 +190,19 @@ class _AccountDashboardView extends StatelessWidget {
         children: [
           _ProfileHeader(
             user: user,
-            onBack: () => Navigator.maybePop(context),
+            onBack: () => context.canPop()
+                ? context.pop()
+                : context.go(Routes.main),
+            unreadNotificationCount: unreadNotificationCount,
+            onNotifications: onNotifications,
             onSettings: () => context.push(Routes.settings),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             child: _ProfileStatsCard(
               onEdit: () => onNavigate(UserAccountPage.editProfile),
+              isVerified: user.isVerified,
+              onVerify: onVerify,
             ),
           ),
           Padding(
@@ -205,16 +235,20 @@ class _ProfileHeader extends StatelessWidget {
   final UserAccount user;
   final VoidCallback onBack;
   final VoidCallback onSettings;
+  final int unreadNotificationCount;
+  final Future<void> Function() onNotifications;
 
   const _ProfileHeader({
     required this.user,
     required this.onBack,
     required this.onSettings,
+    required this.unreadNotificationCount,
+    required this.onNotifications,
   });
 
   @override
   Widget build(BuildContext context) => SizedBox(
-        height: 350,
+        height: 410,
         child: Stack(
           clipBehavior: Clip.none,
           children: [
@@ -248,11 +282,13 @@ class _ProfileHeader extends StatelessWidget {
                       onTap: onBack,
                     ),
                   ),
-                  const Positioned(
+                  Positioned(
                     top: 14,
                     right: 62,
                     child: _FrostedIconButton(
                       icon: Icons.notifications_none_rounded,
+                      badgeCount: unreadNotificationCount,
+                      onTap: onNotifications,
                     ),
                   ),
                   Positioned(
@@ -261,48 +297,6 @@ class _ProfileHeader extends StatelessWidget {
                     child: _FrostedIconButton(
                       icon: Icons.settings_outlined,
                       onTap: onSettings,
-                    ),
-                  ),
-                  Positioned(
-                    left: 16,
-                    right: 16,
-                    bottom: 24,
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Flexible(
-                              child: Text(
-                                _profileDisplayName(user),
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontFamily: 'Georgia',
-                                  color: Colors.white,
-                                  fontSize: 25,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                            if (user.isVerified) ...[
-                              const SizedBox(width: 7),
-                              const _VerifiedBadge(),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                            user.gender == null || user.gender!.isEmpty
-                                ? 'Profile details not added'
-                                : user.gender!,
-                            style: const TextStyle(
-                                color: Color(0xE6FFFFFF),
-                                fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 3),
-                        Text(_joinedLabel(user.joinedAt),
-                            style: TextStyle(
-                                color: Color(0xB3FFFFFF), fontSize: 12)),
-                      ],
                     ),
                   ),
                 ],
@@ -358,6 +352,60 @@ class _ProfileHeader extends StatelessWidget {
                 ),
               ),
             ),
+            Positioned(
+              top: 330,
+              left: 20,
+              right: 20,
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          _profileDisplayName(user),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: _ink,
+                            fontSize: 30,
+                            height: 1.1,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -.5,
+                          ),
+                        ),
+                      ),
+                      if (user.isVerified) ...[
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.verified_rounded,
+                          color: _violet,
+                          size: 23,
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _profileSummary(user),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: _muted,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _joinedLabel(user.joinedAt),
+                    style: const TextStyle(color: _muted, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       );
@@ -365,7 +413,14 @@ class _ProfileHeader extends StatelessWidget {
 
 class _ProfileStatsCard extends StatelessWidget {
   final VoidCallback onEdit;
-  const _ProfileStatsCard({required this.onEdit});
+  final bool isVerified;
+  final VoidCallback onVerify;
+
+  const _ProfileStatsCard({
+    required this.onEdit,
+    required this.isVerified,
+    required this.onVerify,
+  });
 
   @override
   Widget build(BuildContext context) => Container(
@@ -392,6 +447,26 @@ class _ProfileStatsCard extends StatelessWidget {
                   style: TextStyle(fontWeight: FontWeight.w700)),
             ),
           ),
+          if (!isVerified) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: OutlinedButton.icon(
+                onPressed: onVerify,
+                icon: const Icon(Icons.verified_user_outlined),
+                label: const Text(
+                  'Verify Identity',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _violet,
+                  side: const BorderSide(color: _violet),
+                  shape: const StadiumBorder(),
+                ),
+              ),
+            ),
+          ],
         ]),
       );
 }
@@ -539,7 +614,13 @@ class _ProfileCard extends StatelessWidget {
 class _FrostedIconButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onTap;
-  const _FrostedIconButton({required this.icon, this.onTap});
+  final int badgeCount;
+
+  const _FrostedIconButton({
+    required this.icon,
+    this.onTap,
+    this.badgeCount = 0,
+  });
 
   @override
   Widget build(BuildContext context) => Material(
@@ -551,7 +632,11 @@ class _FrostedIconButton extends StatelessWidget {
           child: SizedBox(
               width: 38,
               height: 38,
-              child: Icon(icon, color: Colors.white, size: 20)),
+              child: Badge(
+                isLabelVisible: badgeCount > 0,
+                label: Text(badgeCount > 99 ? '99+' : '$badgeCount'),
+                child: Icon(icon, color: Colors.white, size: 20),
+              )),
         ),
       );
 }
@@ -607,7 +692,7 @@ class _AccountEditView extends StatefulWidget {
 class _AccountEditViewState extends State<_AccountEditView> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _usernameController;
-  late final TextEditingController _countryController;
+  late final TextEditingController _nationalityController;
   late final TextEditingController _bioController;
   String? _gender;
   String? _backgroundPhoto;
@@ -617,7 +702,8 @@ class _AccountEditViewState extends State<_AccountEditView> {
   void initState() {
     super.initState();
     _usernameController = TextEditingController(text: widget.user.username);
-    _countryController = TextEditingController(text: widget.user.country);
+    _nationalityController =
+        TextEditingController(text: widget.user.nationality);
     _bioController = TextEditingController(text: widget.user.bio);
     _gender = widget.user.gender;
     _backgroundPhoto = widget.user.backgroundPhoto;
@@ -627,7 +713,7 @@ class _AccountEditViewState extends State<_AccountEditView> {
   @override
   void dispose() {
     _usernameController.dispose();
-    _countryController.dispose();
+    _nationalityController.dispose();
     _bioController.dispose();
     super.dispose();
   }
@@ -706,8 +792,8 @@ class _AccountEditViewState extends State<_AccountEditView> {
             ),
             const SizedBox(height: 18),
             _EditField(
-              label: 'COUNTRY',
-              controller: _countryController,
+              label: 'NATIONALITY',
+              controller: _nationalityController,
               enabled: !widget.isSaving,
             ),
             const SizedBox(height: 18),
@@ -784,7 +870,7 @@ class _AccountEditViewState extends State<_AccountEditView> {
         profilePhoto: _profilePhoto,
         username: _usernameController.text.trim(),
         gender: _gender,
-        country: _countryController.text.trim(),
+        nationality: _nationalityController.text.trim(),
         bio: _bioController.text.trim(),
       ),
     );
@@ -967,6 +1053,39 @@ String _profileDisplayName(UserAccount user) {
   if (fullName != null && fullName.isNotEmpty) return fullName;
   final username = user.username.trim();
   return username.isEmpty ? 'Profile incomplete' : username;
+}
+
+String _profileSummary(UserAccount user) {
+  final nationality = user.nationality?.trim();
+  final nationalityLabel = nationality == null || nationality.isEmpty
+      ? 'Nationality not added'
+      : _nationalityWithFlag(nationality);
+  final age = _ageFromDateOfBirth(user.dateOfBirth);
+  final gender = user.gender?.trim();
+
+  return [
+    nationalityLabel,
+    age == null ? 'Age not added' : '$age',
+    gender == null || gender.isEmpty ? 'Gender not added' : gender,
+  ].join('  |  ');
+}
+
+String _nationalityWithFlag(String nationality) {
+  return switch (nationality.toLowerCase()) {
+    'malaysia' || 'malaysian' =>
+        '${String.fromCharCodes([0x1F1F2, 0x1F1FE])} Malaysia',
+    _ => nationality,
+  };
+}
+
+int? _ageFromDateOfBirth(DateTime? dateOfBirth) {
+  if (dateOfBirth == null) return null;
+  final today = DateTime.now();
+  var age = today.year - dateOfBirth.year;
+  final birthdayHasPassed = today.month > dateOfBirth.month ||
+      (today.month == dateOfBirth.month && today.day >= dateOfBirth.day);
+  if (!birthdayHasPassed) age--;
+  return age < 0 ? null : age;
 }
 
 String _joinedLabel(DateTime? date) {
