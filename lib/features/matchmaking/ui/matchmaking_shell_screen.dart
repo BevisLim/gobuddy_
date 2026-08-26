@@ -226,7 +226,7 @@ class _MatchmakingShellScreenState
                       case 3:
                         context.go(Routes.expenseDashboard);
                       default:
-                        context.go(Routes.userAccount);
+                        context.push(Routes.userAccount);
                     }
                   },
                 )
@@ -245,8 +245,8 @@ class _MatchmakingShellScreenState
   }
 }
 
-class _NotificationsDialog extends StatelessWidget {
-  const _NotificationsDialog({required this.notifications});
+class MatchmakingNotificationsDialog extends StatelessWidget {
+  const MatchmakingNotificationsDialog({super.key, required this.notifications});
 
   final List<MatchmakingNotification> notifications;
 
@@ -347,7 +347,7 @@ class DiscoverPage extends StatelessWidget {
                     onPressed: () async {
                       await showDialog<void>(
                           context: context,
-                          builder: (context) => _NotificationsDialog(
+                          builder: (context) => MatchmakingNotificationsDialog(
                               notifications: notifications));
                       await onNotificationsRead();
                     },
@@ -359,7 +359,7 @@ class DiscoverPage extends StatelessWidget {
                         child: const Icon(Icons.notifications_none_rounded,
                             color: _ink))),
                 InkWell(
-                    onTap: () => context.go(Routes.userAccount),
+                    onTap: () => context.push(Routes.userAccount),
                     customBorder: const CircleBorder(),
                     child: const Avatar(letter: 'M', size: 34)),
               ])),
@@ -1699,7 +1699,7 @@ class ProfilePage extends StatelessWidget {
             width: 260,
             child: OutlineButton(
                 label: 'Open account',
-                onTap: () => context.go(Routes.userAccount)))
+                onTap: () => context.push(Routes.userAccount)))
       ]));
 }
 

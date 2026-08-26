@@ -1,13 +1,12 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:flutter_mvvm_riverpod/core/extensions/build_context_extension.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_colors.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_theme.dart';
 import 'view_model/user_account_view_model.dart';
-
-enum _DocumentType { nationalId, passport, driversLicense }
 
 class IdentityVerificationScreen extends ConsumerStatefulWidget {
   const IdentityVerificationScreen({super.key});
@@ -19,27 +18,18 @@ class IdentityVerificationScreen extends ConsumerStatefulWidget {
 
 class _IdentityVerificationScreenState
     extends ConsumerState<IdentityVerificationScreen> {
-  int _step = 0;
-  _DocumentType? _documentType;
-  bool _frontCaptured = false;
-  bool _backCaptured = false;
-  bool _selfieVerified = false;
-
-  bool get _canContinue => switch (_step) {
-        0 => _documentType != null,
-        1 => _frontCaptured,
-        2 => _backCaptured,
-        _ => _selfieVerified,
-      };
+  bool _didOpenVerification = false;
 
   @override
   Widget build(BuildContext context) {
-    final isSubmitting = ref.watch(userAccountViewModelProvider).isLoading;
+    final isStarting = ref.watch(userAccountViewModelProvider).isLoading;
 
     return Scaffold(
       backgroundColor: AppColors.brandBackground,
       appBar: AppBar(
-        leading: BackButton(onPressed: isSubmitting ? null : _goBack),
+        leading: BackButton(
+          onPressed: isStarting ? null : () => Navigator.maybePop(context),
+        ),
         title: Text('Identity Verification', style: AppTheme.title20),
         backgroundColor: AppColors.brandBackground,
         foregroundColor: AppColors.brandPrimary,
@@ -47,35 +37,63 @@ class _IdentityVerificationScreenState
       ),
       body: SafeArea(
         top: false,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
-              child: _VerificationProgress(currentStep: _step),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: KeyedSubtree(
-                    key: ValueKey(_step),
-                    child: _stepContent(),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+          child: Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 16),
+                      Container(
+                        width: 104,
+                        height: 104,
+                        decoration: BoxDecoration(
+                          color: AppColors.brandBorder.withValues(alpha: .3),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.verified_user_outlined,
+                          color: AppColors.brandSurface,
+                          size: 52,
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      Text(
+                        _didOpenVerification
+                            ? 'Verification started'
+                            : 'Verify your identity',
+                        textAlign: TextAlign.center,
+                        style: AppTheme.title32.copyWith(
+                          color: AppColors.brandPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        _didOpenVerification
+                            ? 'Complete the verification in the Didit page. '
+                                'Your status will update after it is reviewed.'
+                            : 'You will continue to Didit to securely verify '
+                                'your identity document and face.',
+                        textAlign: TextAlign.center,
+                        style: AppTheme.body16.copyWith(
+                          color: AppColors.brandTextMuted,
+                          height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      const _VerificationDetailsCard(),
+                    ],
                   ),
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-              child: SizedBox(
+              const SizedBox(height: 20),
+              SizedBox(
                 width: double.infinity,
                 height: 52,
                 child: FilledButton(
-                  onPressed: !_canContinue || isSubmitting
-                      ? null
-                      : _step == 3
-                          ? _submit
-                          : () => setState(() => _step++),
+                  onPressed: isStarting ? null : _startVerification,
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.brandSurface,
                     foregroundColor: AppColors.brandBackground,
@@ -84,345 +102,143 @@ class _IdentityVerificationScreenState
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  child: isSubmitting
-                      ? const SizedBox.square(
-                          dimension: 22,
-                          child: CircularProgressIndicator(
-                            color: AppColors.brandBackground,
-                            strokeWidth: 2,
-                          ),
+                  child: isStarting
+                      ? const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox.square(
+                              dimension: 20,
+                              child: CircularProgressIndicator(
+                                color: AppColors.brandBackground,
+                                strokeWidth: 2,
+                              ),
+                            ),
+                            SizedBox(width: 12),
+                            Text(
+                              'Starting verification...',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ],
                         )
                       : Text(
-                          _step == 3 ? 'Submit Verification' : 'Next Step',
+                          _didOpenVerification
+                              ? 'Open Verification Again'
+                              : 'Verify Identity',
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _stepContent() {
-    return switch (_step) {
-      0 => _DocumentTypeStep(
-          selected: _documentType,
-          onSelected: (value) => setState(() => _documentType = value),
-        ),
-      1 => _CaptureStep(
-          title: 'Front of document',
-          description: 'Position your ID clearly within the frame.',
-          icon: Icons.badge_outlined,
-          completed: _frontCaptured,
-          actionLabel: 'Tap to capture/upload front document',
-          onCapture: () => setState(() => _frontCaptured = true),
-        ),
-      2 => _CaptureStep(
-          title: 'Back of document',
-          description: 'Make sure all details are visible and in focus.',
-          icon: Icons.credit_card_outlined,
-          completed: _backCaptured,
-          actionLabel: 'Tap to capture/upload back document',
-          onCapture: () => setState(() => _backCaptured = true),
-        ),
-      _ => _CaptureStep(
-          title: 'Take a selfie',
-          description: 'Make sure your face is clearly visible.',
-          icon: Icons.face_retouching_natural_outlined,
-          completed: _selfieVerified,
-          completedLabel: 'Face verified',
-          actionLabel: 'Tap to complete mock selfie check',
-          onCapture: () => setState(() => _selfieVerified = true),
-        ),
-    };
-  }
-
-  void _goBack() {
-    if (_step == 0) {
-      context.pop();
-    } else {
-      setState(() => _step--);
-    }
-  }
-
-  Future<void> _submit() async {
-    final success = await ref
-        .read(userAccountViewModelProvider.notifier)
-        .completeIdentityVerification();
-    if (!mounted) return;
-
-    if (success) {
-      context.showSuccessSnackBar('Identity verified successfully.');
-      context.pop();
-    } else {
-      final error = ref.read(userAccountViewModelProvider).error;
-      context.showErrorSnackBar(error ?? 'Unable to verify identity.');
-    }
-  }
-}
-
-class _VerificationProgress extends StatelessWidget {
-  const _VerificationProgress({required this.currentStep});
-
-  final int currentStep;
-
-  @override
-  Widget build(BuildContext context) {
-    const labels = ['Document', 'Front ID', 'Back ID', 'Selfie'];
-    return Row(
-      children: List.generate(labels.length, (index) {
-        final active = index <= currentStep;
-        return Expanded(
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  children: [
-                    Container(
-                      width: 32,
-                      height: 32,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: active
-                            ? AppColors.brandSurface
-                            : AppColors.brandBackground,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: active
-                              ? AppColors.brandSurface
-                              : AppColors.brandBorder,
-                        ),
-                      ),
-                      child: Text(
-                        '${index + 1}',
-                        style: AppTheme.title12.copyWith(
-                          color: active
-                              ? AppColors.brandBackground
-                              : AppColors.brandTextMuted,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      labels[index],
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTheme.body12.copyWith(
-                        color: active
-                            ? AppColors.brandPrimary
-                            : AppColors.brandTextMuted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (index < labels.length - 1)
-                Container(
-                  width: 12,
-                  height: 2,
-                  margin: const EdgeInsets.only(bottom: 24),
-                  color: index < currentStep
-                      ? AppColors.brandSurface
-                      : AppColors.brandBorder,
-                ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _startVerification() async {
+    final verificationUrl = await ref
+        .read(userAccountViewModelProvider.notifier)
+        .startIdentityVerification();
+    if (!mounted) return;
+
+    if (verificationUrl == null) {
+      final message = ref.read(userAccountViewModelProvider).error;
+      context.showErrorSnackBar(
+        message ?? 'Unable to start identity verification. Please try again.',
+      );
+      return;
+    }
+
+    try {
+      final launched = await launchUrl(
+        Uri.parse(verificationUrl),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched) {
+        throw const FormatException('The verification URL could not be opened.');
+      }
+      if (mounted) setState(() => _didOpenVerification = true);
+    } catch (error, stackTrace) {
+      debugPrint('Unable to open Didit verification URL: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        context.showErrorSnackBar(
+          'Unable to open identity verification. Please try again.',
         );
-      }),
-    );
+      }
+    }
   }
 }
 
-class _DocumentTypeStep extends StatelessWidget {
-  const _DocumentTypeStep({
-    required this.selected,
-    required this.onSelected,
-  });
-
-  final _DocumentType? selected;
-  final ValueChanged<_DocumentType> onSelected;
+class _VerificationDetailsCard extends StatelessWidget {
+  const _VerificationDetailsCard();
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Identity Verification',
-          style: AppTheme.title32.copyWith(color: AppColors.brandPrimary),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Verify your identity to unlock all features.',
-          style: AppTheme.body16.copyWith(
-            color: AppColors.brandTextMuted,
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.brandBorder.withValues(alpha: .2),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.brandBorder),
+      ),
+      child: const Column(
+        children: [
+          _VerificationDetail(
+            icon: Icons.badge_outlined,
+            title: 'Identity document',
+            description: 'Didit will guide you through document capture.',
           ),
-        ),
-        const SizedBox(height: 32),
-        Text(
-          'SELECT DOCUMENT TYPE',
-          style: AppTheme.title12.copyWith(
-            color: AppColors.brandTextMuted,
-            letterSpacing: .5,
+          Divider(height: 32, color: AppColors.brandBorder),
+          _VerificationDetail(
+            icon: Icons.face_retouching_natural_outlined,
+            title: 'Face and liveness check',
+            description: 'Complete the secure face checks in Didit.',
           ),
-        ),
-        const SizedBox(height: 12),
-        _DocumentOption(
-          title: 'National ID',
-          icon: Icons.badge_outlined,
-          selected: selected == _DocumentType.nationalId,
-          onTap: () => onSelected(_DocumentType.nationalId),
-        ),
-        const SizedBox(height: 12),
-        _DocumentOption(
-          title: 'Passport',
-          icon: Icons.menu_book_outlined,
-          selected: selected == _DocumentType.passport,
-          onTap: () => onSelected(_DocumentType.passport),
-        ),
-        const SizedBox(height: 12),
-        _DocumentOption(
-          title: "Driver's License",
-          icon: Icons.directions_car_outlined,
-          selected: selected == _DocumentType.driversLicense,
-          onTap: () => onSelected(_DocumentType.driversLicense),
-        ),
-      ],
-    );
-  }
-}
-
-class _DocumentOption extends StatelessWidget {
-  const _DocumentOption({
-    required this.title,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String title;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.brandBorder.withValues(alpha: .35)
-              : AppColors.brandBackground,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: selected ? AppColors.brandSurface : AppColors.brandBorder,
-            width: selected ? 2 : 1,
+          Divider(height: 32, color: AppColors.brandBorder),
+          _VerificationDetail(
+            icon: Icons.lock_outline_rounded,
+            title: 'Secure verification',
+            description: 'Verification is handled on Didit’s hosted page.',
           ),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: AppColors.brandSurface, size: 28),
-            const SizedBox(width: 16),
-            Expanded(child: Text(title, style: AppTheme.title16)),
-            Icon(
-              selected
-                  ? Icons.radio_button_checked
-                  : Icons.radio_button_unchecked,
-              color:
-                  selected ? AppColors.brandSurface : AppColors.brandTextMuted,
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }
 }
 
-class _CaptureStep extends StatelessWidget {
-  const _CaptureStep({
+class _VerificationDetail extends StatelessWidget {
+  const _VerificationDetail({
+    required this.icon,
     required this.title,
     required this.description,
-    required this.icon,
-    required this.completed,
-    required this.actionLabel,
-    required this.onCapture,
-    this.completedLabel = 'Document captured',
   });
 
+  final IconData icon;
   final String title;
   final String description;
-  final IconData icon;
-  final bool completed;
-  final String actionLabel;
-  final String completedLabel;
-  final VoidCallback onCapture;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          textAlign: TextAlign.center,
-          style: AppTheme.title32.copyWith(color: AppColors.brandPrimary),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          description,
-          textAlign: TextAlign.center,
-          style: AppTheme.body16.copyWith(color: AppColors.brandTextMuted),
-        ),
-        const SizedBox(height: 32),
-        InkWell(
-          onTap: onCapture,
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            width: double.infinity,
-            constraints: const BoxConstraints(minHeight: 260),
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: AppColors.brandBorder.withValues(alpha: .2),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color:
-                    completed ? AppColors.brandSurface : AppColors.brandBorder,
-                width: completed ? 2 : 1,
+        Icon(icon, color: AppColors.brandSurface, size: 26),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: AppTheme.title16),
+              const SizedBox(height: 4),
+              Text(
+                description,
+                style: AppTheme.body14.copyWith(
+                  color: AppColors.brandTextMuted,
+                  height: 1.4,
+                ),
               ),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  completed ? Icons.verified_rounded : icon,
-                  color: AppColors.brandSurface,
-                  size: 64,
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  completed ? completedLabel : actionLabel,
-                  textAlign: TextAlign.center,
-                  style: AppTheme.title16.copyWith(
-                    color: AppColors.brandPrimary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  completed
-                      ? 'Tap again to replace this mock capture.'
-                      : 'Camera and OCR integration will be added later.',
-                  textAlign: TextAlign.center,
-                  style: AppTheme.body14.copyWith(
-                    color: AppColors.brandTextMuted,
-                  ),
-                ),
-              ],
-            ),
+            ],
           ),
         ),
       ],
