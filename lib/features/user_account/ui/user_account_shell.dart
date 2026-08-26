@@ -73,6 +73,12 @@ class _UserAccountScreenState extends ConsumerState<UserAccountScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(userAccountViewModelProvider, (previous, next) {
+      if (next.error == null || next.error == previous?.error) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(next.error!)));
+    });
     final state = ref.watch(userAccountViewModelProvider);
     final viewModel = ref.read(userAccountViewModelProvider.notifier);
     final matchmakingState = ref.watch(matchmakingViewModelProvider);
@@ -307,10 +313,15 @@ class _ProfileHeader extends StatelessWidget {
               left: 0,
               right: 0,
               child: Center(
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Container(
+                child: Semantics(
+                  button: true,
+                  label: 'View profile photo',
+                  child: GestureDetector(
+                    onTap: () => _showProfilePhotoPreview(
+                      context,
+                      user.profilePhoto,
+                    ),
+                    child: Container(
                       width: 112,
                       height: 112,
                       padding: const EdgeInsets.all(4),
@@ -333,22 +344,7 @@ class _ProfileHeader extends StatelessWidget {
                         ),
                       ),
                     ),
-                    Positioned(
-                      right: -2,
-                      bottom: 1,
-                      child: Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: _violet,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: _surface, width: 2),
-                        ),
-                        child: const Icon(Icons.camera_alt_outlined,
-                            color: Colors.white, size: 16),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -397,11 +393,6 @@ class _ProfileHeader extends StatelessWidget {
                       fontSize: 15,
                       fontWeight: FontWeight.w500,
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _joinedLabel(user.joinedAt),
-                    style: const TextStyle(color: _muted, fontSize: 13),
                   ),
                 ],
               ),
@@ -1048,6 +1039,53 @@ ImageProvider<Object> _accountImageProvider(
   return FileImage(File(resolved));
 }
 
+Future<void> _showProfilePhotoPreview(
+  BuildContext context,
+  String? profilePhoto,
+) {
+  return showDialog<void>(
+    context: context,
+    barrierColor: Colors.black87,
+    builder: (dialogContext) => Dialog(
+      insetPadding: const EdgeInsets.all(20),
+      backgroundColor: Colors.transparent,
+      child: Stack(
+        alignment: Alignment.topRight,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: ColoredBox(
+              color: Colors.black,
+              child: AspectRatio(
+                aspectRatio: 1,
+                child: InteractiveViewer(
+                  minScale: 1,
+                  maxScale: 4,
+                  child: Image(
+                    image: _accountImageProvider(profilePhoto),
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: IconButton.filled(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.black54,
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(Icons.close_rounded),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 String _profileDisplayName(UserAccount user) {
   final fullName = user.fullName?.trim();
   if (fullName != null && fullName.isNotEmpty) return fullName;
@@ -1086,25 +1124,6 @@ int? _ageFromDateOfBirth(DateTime? dateOfBirth) {
       (today.month == dateOfBirth.month && today.day >= dateOfBirth.day);
   if (!birthdayHasPassed) age--;
   return age < 0 ? null : age;
-}
-
-String _joinedLabel(DateTime? date) {
-  if (date == null) return 'Join date unavailable';
-  const months = [
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
-  ];
-  return 'Joined ${months[date.month - 1]} ${date.year}';
 }
 
 String _formatDate(DateTime date) {
