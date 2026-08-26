@@ -769,29 +769,115 @@ class _TimelineTab extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        FilledButton.icon(
-          onPressed: () => showDialog<void>(
-            context: context,
-            builder: (_) => ActivityProposalDialog(
-              onPropose: (title, location) => viewModel.proposeActivity(
-                title: title,
-                location: location,
-                startTime: DateTime.now().add(const Duration(days: 1)),
-              ),
-              onCreatePoll: (question, options) => viewModel.createActivityPoll(
-                question: question,
-                options: options,
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Trip Timeline',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  Text('${state.activities.length} planned activities'),
+                ],
               ),
             ),
-          ),
-          icon: const Icon(Icons.add),
-          label: const Text('Propose activity'),
+            FilledButton.icon(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => ActivityProposalDialog(
+                  onPropose: (title, location) => viewModel.proposeActivity(
+                    title: title,
+                    location: location,
+                    startTime: DateTime.now().add(const Duration(days: 1)),
+                  ),
+                  onCreatePoll: (question, options) => viewModel
+                      .createActivityPoll(question: question, options: options),
+                ),
+              ),
+              icon: const Icon(Icons.add),
+              label: const Text('Add activity'),
+            ),
+          ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: 64,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: state.activities.isEmpty
+                ? 1
+                : state.activities.take(5).length,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            itemBuilder: (_, index) {
+              final day = state.activities.isEmpty
+                  ? DateTime.now()
+                  : state.activities[index].startTime;
+              return Container(
+                width: 72,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: index == 0
+                      ? Theme.of(context).colorScheme.primaryContainer
+                      : Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Column(
+                  children: [
+                    Text('Day ${index + 1}'),
+                    Text('${day.day}/${day.month}'),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 16),
         ...state.activities.map(
           (activity) => Card(
+            margin: const EdgeInsets.only(bottom: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: activity.isPinned
+                  ? BorderSide(color: Theme.of(context).colorScheme.primary)
+                  : BorderSide.none,
+            ),
             child: ListTile(
-              title: Text(activity.title),
+              contentPadding: const EdgeInsets.all(14),
+              leading: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.circle,
+                    size: 14,
+                    color: activity.startTime.isBefore(DateTime.now())
+                        ? Colors.green
+                        : Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    height: 40,
+                    width: 2,
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
+                ],
+              ),
+              title: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      activity.title,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  _ActivityStatusChip(
+                    label: activity.startTime.isBefore(DateTime.now())
+                        ? 'In progress'
+                        : 'Upcoming',
+                  ),
+                ],
+              ),
               subtitle: Text(
                 '${activity.startTime}\n${state.comments.where((comment) => comment.activityId == activity.id).length} comment(s) · ${_rsvpSummary(state, activity.id)}',
               ),
@@ -883,6 +969,25 @@ class _TimelineTab extends ConsumerWidget {
       ],
     );
   }
+}
+
+class _ActivityStatusChip extends StatelessWidget {
+  const _ActivityStatusChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.secondaryContainer,
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Text(
+      label,
+      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+    ),
+  );
 }
 
 void _showNotifications(
