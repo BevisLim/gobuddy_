@@ -22,7 +22,7 @@ class SupabaseTravellerRepository implements TravellerRepository {
 
     final accountRows = await client
         .from('user_accounts')
-        .select('id,display_name,profile_photo_url')
+        .select('id,display_name,profile_photo_path')
         .inFilter('id', userIds);
     final accountsById = {
       for (final row in accountRows) row['id'] as String: row,
@@ -44,7 +44,7 @@ class SupabaseTravellerRepository implements TravellerRepository {
     if (membership == null) return null;
     final row = await client
         .from('user_accounts')
-        .select('id,display_name,profile_photo_url')
+        .select('id,display_name,profile_photo_path')
         .eq('id', userId)
         .maybeSingle();
     return row == null ? null : _fromAccount(row);
@@ -55,7 +55,7 @@ class SupabaseTravellerRepository implements TravellerRepository {
     return Traveller(
       userId: row['id'] as String,
       displayName: displayName,
-      profilePhotoUrl: row['profile_photo_url'] as String?,
+      profilePhotoUrl: row['profile_photo_path'] as String?,
       initials: _initials(displayName),
     );
   }

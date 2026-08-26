@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../common/ui/widgets/primary_button.dart';
+import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import '../model/expense_constants.dart';
 import '../model/expense_date_utils.dart';
 import '../model/expense_form_validation.dart';
@@ -58,7 +59,10 @@ class _RecordSettlementScreenState
     final provider = settlementViewModelProvider(widget.tripId);
     final settlementState = ref.watch(provider);
     return Scaffold(
-      appBar: const GroupExpenseAppBar(title: 'Record Settlement'),
+      appBar: GroupExpenseAppBar(
+        title: 'Record Settlement',
+        fallbackRoute: '${Routes.groupExpense}/${widget.tripId}',
+      ),
       body: SafeArea(
         child: settlementState.when(
           loading: () => const Center(child: CircularProgressIndicator()),

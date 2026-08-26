@@ -11,6 +11,7 @@ class Routes {
   static const setPassword = '/set-password';
   static const main = '/main';
   static const myTrips = '/my-trips';
+  static const expenseTripPicker = '/my-trips?pickExpense=true';
   static const messages = '/messages';
   static const groupExpense = '/group-expense';
   static const createBudget = 'budget/create';

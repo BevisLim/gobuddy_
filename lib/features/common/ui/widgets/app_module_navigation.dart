@@ -25,9 +25,7 @@ class AppModuleNavigation extends StatelessWidget {
             0 => Routes.main,
             1 => Routes.myTrips,
             2 => Routes.messages,
-            // Group Expense requires an explicit trip UUID. Route through the
-            // trip picker instead of inventing global selected-trip state.
-            3 => Routes.myTrips,
+            3 => Routes.expenseTripPicker,
             _ => Routes.userAccount,
           };
           if (index != selectedIndex) context.go(route);

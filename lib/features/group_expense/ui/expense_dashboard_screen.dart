@@ -220,6 +220,11 @@ class _QuickActions extends StatelessWidget {
         'History',
         '${Routes.groupExpense}/${state.tripId}/${Routes.settlementHistory}'
       ),
+      (
+        Icons.insights_outlined,
+        'Analytics',
+        '${Routes.groupExpense}/${state.tripId}/${Routes.budgetAnalytics}'
+      ),
     ];
     return Wrap(
       spacing: 10,

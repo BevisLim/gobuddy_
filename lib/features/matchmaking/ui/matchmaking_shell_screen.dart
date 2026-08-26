@@ -27,7 +27,12 @@ const _muted = Color(0xFF686082);
 const _lavender = Color(0xFFEDE9FE);
 
 class MatchmakingShellScreen extends ConsumerStatefulWidget {
-  const MatchmakingShellScreen({super.key});
+  const MatchmakingShellScreen({
+    super.key,
+    this.openExpensePicker = false,
+  });
+
+  final bool openExpensePicker;
 
   @override
   ConsumerState<MatchmakingShellScreen> createState() =>
@@ -39,6 +44,7 @@ class _MatchmakingShellScreenState
   RealtimeChannel? _tripsChannel;
   StreamSubscription<AuthState>? _authSubscription;
   String? _subscribedUserId;
+  bool _expensePickerHandled = false;
 
   @override
   void initState() {
@@ -173,6 +179,14 @@ class _MatchmakingShellScreenState
     });
     final state = ref.watch(matchmakingViewModelProvider);
     final viewModel = ref.read(matchmakingViewModelProvider.notifier);
+    if (widget.openExpensePicker &&
+        !_expensePickerHandled &&
+        !state.isLoading) {
+      _expensePickerHandled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showExpenseTripPicker(state.groupTrips);
+      });
+    }
     final page = state.page;
     final content = switch (page) {
       MatchmakingPage.discover => DiscoverPage(
@@ -288,8 +302,7 @@ class _MatchmakingShellScreenState
                       case 2:
                         context.go(Routes.messages);
                       case 3:
-                        // Group Expense opens only from an explicit trip UUID.
-                        viewModel.goTo(MatchmakingPage.myTrips);
+                        _showExpenseTripPicker(state.groupTrips);
                       default:
                         context.push(Routes.userAccount);
                     }
@@ -307,6 +320,56 @@ class _MatchmakingShellScreenState
                 )
               : null,
     );
+  }
+
+  Future<void> _showExpenseTripPicker(List<MatchmakingTrip> trips) async {
+    if (trips.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(
+          content: Text('Create or join a trip before adding expenses.'),
+        ));
+      return;
+    }
+
+    final tripId = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(24, 8, 24, 12),
+              child: Text(
+                'Choose a trip for expenses',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              ),
+            ),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: trips.length,
+                itemBuilder: (context, index) {
+                  final trip = trips[index];
+                  return ListTile(
+                    leading: const Icon(Icons.luggage_outlined),
+                    title: Text(trip.destination),
+                    subtitle: Text(trip.isOwned ? 'Hosting' : 'Joined'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.pop(sheetContext, trip.id),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || tripId == null) return;
+    context.push('${Routes.groupExpense}/${Uri.encodeComponent(tripId)}');
   }
 }
 

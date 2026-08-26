@@ -41,6 +41,7 @@ class ExpenseDetailsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: GroupExpenseAppBar(
         title: 'Expense Details',
+        fallbackRoute: '${Routes.groupExpense}/$tripId',
         actions: [
           IconButton(
             tooltip: 'Edit expense',

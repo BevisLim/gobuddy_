@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import '../../common/ui/widgets/primary_button.dart';
 import '../../common/ui/widgets/secondary_button.dart';
 import '../model/budget_validation.dart';
@@ -40,7 +41,10 @@ class _EditBudgetScreenState extends ConsumerState<EditBudgetScreen> {
   Widget build(BuildContext context) {
     final budget = ref.watch(budgetViewModelProvider(widget.tripId));
     return Scaffold(
-      appBar: const GroupExpenseAppBar(title: 'Edit Trip Budget'),
+      appBar: GroupExpenseAppBar(
+        title: 'Edit Trip Budget',
+        fallbackRoute: '${Routes.groupExpense}/${widget.tripId}',
+      ),
       body: SafeArea(
         child: budget.when(
           loading: () => const Center(child: CircularProgressIndicator()),

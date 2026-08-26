@@ -171,7 +171,10 @@ final GoRouter router = GoRouter(
             ),
             matchmakingViewModelProvider.overrideWith(MatchmakingViewModel.new),
           ],
-          child: const MatchmakingShellScreen(),
+          child: MatchmakingShellScreen(
+            openExpensePicker:
+                state.uri.queryParameters['pickExpense'] == 'true',
+          ),
         ),
       ),
     ),

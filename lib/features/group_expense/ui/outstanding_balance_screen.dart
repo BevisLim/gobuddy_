@@ -19,7 +19,10 @@ class OutstandingBalanceScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final balances = ref.watch(balanceViewModelProvider(tripId));
     return Scaffold(
-      appBar: const GroupExpenseAppBar(title: 'Outstanding Balance'),
+      appBar: GroupExpenseAppBar(
+        title: 'Outstanding Balance',
+        fallbackRoute: '${Routes.groupExpense}/$tripId',
+      ),
       body: SafeArea(
         child: balances.when(
           loading: () => const Center(child: CircularProgressIndicator()),

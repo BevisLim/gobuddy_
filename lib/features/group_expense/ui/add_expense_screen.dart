@@ -11,11 +11,14 @@ class AddExpenseScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: const GroupExpenseAppBar(title: 'Add Expense'),
+        appBar: GroupExpenseAppBar(
+          title: 'Add Expense',
+          fallbackRoute: '${Routes.groupExpense}/$tripId',
+        ),
         body: SafeArea(
           child: ExpenseForm(
             tripId: tripId,
-            onSaved: (expenseId) => context.go(
+            onSaved: (expenseId) => context.pushReplacement(
               Uri(
                 path:
                     '${Routes.groupExpense}/$tripId/${Routes.expenseDetails}/$expenseId',

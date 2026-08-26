@@ -25,7 +25,10 @@ class SettlementHistoryScreen extends ConsumerWidget {
     final provider = settlementViewModelProvider(tripId);
     final history = ref.watch(provider);
     return Scaffold(
-      appBar: const GroupExpenseAppBar(title: 'Settlement History'),
+      appBar: GroupExpenseAppBar(
+        title: 'Settlement History',
+        fallbackRoute: '${Routes.groupExpense}/$tripId',
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push(
           '${Routes.groupExpense}/$tripId/${Routes.recordSettlement}',
