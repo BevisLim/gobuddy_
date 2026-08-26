@@ -20,7 +20,7 @@ class UserAccountRepository {
           .from('user_accounts')
           .select(
             'id, display_name, date_of_birth, gender, bio, '
-            'profile_photo_url, verification_status, created_at',
+            'profile_photo_path, verification_status, created_at',
           )
           .eq('id', authUser.id)
           .maybeSingle();
@@ -35,7 +35,7 @@ class UserAccountRepository {
         email: authUser.email ?? '',
         phoneNumber: authUser.phone ?? '',
         username: (row['display_name'] as String?)?.trim() ?? '',
-        profilePhoto: row['profile_photo_url'] as String?,
+        profilePhoto: row['profile_photo_path'] as String?,
         gender: row['gender'] as String?,
         dateOfBirth: _parseDate(row['date_of_birth']),
         joinedAt: _parseDate(row['created_at']),
