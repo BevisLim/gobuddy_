@@ -291,6 +291,53 @@ class UserAccountRepository {
     }
   }
 
+  Future<UserAccount> deleteGalleryPhotos(List<String> photoUrls) async {
+    final authUser = supabase.auth.currentUser;
+    if (authUser == null) {
+      throw const ProfilePhotoUpdateException(
+        'Your session has expired. Please sign in again.',
+      );
+    }
+
+    final objectPaths = photoUrls
+        .map((url) => _extractStoragePath(url, 'user-gallery'))
+        .where((path) => path.startsWith('${authUser.id}/'))
+        .toSet()
+        .toList(growable: false);
+    if (objectPaths.isEmpty) {
+      throw const ProfilePhotoUpdateException(
+        'No valid gallery photos were selected.',
+      );
+    }
+
+    try {
+      await supabase
+          .from('user_gallery')
+          .delete()
+          .eq('user_id', authUser.id)
+          .inFilter('image_path', objectPaths);
+
+      // The database is the source of truth for the gallery. If storage
+      // cleanup fails, keep the photos deleted from the account rather than
+      // restoring rows that now point at partially removed files.
+      try {
+        await supabase.storage.from('user-gallery').remove(objectPaths);
+      } catch (_) {
+        // Orphaned objects can be cleaned up independently.
+      }
+
+      return fetchCurrentAccount();
+    } on ProfilePhotoUpdateException {
+      rethrow;
+    } on PostgrestException catch (error) {
+      throw ProfilePhotoUpdateException(error.message);
+    } catch (_) {
+      throw const ProfilePhotoUpdateException(
+        'Unable to delete the selected photos. Please try again.',
+      );
+    }
+  }
+
   Future<String?> _storagePathForUpdate({
     required String uid,
     required String? value,

@@ -109,6 +109,7 @@ class _UserAccountScreenState extends ConsumerState<UserAccountScreen> {
             unreadNotificationCount:
                 matchmakingState.unreadNotificationCount,
             onEditPhoto: (source) => viewModel.addGalleryImage(source: source),
+            onDeletePhotos: viewModel.deleteGalleryImages,
             onEditBio: (bio) => viewModel.updateProfile(
               UserAccountProfileUpdate(
                 profilePhoto: state.user!.profilePhoto,
@@ -201,6 +202,7 @@ class _AccountDashboardView extends StatelessWidget {
   final int unreadNotificationCount;
   final Future<void> Function() onNotifications;
   final Future<String?> Function(ImageSource source) onEditPhoto;
+  final Future<bool> Function(List<String> photos) onDeletePhotos;
   final Future<void> Function(String bio) onEditBio;
 
   const _AccountDashboardView({
@@ -211,6 +213,7 @@ class _AccountDashboardView extends StatelessWidget {
     required this.unreadNotificationCount,
     required this.onNotifications,
     required this.onEditPhoto,
+    required this.onDeletePhotos,
     required this.onEditBio,
   });
 
@@ -252,6 +255,7 @@ class _AccountDashboardView extends StatelessWidget {
             child: _ProfilePhotosCard(
               photos: user.galleryPhotos,
               onEdit: onEditPhoto,
+              onDelete: onDeletePhotos,
             ),
           ),
           Padding(
@@ -564,10 +568,12 @@ class _ProfilePhotosCard extends StatelessWidget {
   const _ProfilePhotosCard({
     required this.photos,
     required this.onEdit,
+    required this.onDelete,
   });
 
   final List<String> photos;
   final Future<String?> Function(ImageSource source) onEdit;
+  final Future<bool> Function(List<String> photos) onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -576,7 +582,7 @@ class _ProfilePhotosCard extends StatelessWidget {
 
     return _ProfileCard(
         title: 'Photos',
-        onEdit: () => _choosePhotoSource(context),
+        onEdit: () => _showPhotoActions(context),
         child: photos.isEmpty
             ? const Text(
                 'No travel photos added yet.',
@@ -668,6 +674,66 @@ class _ProfilePhotosCard extends StatelessWidget {
     );
   }
 
+  Future<void> _showPhotoActions(BuildContext context) async {
+    final action = await showModalBottomSheet<_PhotoAction>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(
+                title: Text(
+                  'Manage photos',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.add_photo_alternate_outlined),
+                title: const Text('Add photo'),
+                onTap: () =>
+                    Navigator.pop(sheetContext, _PhotoAction.addPhoto),
+              ),
+              ListTile(
+                enabled: photos.isNotEmpty,
+                leading: const Icon(Icons.delete_outline),
+                title: const Text('Delete photos'),
+                onTap: photos.isEmpty
+                    ? null
+                    : () => Navigator.pop(
+                          sheetContext,
+                          _PhotoAction.deletePhotos,
+                        ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (!context.mounted) return;
+    switch (action) {
+      case _PhotoAction.addPhoto:
+        await _choosePhotoSource(context);
+        return;
+      case _PhotoAction.deletePhotos:
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => _UserPhotoGalleryScreen(
+              photos: photos,
+              selectionMode: true,
+              onDelete: onDelete,
+            ),
+          ),
+        );
+        return;
+      case null:
+        return;
+    }
+  }
+
   Future<void> _choosePhotoSource(BuildContext context) async {
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
@@ -705,56 +771,198 @@ class _ProfilePhotosCard extends StatelessWidget {
   }
 }
 
-class _UserPhotoGalleryScreen extends StatelessWidget {
-  const _UserPhotoGalleryScreen({required this.photos});
+enum _PhotoAction { addPhoto, deletePhotos }
+
+class _UserPhotoGalleryScreen extends StatefulWidget {
+  const _UserPhotoGalleryScreen({
+    required this.photos,
+    this.selectionMode = false,
+    this.onDelete,
+  }) : assert(!selectionMode || onDelete != null);
 
   final List<String> photos;
+  final bool selectionMode;
+  final Future<bool> Function(List<String> photos)? onDelete;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  State<_UserPhotoGalleryScreen> createState() =>
+      _UserPhotoGalleryScreenState();
+}
+
+class _UserPhotoGalleryScreenState extends State<_UserPhotoGalleryScreen> {
+  final Set<int> _selectedIndexes = {};
+  bool _isDeleting = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final photos = widget.photos;
+    return Scaffold(
+      backgroundColor: _surface,
+      appBar: AppBar(
         backgroundColor: _surface,
-        appBar: AppBar(
-          backgroundColor: _surface,
-          foregroundColor: _ink,
-          surfaceTintColor: Colors.transparent,
-          title: const Text(
-            'Photos',
-            style: TextStyle(fontWeight: FontWeight.w700),
-          ),
+        foregroundColor: _ink,
+        surfaceTintColor: Colors.transparent,
+        title: Text(
+          widget.selectionMode && _selectedIndexes.isNotEmpty
+              ? '${_selectedIndexes.length} selected'
+              : widget.selectionMode
+                  ? 'Select photos'
+                  : 'Photos',
+          style: const TextStyle(fontWeight: FontWeight.w700),
         ),
-        body: GridView.builder(
-          padding: const EdgeInsets.all(16),
-          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 180,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-          ),
-          itemCount: photos.length,
-          itemBuilder: (context, index) => Semantics(
+      ),
+      body: GridView.builder(
+        padding: const EdgeInsets.all(16),
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 180,
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+        ),
+        itemCount: photos.length,
+        itemBuilder: (context, index) {
+          final isSelected = _selectedIndexes.contains(index);
+          return Semantics(
             button: true,
             image: true,
-            label:
-                'Open gallery photo ${index + 1} of ${photos.length} full screen',
+            selected: widget.selectionMode ? isSelected : null,
+            label: widget.selectionMode
+                ? 'Photo ${index + 1} of ${photos.length}'
+                : 'Open gallery photo ${index + 1} of ${photos.length} full screen',
             child: GestureDetector(
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => _FullScreenPhotoViewer(
-                    photos: photos,
-                    initialIndex: index,
-                  ),
-                ),
-              ),
+              onTap: () => widget.selectionMode
+                  ? _toggleSelection(index)
+                  : Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => _FullScreenPhotoViewer(
+                          photos: photos,
+                          initialIndex: index,
+                        ),
+                      ),
+                    ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: Image(
-                  image: _accountImageProvider(photos[index]),
-                  fit: BoxFit.cover,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image(
+                      image: _accountImageProvider(photos[index]),
+                      fit: BoxFit.cover,
+                    ),
+                    if (widget.selectionMode) ...[
+                      if (isSelected)
+                        ColoredBox(color: _violet.withValues(alpha: .22)),
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          width: 26,
+                          height: 26,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isSelected ? _violet : Colors.white,
+                            border: Border.all(
+                              color: isSelected ? Colors.white : _muted,
+                              width: 2,
+                            ),
+                          ),
+                          child: isSelected
+                              ? const Icon(
+                                  Icons.check_rounded,
+                                  color: Colors.white,
+                                  size: 18,
+                                )
+                              : null,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
-          ),
+          );
+        },
+      ),
+      bottomNavigationBar: widget.selectionMode
+          ? SafeArea(
+              minimum: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+              child: SizedBox(
+                height: 50,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.red.shade700,
+                    disabledBackgroundColor: Colors.grey.shade300,
+                  ),
+                  onPressed: _selectedIndexes.isEmpty || _isDeleting
+                      ? null
+                      : _deleteSelected,
+                  icon: _isDeleting
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.delete_outline),
+                  label: Text(
+                    _isDeleting
+                        ? 'Deleting...'
+                        : _selectedIndexes.isEmpty
+                            ? 'Delete'
+                            : 'Delete (${_selectedIndexes.length})',
+                  ),
+                ),
+              ),
+            )
+          : null,
+    );
+  }
+
+  void _toggleSelection(int index) {
+    if (_isDeleting) return;
+    setState(() {
+      if (!_selectedIndexes.add(index)) _selectedIndexes.remove(index);
+    });
+  }
+
+  Future<void> _deleteSelected() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete selected photos?'),
+        content: Text(
+          'This will permanently delete ${_selectedIndexes.length} '
+          '${_selectedIndexes.length == 1 ? 'photo' : 'photos'}.',
         ),
-      );
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red.shade700,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final selectedPhotos = _selectedIndexes
+        .map((index) => widget.photos[index])
+        .toList(growable: false);
+    setState(() => _isDeleting = true);
+    final deleted = await widget.onDelete!(selectedPhotos);
+    if (!mounted) return;
+    if (deleted) {
+      Navigator.pop(context);
+    } else {
+      setState(() => _isDeleting = false);
+    }
+  }
 }
 
 class _FullScreenPhotoViewer extends StatefulWidget {

@@ -134,7 +134,7 @@ class UserAccountViewModel extends Notifier<UserAccountState> {
       state = state.copyWith(user: updatedUser, isLoading: false);
       return updatedUser.galleryPhotos.isEmpty
           ? null
-          : updatedUser.galleryPhotos.last;
+          : updatedUser.galleryPhotos.first;
     } catch (error) {
       state = state.copyWith(
         error: switch (error) {
@@ -145,6 +145,30 @@ class UserAccountViewModel extends Notifier<UserAccountState> {
         isLoading: false,
       );
       return null;
+    }
+  }
+
+  Future<bool> deleteGalleryImages(List<String> photoUrls) async {
+    if (state.user == null || state.isLoading || photoUrls.isEmpty) {
+      return false;
+    }
+
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final updatedUser = await ref
+          .read(userAccountRepositoryProvider)
+          .deleteGalleryPhotos(photoUrls);
+      state = state.copyWith(user: updatedUser, isLoading: false);
+      return true;
+    } catch (error) {
+      state = state.copyWith(
+        error: switch (error) {
+          ProfilePhotoUpdateException(:final message) => message,
+          _ => 'Unable to delete the selected photos. Please try again.',
+        },
+        isLoading: false,
+      );
+      return false;
     }
   }
 
