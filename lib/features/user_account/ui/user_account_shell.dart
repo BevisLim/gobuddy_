@@ -570,7 +570,11 @@ class _ProfilePhotosCard extends StatelessWidget {
   final Future<String?> Function(ImageSource source) onEdit;
 
   @override
-  Widget build(BuildContext context) => _ProfileCard(
+  Widget build(BuildContext context) {
+    final visiblePhotos = photos.take(3).toList(growable: false);
+    final hiddenPhotoCount = photos.length > 3 ? photos.length - 2 : 0;
+
+    return _ProfileCard(
         title: 'Photos',
         onEdit: () => _choosePhotoSource(context),
         child: photos.isEmpty
@@ -578,24 +582,91 @@ class _ProfilePhotosCard extends StatelessWidget {
                 'No travel photos added yet.',
                 style: TextStyle(color: _muted, height: 1.6),
               )
-            : SizedBox(
-                height: 104,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: photos.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 10),
-                  itemBuilder: (context, index) => ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image(
-                      image: _accountImageProvider(photos[index]),
-                      width: 104,
-                      height: 104,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
+            : LayoutBuilder(
+                builder: (context, constraints) {
+                  const spacing = 10.0;
+                  final tileSize = constraints.maxWidth.isFinite
+                      ? ((constraints.maxWidth - spacing * 2) / 3)
+                          .clamp(0.0, 104.0)
+                          .toDouble()
+                      : 104.0;
+
+                  return Row(
+                    children: [
+                      for (var index = 0;
+                          index < visiblePhotos.length;
+                          index++) ...[
+                        if (index > 0) const SizedBox(width: spacing),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Semantics(
+                            button: true,
+                            label: index == 2 && hiddenPhotoCount > 0
+                                ? 'View all ${photos.length} photos'
+                                : 'Open photo ${index + 1} full screen',
+                            child: GestureDetector(
+                              onTap: index == 2 && hiddenPhotoCount > 0
+                                  ? () => _openGallery(context)
+                                  : () => _openPhotoViewer(context, index),
+                              child: SizedBox.square(
+                                dimension: tileSize,
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    Image(
+                                      image: _accountImageProvider(
+                                        visiblePhotos[index],
+                                      ),
+                                      fit: BoxFit.cover,
+                                    ),
+                                    if (index == 2 && hiddenPhotoCount > 0) ...[
+                                      ColoredBox(
+                                        color:
+                                            Colors.black.withValues(alpha: .52),
+                                      ),
+                                      Center(
+                                        child: Text(
+                                          '+$hiddenPhotoCount',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                },
               ),
       );
+  }
+
+  void _openGallery(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _UserPhotoGalleryScreen(photos: photos),
+      ),
+    );
+  }
+
+  void _openPhotoViewer(BuildContext context, int initialIndex) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _FullScreenPhotoViewer(
+          photos: photos,
+          initialIndex: initialIndex,
+        ),
+      ),
+    );
+  }
 
   Future<void> _choosePhotoSource(BuildContext context) async {
     final source = await showModalBottomSheet<ImageSource>(
@@ -632,6 +703,119 @@ class _ProfilePhotosCard extends StatelessWidget {
     );
     if (source != null) await onEdit(source);
   }
+}
+
+class _UserPhotoGalleryScreen extends StatelessWidget {
+  const _UserPhotoGalleryScreen({required this.photos});
+
+  final List<String> photos;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: _surface,
+        appBar: AppBar(
+          backgroundColor: _surface,
+          foregroundColor: _ink,
+          surfaceTintColor: Colors.transparent,
+          title: const Text(
+            'Photos',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
+        body: GridView.builder(
+          padding: const EdgeInsets.all(16),
+          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: 180,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+          ),
+          itemCount: photos.length,
+          itemBuilder: (context, index) => Semantics(
+            button: true,
+            image: true,
+            label:
+                'Open gallery photo ${index + 1} of ${photos.length} full screen',
+            child: GestureDetector(
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => _FullScreenPhotoViewer(
+                    photos: photos,
+                    initialIndex: index,
+                  ),
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image(
+                  image: _accountImageProvider(photos[index]),
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+class _FullScreenPhotoViewer extends StatefulWidget {
+  const _FullScreenPhotoViewer({
+    required this.photos,
+    required this.initialIndex,
+  });
+
+  final List<String> photos;
+  final int initialIndex;
+
+  @override
+  State<_FullScreenPhotoViewer> createState() =>
+      _FullScreenPhotoViewerState();
+}
+
+class _FullScreenPhotoViewerState extends State<_FullScreenPhotoViewer> {
+  late final PageController _pageController;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          title: Text('${_currentIndex + 1} of ${widget.photos.length}'),
+        ),
+        body: PageView.builder(
+          controller: _pageController,
+          itemCount: widget.photos.length,
+          onPageChanged: (index) => setState(() => _currentIndex = index),
+          itemBuilder: (context, index) => Semantics(
+            image: true,
+            label:
+                'Full-size photo ${index + 1} of ${widget.photos.length}',
+            child: Center(
+              child: Image(
+                image: _accountImageProvider(widget.photos[index]),
+                width: double.infinity,
+                height: double.infinity,
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+        ),
+      );
 }
 
 class _ProfileAboutCard extends StatelessWidget {

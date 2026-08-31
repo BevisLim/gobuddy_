@@ -226,7 +226,7 @@ class UserAccountRepository {
           .from('user_gallery')
           .select('image_path')
           .eq('user_id', userId)
-          .order('created_at');
+          .order('created_at', ascending: false);
       return rows
           .map((row) => _publicStorageUrl(
                 'user-gallery',
