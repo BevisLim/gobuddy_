@@ -50,7 +50,12 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
         );
         context.go(Routes.login);
       } else {
-        context.go(Routes.main);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Registration successful. Please sign in.'),
+          ),
+        );
+        context.go(Routes.login);
       }
       return;
     }

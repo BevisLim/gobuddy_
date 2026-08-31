@@ -53,6 +53,10 @@ class AuthenticationRepository {
     try {
       await supabase.auth.updateUser(UserAttributes(password: password));
       await setRegistrationPending(false);
+      // Email verification creates an authenticated session. End that
+      // temporary session so registration finishes at the login screen and
+      // the user explicitly signs in with the credentials they just created.
+      await supabase.auth.signOut(scope: SignOutScope.local);
     } on AuthException catch (error) {
       final message = error.message.toLowerCase();
       if (message.contains('password')) {
@@ -171,6 +175,26 @@ class AuthenticationRepository {
           .eq('id', userId)
           .maybeSingle();
       return profile != null;
+    } on PostgrestException {
+      throw Exception(
+        'Unable to load your profile. Check your connection and try again.',
+      );
+    }
+  }
+
+  Future<bool> hasCompletedProfileOnboarding() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Your sign-in session is missing. Please try again.');
+    }
+
+    try {
+      final profile = await supabase
+          .from('user_accounts')
+          .select('onboarding_completed')
+          .eq('id', userId)
+          .maybeSingle();
+      return profile?['onboarding_completed'] == true;
     } on PostgrestException {
       throw Exception(
         'Unable to load your profile. Check your connection and try again.',

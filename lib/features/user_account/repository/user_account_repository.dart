@@ -9,6 +9,47 @@ import '../model/user_account_model.dart';
 class UserAccountRepository {
   const UserAccountRepository();
 
+  Future<void> completeProfileOnboarding({
+    required String displayName,
+    DateTime? dateOfBirth,
+    String? nationality,
+    String? gender,
+    String? bio,
+  }) async {
+    final authUser = supabase.auth.currentUser;
+    if (authUser == null) {
+      throw const UserAccountLoadException(
+        'Your session has expired. Please sign in again.',
+      );
+    }
+    final name = displayName.trim();
+    if (name.isEmpty) {
+      throw const UserAccountLoadException('Your display name is required.');
+    }
+
+    try {
+      await supabase.from('user_accounts').update(<String, Object?>{
+        'display_name': name,
+        'date_of_birth': dateOfBirth == null
+            ? null
+            : '${dateOfBirth.year.toString().padLeft(4, '0')}-'
+                '${dateOfBirth.month.toString().padLeft(2, '0')}-'
+                '${dateOfBirth.day.toString().padLeft(2, '0')}',
+        'nationality': _nullableText(nationality),
+        'gender': _nullableText(gender),
+        'bio': _nullableText(bio),
+        'onboarding_completed': true,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', authUser.id);
+    } on PostgrestException catch (error) {
+      throw UserAccountLoadException(error.message);
+    } catch (_) {
+      throw const UserAccountLoadException(
+        'Unable to save your profile. Check your connection and try again.',
+      );
+    }
+  }
+
   Future<UserAccount> fetchCurrentAccount() async {
     final authUser = supabase.auth.currentUser;
     if (authUser == null) {
@@ -33,6 +74,8 @@ class UserAccountRepository {
         );
       }
 
+      final galleryPhotos = await _fetchGalleryPhotos(authUser.id);
+
       return UserAccount(
         uid: row['id'] as String,
         email: authUser.email ?? '',
@@ -53,6 +96,7 @@ class UserAccountRepository {
         joinedAt: _parseDate(row['created_at']),
         bio: (row['bio'] as String?)?.trim() ?? '',
         isVerified: row['verification_status'] == 'verified',
+        galleryPhotos: galleryPhotos,
       );
     } on UserAccountLoadException {
       rethrow;
@@ -139,12 +183,12 @@ class UserAccountRepository {
       }
 
       final extension = _validatedImageExtension(localPath);
-      final objectPath = '${authUser.id}/profile.$extension';
+      final objectPath =
+          '${authUser.id}/profile_${DateTime.now().microsecondsSinceEpoch}.$extension';
       await supabase.storage.from('profile-images').uploadBinary(
             objectPath,
             await file.readAsBytes(),
             fileOptions: FileOptions(
-              upsert: true,
               contentType: _imageContentType(extension),
             ),
           );
@@ -172,6 +216,77 @@ class UserAccountRepository {
     } catch (_) {
       throw const ProfilePhotoUpdateException(
         'Unable to update profile photo. Please try again.',
+      );
+    }
+  }
+
+  Future<List<String>> _fetchGalleryPhotos(String userId) async {
+    try {
+      final rows = await supabase
+          .from('user_gallery')
+          .select('image_path')
+          .eq('user_id', userId)
+          .order('created_at');
+      return rows
+          .map((row) => _publicStorageUrl(
+                'user-gallery',
+                row['image_path'] as String?,
+                cacheBust: true,
+              ))
+          .whereType<String>()
+          .toList(growable: false);
+    } on PostgrestException {
+      // Gallery photos are optional. A gallery-specific permission or network
+      // failure must not prevent the rest of the Account page from loading.
+      return const [];
+    }
+  }
+
+  Future<UserAccount> addGalleryPhoto(String localPath) async {
+    final authUser = supabase.auth.currentUser;
+    if (authUser == null) {
+      throw const ProfilePhotoUpdateException(
+        'Your session has expired. Please sign in again.',
+      );
+    }
+
+    try {
+      final file = File(localPath);
+      final fileSize = await file.length();
+      if (fileSize <= 0 || fileSize > 10 * 1024 * 1024) {
+        throw const ProfilePhotoUpdateException(
+          'Select a JPEG, PNG, or WebP image smaller than 10 MB.',
+        );
+      }
+
+      final extension = _validatedImageExtension(localPath);
+      final objectPath =
+          '${authUser.id}/${DateTime.now().microsecondsSinceEpoch}.$extension';
+      await supabase.storage.from('user-gallery').uploadBinary(
+            objectPath,
+            await file.readAsBytes(),
+            fileOptions: FileOptions(
+              contentType: _imageContentType(extension),
+            ),
+          );
+      await supabase.from('user_gallery').insert({
+        'user_id': authUser.id,
+        'image_path': objectPath,
+      });
+      return fetchCurrentAccount();
+    } on ProfilePhotoUpdateException {
+      rethrow;
+    } on StorageException catch (error) {
+      throw ProfilePhotoUpdateException(error.message);
+    } on PostgrestException catch (error) {
+      throw ProfilePhotoUpdateException(error.message);
+    } on FileSystemException {
+      throw const ProfilePhotoUpdateException(
+        'Unable to read the selected photo. Please choose another image.',
+      );
+    } catch (_) {
+      throw const ProfilePhotoUpdateException(
+        'Unable to add this gallery photo. Please try again.',
       );
     }
   }
