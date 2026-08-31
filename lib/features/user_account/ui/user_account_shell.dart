@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/routing/routes.dart';
 import '../../common/ui/widgets/app_module_navigation.dart';
@@ -66,7 +67,12 @@ class _UserAccountScreenState extends ConsumerState<UserAccountScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        ref.read(userAccountViewModelProvider.notifier).refresh();
+        // The account sub-pages are held in a long-lived provider. Reset only
+        // after the first frame because Riverpod forbids provider mutations
+        // while the widget tree is being built.
+        final viewModel = ref.read(userAccountViewModelProvider.notifier);
+        viewModel.goTo(UserAccountPage.profile);
+        viewModel.refresh();
       }
     });
   }
@@ -102,6 +108,16 @@ class _UserAccountScreenState extends ConsumerState<UserAccountScreen> {
             onVerify: () => context.push(Routes.identityVerification),
             unreadNotificationCount:
                 matchmakingState.unreadNotificationCount,
+            onEditPhoto: (source) => viewModel.addGalleryImage(source: source),
+            onEditBio: (bio) => viewModel.updateProfile(
+              UserAccountProfileUpdate(
+                profilePhoto: state.user!.profilePhoto,
+                username: state.user!.username,
+                gender: state.user!.gender,
+                nationality: state.user!.nationality,
+                bio: bio,
+              ),
+            ),
             onNotifications: () async {
               await showDialog<void>(
                 context: context,
@@ -117,7 +133,8 @@ class _UserAccountScreenState extends ConsumerState<UserAccountScreen> {
             isSaving: state.isLoading,
             onBack: () => viewModel.goTo(UserAccountPage.profile),
             onSave: viewModel.updateProfile,
-            onSelectImage: viewModel.selectProfileImage,
+            onSelectImage: (source) =>
+                viewModel.selectProfileImage(source: source),
             onVerify: () => context.push(Routes.identityVerification),
           ),
         UserAccountPage.security => _AccountStaticFrame(
@@ -130,12 +147,19 @@ class _UserAccountScreenState extends ConsumerState<UserAccountScreen> {
       };
     }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7F5FB),
-      body: SafeArea(child: body),
-      bottomNavigationBar: state.page == UserAccountPage.profile
-          ? const AppModuleNavigation(selectedIndex: 4)
-          : null,
+    final isAccountDashboard = state.page == UserAccountPage.profile;
+    return PopScope(
+      canPop: isAccountDashboard,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) viewModel.goTo(UserAccountPage.profile);
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF7F5FB),
+        body: SafeArea(child: body),
+        bottomNavigationBar: isAccountDashboard
+            ? const AppModuleNavigation(selectedIndex: 4)
+            : null,
+      ),
     );
   }
 }
@@ -176,6 +200,8 @@ class _AccountDashboardView extends StatelessWidget {
   final VoidCallback onVerify;
   final int unreadNotificationCount;
   final Future<void> Function() onNotifications;
+  final Future<String?> Function(ImageSource source) onEditPhoto;
+  final Future<void> Function(String bio) onEditBio;
 
   const _AccountDashboardView({
     required this.user,
@@ -184,6 +210,8 @@ class _AccountDashboardView extends StatelessWidget {
     required this.onVerify,
     required this.unreadNotificationCount,
     required this.onNotifications,
+    required this.onEditPhoto,
+    required this.onEditBio,
   });
 
   @override
@@ -219,13 +247,22 @@ class _AccountDashboardView extends StatelessWidget {
               onTap: () => context.push(Routes.emergencyContacts),
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: _ProfilePhotosCard(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: _ProfilePhotosCard(
+              photos: user.galleryPhotos,
+              onEdit: onEditPhoto,
+            ),
           ),
           Padding(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: _ProfileAboutCard(bio: user.bio),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: _ProfileAboutCard(
+              bio: user.bio,
+              onEdit: () async {
+                final bio = await _showAboutMeEditor(context, user.bio);
+                if (bio != null) await onEditBio(bio);
+              },
+            ),
           ),
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -524,26 +561,89 @@ class _AccountMenuTile extends StatelessWidget {
 }
 
 class _ProfilePhotosCard extends StatelessWidget {
-  const _ProfilePhotosCard();
+  const _ProfilePhotosCard({
+    required this.photos,
+    required this.onEdit,
+  });
 
-  @override
-  Widget build(BuildContext context) => const _ProfileCard(
-        title: 'Photos',
-        child: Text(
-          'No profile photos added.',
-          style: TextStyle(color: _muted, height: 1.6),
-        ),
-      );
-}
-
-class _ProfileAboutCard extends StatelessWidget {
-  const _ProfileAboutCard({required this.bio});
-
-  final String bio;
+  final List<String> photos;
+  final Future<String?> Function(ImageSource source) onEdit;
 
   @override
   Widget build(BuildContext context) => _ProfileCard(
+        title: 'Photos',
+        onEdit: () => _choosePhotoSource(context),
+        child: photos.isEmpty
+            ? const Text(
+                'No travel photos added yet.',
+                style: TextStyle(color: _muted, height: 1.6),
+              )
+            : SizedBox(
+                height: 104,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: photos.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 10),
+                  itemBuilder: (context, index) => ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image(
+                      image: _accountImageProvider(photos[index]),
+                      width: 104,
+                      height: 104,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+              ),
+      );
+
+  Future<void> _choosePhotoSource(BuildContext context) async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(
+                title: Text(
+                  'Add a travel photo',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined),
+                title: const Text('Take a photo'),
+                subtitle: const Text('Use your device camera'),
+                onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Choose from gallery'),
+                subtitle: const Text('Upload an existing photo'),
+                onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (source != null) await onEdit(source);
+  }
+}
+
+class _ProfileAboutCard extends StatelessWidget {
+  const _ProfileAboutCard({required this.bio, required this.onEdit});
+
+  final String bio;
+  final VoidCallback onEdit;
+
+  @override
+      Widget build(BuildContext context) => _ProfileCard(
         title: 'About Me',
+        onEdit: onEdit,
         child: Text(
           bio.isEmpty ? 'Not set' : bio,
           style: const TextStyle(color: _muted, height: 1.7),
@@ -576,8 +676,14 @@ class _ProfileCard extends StatelessWidget {
   final String title;
   final Widget child;
   final bool edit;
-  const _ProfileCard(
-      {required this.title, required this.child, this.edit = true});
+  final VoidCallback? onEdit;
+
+  const _ProfileCard({
+    required this.title,
+    required this.child,
+    this.edit = true,
+    this.onEdit,
+  }) : assert(!edit || onEdit != null);
 
   @override
   Widget build(BuildContext context) => Container(
@@ -591,7 +697,7 @@ class _ProfileCard extends StatelessWidget {
             const Spacer(),
             if (edit)
               IconButton(
-                onPressed: () {},
+                onPressed: onEdit,
                 icon: const Icon(Icons.edit_outlined, color: _violet),
                 tooltip: 'Edit $title',
               ),
@@ -600,6 +706,44 @@ class _ProfileCard extends StatelessWidget {
           child,
         ]),
       );
+}
+
+Future<String?> _showAboutMeEditor(
+  BuildContext context,
+  String currentBio,
+) async {
+  var bio = currentBio;
+  return showDialog<String>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+        title: const Text('About Me'),
+        content: TextFormField(
+          initialValue: currentBio,
+          autofocus: true,
+          minLines: 4,
+          maxLines: 7,
+          maxLength: 500,
+          onChanged: (value) => bio = value,
+          decoration: const InputDecoration(
+            hintText: 'Tell other travellers about yourself',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              bio.trim(),
+            ),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+  );
 }
 
 class _FrostedIconButton extends StatelessWidget {

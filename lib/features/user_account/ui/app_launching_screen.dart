@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/routing/routes.dart';
+import '../repository/authentication_repository.dart';
 
 /// Fly design tokens sourced from `fly-DESIGN.md`.
 const _flyBackground = Color(0xFFFFFFFF);
@@ -38,12 +40,32 @@ class _AppLaunchingScreenState extends State<AppLaunchingScreen>
     _fade = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
     _offset = Tween<Offset>(begin: const Offset(0, .04), end: Offset.zero)
         .animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
-    _navigationTimer = Timer(_displayDuration, _goToLogin);
+    _navigationTimer = Timer(_displayDuration, _continueFromSplash);
   }
 
-  void _goToLogin() {
+  Future<void> _continueFromSplash() async {
     if (!mounted) return;
-    context.go(Routes.login);
+
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null) {
+      context.go(Routes.login);
+      return;
+    }
+
+    final registrationPending =
+        await const AuthenticationRepository().isRegistrationPending();
+    if (!mounted) return;
+    if (registrationPending) {
+      context.go(Routes.setPassword);
+      return;
+    }
+
+    final hasCompletedOnboarding = await const AuthenticationRepository()
+        .hasCompletedProfileOnboarding();
+    if (!mounted) return;
+    context.go(
+      hasCompletedOnboarding ? Routes.main : Routes.profileOnboarding,
+    );
   }
 
   @override

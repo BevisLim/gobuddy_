@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../model/user_account_model.dart';
 
@@ -26,7 +27,7 @@ class EditProfileView extends StatefulWidget {
   final bool isSaving;
   final VoidCallback onBack;
   final ValueChanged<UserAccountProfileUpdate> onSave;
-  final Future<String?> Function() onSelectImage;
+  final Future<String?> Function(ImageSource source) onSelectImage;
   final VoidCallback onVerify;
 
   @override
@@ -57,7 +58,7 @@ class _EditProfileViewState extends State<EditProfileView> {
         _EditHeader(
           isSaving: widget.isSaving,
           onBack: widget.onBack,
-          onPreview: _save,
+          onSave: _save,
         ),
         Expanded(
           child: ListView(
@@ -147,7 +148,45 @@ class _EditProfileViewState extends State<EditProfileView> {
   }
 
   Future<void> _selectPhoto() async {
-    final path = await widget.onSelectImage();
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: _surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(
+                title: Text(
+                  'Update profile photo',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined),
+                title: const Text('Take a photo'),
+                subtitle: const Text('Use your device camera'),
+                onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Choose from gallery'),
+                subtitle: const Text('Upload an existing photo'),
+                onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+
+    final path = await widget.onSelectImage(source);
     if (path != null && mounted) setState(() => _profilePhoto = path);
   }
 
@@ -343,12 +382,12 @@ class _EditHeader extends StatelessWidget {
   const _EditHeader({
     required this.isSaving,
     required this.onBack,
-    required this.onPreview,
+    required this.onSave,
   });
 
   final bool isSaving;
   final VoidCallback onBack;
-  final VoidCallback onPreview;
+  final VoidCallback onSave;
 
   @override
   Widget build(BuildContext context) => SizedBox(
@@ -386,9 +425,9 @@ class _EditHeader extends StatelessWidget {
               child: Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
-                  onPressed: isSaving ? null : onPreview,
+                  onPressed: isSaving ? null : onSave,
                   child: const Text(
-                    'Preview',
+                    'Save',
                     style: TextStyle(
                       color: _ink,
                       fontSize: 16,

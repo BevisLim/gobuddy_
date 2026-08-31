@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../../core/permissions/app_permission_service.dart';
 import '../../model/user_account_model.dart';
 import '../../repository/user_account_repository.dart';
 import '../state/user_account_state.dart';
@@ -72,13 +73,18 @@ class UserAccountViewModel extends Notifier<UserAccountState> {
     }
   }
 
-  Future<String?> selectProfileImage() async {
+  Future<String?> selectProfileImage({
+    ImageSource source = ImageSource.gallery,
+  }) async {
     if (state.user == null || state.isLoading) return null;
 
     state = state.copyWith(isLoading: true, clearError: true);
     try {
+      if (source == ImageSource.camera) {
+        await const AppPermissionService().requireCameraPermission();
+      }
       final image = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
+        source: source,
         imageQuality: 85,
       );
       if (image == null) {
@@ -92,9 +98,50 @@ class UserAccountViewModel extends Notifier<UserAccountState> {
       return updatedUser.profilePhoto;
     } catch (error) {
       state = state.copyWith(
-        error: error is ProfilePhotoUpdateException
-            ? error.message
-            : 'Unable to update profile photo. Please try again.',
+        error: switch (error) {
+          ProfilePhotoUpdateException(:final message) => message,
+          AppPermissionException(:final message) => message,
+          _ => 'Unable to update profile photo. Please try again.',
+        },
+        isLoading: false,
+      );
+      return null;
+    }
+  }
+
+  Future<String?> addGalleryImage({
+    ImageSource source = ImageSource.gallery,
+  }) async {
+    if (state.user == null || state.isLoading) return null;
+
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      if (source == ImageSource.camera) {
+        await const AppPermissionService().requireCameraPermission();
+      }
+      final image = await ImagePicker().pickImage(
+        source: source,
+        imageQuality: 85,
+      );
+      if (image == null) {
+        state = state.copyWith(isLoading: false);
+        return null;
+      }
+
+      final updatedUser = await ref
+          .read(userAccountRepositoryProvider)
+          .addGalleryPhoto(image.path);
+      state = state.copyWith(user: updatedUser, isLoading: false);
+      return updatedUser.galleryPhotos.isEmpty
+          ? null
+          : updatedUser.galleryPhotos.last;
+    } catch (error) {
+      state = state.copyWith(
+        error: switch (error) {
+          ProfilePhotoUpdateException(:final message) => message,
+          AppPermissionException(:final message) => message,
+          _ => 'Unable to add this gallery photo. Please try again.',
+        },
         isLoading: false,
       );
       return null;
