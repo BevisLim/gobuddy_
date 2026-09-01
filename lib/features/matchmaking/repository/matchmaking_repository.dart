@@ -145,6 +145,9 @@ class MatchmakingRepository {
             hostId: ownerId,
             hostName: hostName,
             hostInitials: _initials(hostName),
+            hostProfilePhotoUrl: _profilePhotoUrl(
+              profile?['profile_photo_path'] as String?,
+            ),
             imageUrl: data['cover_image_url'] as String? ?? _bali,
             gender: data['preferred_gender'] as String,
             minAge: data['minimum_age'] as int,
@@ -239,6 +242,9 @@ class MatchmakingRepository {
             introduction: '',
             trips: 0,
             rating: 0,
+            profilePhotoUrl: _profilePhotoUrl(
+              row['profile_photo_path'] as String?,
+            ),
             verified: row['verification_status'] == 'verified',
           );
         })
@@ -459,6 +465,15 @@ class MatchmakingRepository {
       .where((word) => word.isNotEmpty)
       .map((word) => word[0].toUpperCase())
       .join();
+
+  String? _profilePhotoUrl(String? path) {
+    final value = path?.trim();
+    if (value == null || value.isEmpty) return null;
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return value;
+    }
+    return supabase.storage.from('profile-images').getPublicUrl(value);
+  }
 
   List<String> get discoveryFilters => const [
     'All',
