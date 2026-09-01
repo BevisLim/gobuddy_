@@ -111,6 +111,31 @@ class UserAccountViewModel extends Notifier<UserAccountState> {
     }
   }
 
+  Future<bool> deleteProfileImage() async {
+    if (state.user == null ||
+        state.isLoading ||
+        state.user!.profilePhoto == null) {
+      return false;
+    }
+
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final updatedUser = await ref
+          .read(userAccountRepositoryProvider)
+          .deleteProfilePhoto();
+      state = state.copyWith(user: updatedUser, isLoading: false);
+      return true;
+    } catch (error) {
+      state = state.copyWith(
+        error: error is ProfilePhotoUpdateException
+            ? error.message
+            : 'Unable to delete profile photo. Please try again.',
+        isLoading: false,
+      );
+      return false;
+    }
+  }
+
   Future<String?> addGalleryImage({
     ImageSource source = ImageSource.gallery,
   }) async {

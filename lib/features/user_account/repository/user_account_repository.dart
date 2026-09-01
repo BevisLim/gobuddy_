@@ -236,6 +236,49 @@ class UserAccountRepository {
     }
   }
 
+  Future<UserAccount> deleteProfilePhoto() async {
+    final authUser = supabase.auth.currentUser;
+    if (authUser == null) {
+      throw const ProfilePhotoUpdateException(
+        'Your session has expired. Please sign in again.',
+      );
+    }
+
+    try {
+      final row = await supabase
+          .from('user_accounts')
+          .select('profile_photo_path')
+          .eq('id', authUser.id)
+          .maybeSingle();
+      final oldPath = row?['profile_photo_path'] as String?;
+
+      await supabase
+          .from('user_accounts')
+          .update(<String, Object?>{
+            'profile_photo_path': null,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', authUser.id);
+
+      if (oldPath != null && oldPath.startsWith('${authUser.id}/')) {
+        try {
+          await supabase.storage.from('profile-images').remove([oldPath]);
+        } catch (_) {
+          // The database is the source of truth. A leftover storage object can
+          // be cleaned up independently without restoring the profile photo.
+        }
+      }
+
+      return fetchCurrentAccount();
+    } on PostgrestException catch (error) {
+      throw ProfilePhotoUpdateException(error.message);
+    } catch (_) {
+      throw const ProfilePhotoUpdateException(
+        'Unable to delete profile photo. Please try again.',
+      );
+    }
+  }
+
   Future<UserAccount> fetchPublicAccount(String userId) async {
     final id = userId.trim();
     if (id.isEmpty) {
