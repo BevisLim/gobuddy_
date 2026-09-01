@@ -7,6 +7,7 @@ import '../../../collaboration/ui/view_model/group_collaboration_view_model.dart
 import '../../../matchmaking/ui/view_model/matchmaking_view_model.dart';
 import '../../repository/authentication_repository.dart';
 import '../state/authentication_state.dart';
+import 'user_account_view_model.dart';
 
 part 'authentication_view_model.g.dart';
 
@@ -37,8 +38,9 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
 
   Future<bool> setPassword(String password) async {
     state = const AsyncValue.loading();
-    final result =
-        await AsyncValue.guard(() => _repository.setPassword(password));
+    final result = await AsyncValue.guard(
+      () => _repository.setPassword(password),
+    );
     if (result case AsyncError(:final error, :final stackTrace)) {
       state = AsyncError(error, stackTrace);
       return false;
@@ -88,6 +90,9 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
 
   Future<bool> hasCurrentUserProfile() => _repository.hasCurrentUserProfile();
 
+  Future<bool> hasCompletedProfileOnboarding() =>
+      _repository.hasCompletedProfileOnboarding();
+
   Future<void> signInWithApple() async {
     state = const AsyncValue.loading();
     final result = await AsyncValue.guard(_repository.signInWithApple);
@@ -105,6 +110,7 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
 
     ref.invalidate(matchmakingViewModelProvider);
     ref.invalidate(groupCollaborationViewModelProvider);
+    ref.invalidate(userAccountViewModelProvider);
     state = const AsyncData(AuthenticationState());
   }
 
@@ -117,7 +123,9 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
     final AuthResponse? authResponse = result.value;
     if (authResponse == null) {
       state = AsyncError(
-          LocaleKeys.unexpectedErrorOccurred.tr(), StackTrace.current);
+        LocaleKeys.unexpectedErrorOccurred.tr(),
+        StackTrace.current,
+      );
       return;
     }
 

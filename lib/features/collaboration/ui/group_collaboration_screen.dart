@@ -677,6 +677,11 @@ Future<void> _showMemberSafetyActions({
         mainAxisSize: MainAxisSize.min,
         children: [
           ListTile(
+            leading: const Icon(Icons.person_outline),
+            title: const Text('View profile'),
+            onTap: () => Navigator.pop(sheetContext, 'profile'),
+          ),
+          ListTile(
             leading: const Icon(Icons.block, color: Colors.red),
             title: const Text('Block user'),
             onTap: () => Navigator.pop(sheetContext, 'block'),
@@ -693,7 +698,11 @@ Future<void> _showMemberSafetyActions({
   if (action == null || !context.mounted) return;
 
   final displayName = member.displayName ?? 'Trip member';
-  if (action == 'block') {
+  if (action == 'profile') {
+    await context.push(
+      '${Routes.publicProfile}/${Uri.encodeComponent(member.userId)}',
+    );
+  } else if (action == 'block') {
     await BlockUserAction.show(
       context: context,
       ref: ref,

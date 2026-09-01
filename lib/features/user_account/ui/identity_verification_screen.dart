@@ -1,15 +1,19 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:flutter_mvvm_riverpod/core/extensions/build_context_extension.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_colors.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_theme.dart';
+import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import 'view_model/user_account_view_model.dart';
 
 class IdentityVerificationScreen extends ConsumerStatefulWidget {
-  const IdentityVerificationScreen({super.key});
+  const IdentityVerificationScreen({super.key, this.fromOnboarding = false});
+
+  final bool fromOnboarding;
 
   @override
   ConsumerState<IdentityVerificationScreen> createState() =>
@@ -24,27 +28,38 @@ class _IdentityVerificationScreenState
   Widget build(BuildContext context) {
     final isStarting = ref.watch(userAccountViewModelProvider).isLoading;
 
-    return Scaffold(
-      backgroundColor: AppColors.brandBackground,
-      appBar: AppBar(
-        leading: BackButton(
-          onPressed: isStarting ? null : () => Navigator.maybePop(context),
-        ),
-        title: Text('Identity Verification', style: AppTheme.title20),
+    return PopScope(
+      canPop: !widget.fromOnboarding,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && widget.fromOnboarding && !isStarting) {
+          context.go(Routes.main);
+        }
+      },
+      child: Scaffold(
         backgroundColor: AppColors.brandBackground,
-        foregroundColor: AppColors.brandPrimary,
-        surfaceTintColor: Colors.transparent,
-      ),
-      body: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-          child: Column(
-            children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
+        appBar: AppBar(
+          leading: BackButton(
+            onPressed: isStarting
+                ? null
+                : () => widget.fromOnboarding
+                    ? context.go(Routes.main)
+                    : Navigator.maybePop(context),
+          ),
+          title: Text('Identity Verification', style: AppTheme.title20),
+          backgroundColor: AppColors.brandBackground,
+          foregroundColor: AppColors.brandPrimary,
+          surfaceTintColor: Colors.transparent,
+        ),
+        body: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+            child: Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
                       const SizedBox(height: 16),
                       Container(
                         width: 104,
@@ -84,15 +99,15 @@ class _IdentityVerificationScreenState
                       ),
                       const SizedBox(height: 32),
                       const _VerificationDetailsCard(),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: FilledButton(
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton(
                   onPressed: isStarting ? null : _startVerification,
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.brandSurface,
@@ -126,9 +141,10 @@ class _IdentityVerificationScreenState
                               : 'Verify Identity',
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

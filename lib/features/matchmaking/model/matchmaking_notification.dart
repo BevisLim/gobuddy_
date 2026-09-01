@@ -6,6 +6,7 @@ class MatchmakingNotification {
     required this.createdAt,
     this.tripId,
     this.readAt,
+    this.dismissedAt,
   });
 
   final String id;
@@ -14,6 +15,7 @@ class MatchmakingNotification {
   final String? tripId;
   final DateTime createdAt;
   final DateTime? readAt;
+  final DateTime? dismissedAt;
 
   bool get isUnread => readAt == null;
 
@@ -27,5 +29,8 @@ class MatchmakingNotification {
         readAt: map['read_at'] == null
             ? null
             : DateTime.parse(map['read_at'] as String),
+        dismissedAt: map['dismissed_at'] == null
+            ? null
+            : DateTime.parse(map['dismissed_at'] as String),
       );
 }

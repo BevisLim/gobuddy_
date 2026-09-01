@@ -40,17 +40,59 @@ void main() {
     expect(updated.nationality, 'Malaysia');
     expect(updated.bio, 'Updated bio');
   });
+
+  test('deletes selected gallery photos and refreshes account state', () async {
+    final repository = _FakeUserAccountRepository(
+      galleryPhotos: const ['newest.jpg', 'middle.jpg', 'oldest.jpg'],
+    );
+    final container = ProviderContainer(
+      overrides: [
+        userAccountRepositoryProvider.overrideWithValue(repository),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.read(userAccountViewModelProvider);
+    await Future<void>.delayed(Duration.zero);
+
+    final deleted = await container
+        .read(userAccountViewModelProvider.notifier)
+        .deleteGalleryImages(const ['middle.jpg', 'oldest.jpg']);
+
+    expect(deleted, isTrue);
+    expect(repository.deletedPhotos, ['middle.jpg', 'oldest.jpg']);
+    expect(
+      container.read(userAccountViewModelProvider).user!.galleryPhotos,
+      ['newest.jpg'],
+    );
+  });
 }
 
 class _FakeUserAccountRepository extends UserAccountRepository {
+  _FakeUserAccountRepository({List<String> galleryPhotos = const []})
+      : _galleryPhotos = [...galleryPhotos];
+
+  List<String> _galleryPhotos;
+  List<String> deletedPhotos = const [];
+
   @override
   Future<UserAccount> fetchCurrentAccount() async {
-    return const UserAccount(
+    return UserAccount(
       uid: 'test-user',
       email: 'test@example.com',
       phoneNumber: '',
       username: 'test.user',
+      galleryPhotos: _galleryPhotos,
     );
+  }
+
+  @override
+  Future<UserAccount> deleteGalleryPhotos(List<String> photoUrls) async {
+    deletedPhotos = [...photoUrls];
+    _galleryPhotos = _galleryPhotos
+        .where((photo) => !photoUrls.contains(photo))
+        .toList(growable: false);
+    return fetchCurrentAccount();
   }
 
   @override

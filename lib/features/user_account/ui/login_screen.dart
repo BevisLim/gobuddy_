@@ -50,11 +50,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void initState() {
     super.initState();
     _authSubscription = supabase.auth.onAuthStateChange.listen((state) {
-      if (state.session != null) _handleAuthenticatedSession();
+      if (state.session != null) {
+        _handleAuthenticatedSession(
+          allowOAuthRouting: state.event != AuthChangeEvent.initialSession,
+        );
+      }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (supabase.auth.currentSession != null) {
-        _handleAuthenticatedSession();
+        // A verified registration link may restore its temporary session
+        // before this widget subscribes. Only resume Set Password here; a
+        // normal persisted session must not bypass the requested Login page.
+        _handleAuthenticatedSession(allowOAuthRouting: false);
       }
     });
   }
@@ -67,7 +74,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _handleAuthenticatedSession() async {
+  Future<void> _handleAuthenticatedSession({
+    required bool allowOAuthRouting,
+  }) async {
     if (_isRoutingAfterGoogleSignIn) return;
 
     final repository = ref.read(authenticationRepositoryProvider);
@@ -77,11 +86,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       context.go(Routes.setPassword);
       return;
     }
+    if (!allowOAuthRouting) return;
 
     final user = supabase.auth.currentUser;
     final provider = user?.appMetadata['provider'];
     final providers = user?.appMetadata['providers'];
-    final hasGoogleIdentity = provider == 'google' ||
+    final hasGoogleIdentity =
+        provider == 'google' ||
         (providers is List && providers.contains('google')) ||
         (user?.identities?.any((identity) => identity.provider == 'google') ??
             false);
@@ -89,11 +100,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     _isRoutingAfterGoogleSignIn = true;
     try {
-      final hasProfile = await ref
+      final hasCompletedOnboarding = await ref
           .read(authenticationViewModelProvider.notifier)
-          .hasCurrentUserProfile();
+          .hasCompletedProfileOnboarding();
       if (mounted) {
-        context.go(hasProfile ? Routes.main : Routes.userAccount);
+        context.go(
+          hasCompletedOnboarding ? Routes.main : Routes.profileOnboarding,
+        );
       }
     } catch (_) {
       _isRoutingAfterGoogleSignIn = false;
@@ -141,16 +154,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         password: _passwordController.text,
       );
       widget.onContinue?.call(email);
-      final pending =
-          await const AuthenticationRepository().isRegistrationPending();
+      final repository = const AuthenticationRepository();
+      final pending = await repository.isRegistrationPending();
+      final hasCompletedOnboarding = pending
+          ? false
+          : await repository.hasCompletedProfileOnboarding();
       if (mounted) {
-        context.go(pending ? Routes.setPassword : Routes.main);
+        context.go(
+          pending
+              ? Routes.setPassword
+              : hasCompletedOnboarding
+              ? Routes.main
+              : Routes.profileOnboarding,
+        );
       }
     } on AuthException catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_friendlyLoginError(error))),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(_friendlyLoginError(error))));
       }
     } catch (_) {
       if (mounted) {
@@ -165,8 +187,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isGoogleSigningIn =
-        ref.watch(authenticationViewModelProvider).isLoading;
+    final isGoogleSigningIn = ref
+        .watch(authenticationViewModelProvider)
+        .isLoading;
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -262,7 +285,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       width: double.infinity,
                       height: 52,
                       child: OutlinedButton(
-                        onPressed: widget.onForgotPassword ??
+                        onPressed:
+                            widget.onForgotPassword ??
                             () => context.push(Routes.forgotPassword),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: _purple,
@@ -271,8 +295,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             borderRadius: BorderRadius.circular(14),
                           ),
                         ),
-                        child: const Text('Forgot Password?',
-                            style: TextStyle(fontWeight: FontWeight.w700)),
+                        child: const Text(
+                          'Forgot Password?',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 30),
@@ -318,10 +344,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text("Don't have an account? ",
-                              style: TextStyle(color: _muted)),
+                          const Text(
+                            "Don't have an account? ",
+                            style: TextStyle(color: _muted),
+                          ),
                           TextButton(
-                            onPressed: widget.onSignUp ??
+                            onPressed:
+                                widget.onSignUp ??
                                 () => context.push(Routes.register),
                             style: TextButton.styleFrom(
                               foregroundColor: _purple,
@@ -329,8 +358,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               minimumSize: Size.zero,
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
-                            child: const Text('Sign up now',
-                                style: TextStyle(fontWeight: FontWeight.w800)),
+                            child: const Text(
+                              'Sign up now',
+                              style: TextStyle(fontWeight: FontWeight.w800),
+                            ),
                           ),
                         ],
                       ),
@@ -391,21 +422,26 @@ class _BrandHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const Row(
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(color: _purple, shape: BoxShape.circle),
-            child: SizedBox(
-              width: 36,
-              height: 36,
-              child: Icon(Icons.explore_rounded, color: Colors.white, size: 21),
-            ),
-          ),
-          SizedBox(width: 10),
-          Text('GoBuddy',
-              style: TextStyle(
-                  color: _ink, fontSize: 20, fontWeight: FontWeight.w800)),
-        ],
-      );
+    children: [
+      DecoratedBox(
+        decoration: BoxDecoration(color: _purple, shape: BoxShape.circle),
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: Icon(Icons.explore_rounded, color: Colors.white, size: 21),
+        ),
+      ),
+      SizedBox(width: 10),
+      Text(
+        'GoBuddy',
+        style: TextStyle(
+          color: _ink,
+          fontSize: 20,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    ],
+  );
 }
 
 class _LoginField extends StatelessWidget {
@@ -429,37 +465,44 @@ class _LoginField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label,
-              style: const TextStyle(
-                  color: _ink, fontWeight: FontWeight.w700, fontSize: 14)),
-          const SizedBox(height: 8),
-          TextFormField(
-            controller: controller,
-            obscureText: obscureText,
-            keyboardType: keyboardType,
-            validator: validator,
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: const TextStyle(color: _muted),
-              suffixIcon: suffixIcon,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              enabledBorder: _inputBorder,
-              focusedBorder: _inputBorder.copyWith(
-                borderSide: const BorderSide(color: _purple, width: 1.5),
-              ),
-              errorBorder: _inputBorder.copyWith(
-                borderSide: const BorderSide(color: _purple),
-              ),
-              focusedErrorBorder: _inputBorder.copyWith(
-                borderSide: const BorderSide(color: _purple, width: 1.5),
-              ),
-            ),
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        label,
+        style: const TextStyle(
+          color: _ink,
+          fontWeight: FontWeight.w700,
+          fontSize: 14,
+        ),
+      ),
+      const SizedBox(height: 8),
+      TextFormField(
+        controller: controller,
+        obscureText: obscureText,
+        keyboardType: keyboardType,
+        validator: validator,
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: const TextStyle(color: _muted),
+          suffixIcon: suffixIcon,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
           ),
-        ],
-      );
+          enabledBorder: _inputBorder,
+          focusedBorder: _inputBorder.copyWith(
+            borderSide: const BorderSide(color: _purple, width: 1.5),
+          ),
+          errorBorder: _inputBorder.copyWith(
+            borderSide: const BorderSide(color: _purple),
+          ),
+          focusedErrorBorder: _inputBorder.copyWith(
+            borderSide: const BorderSide(color: _purple, width: 1.5),
+          ),
+        ),
+      ),
+    ],
+  );
 }
 
 final _inputBorder = OutlineInputBorder(
@@ -471,13 +514,17 @@ class _SocialDivider extends StatelessWidget {
   const _SocialDivider();
 
   @override
-  Widget build(BuildContext context) => const Row(children: [
-        Expanded(child: Divider(color: _lightPurple)),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12),
-          child: Text('or continue with',
-              style: TextStyle(color: _muted, fontSize: 12)),
+  Widget build(BuildContext context) => const Row(
+    children: [
+      Expanded(child: Divider(color: _lightPurple)),
+      Padding(
+        padding: EdgeInsets.symmetric(horizontal: 12),
+        child: Text(
+          'or continue with',
+          style: TextStyle(color: _muted, fontSize: 12),
         ),
-        Expanded(child: Divider(color: _lightPurple)),
-      ]);
+      ),
+      Expanded(child: Divider(color: _lightPurple)),
+    ],
+  );
 }

@@ -1,5 +1,8 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../../core/permissions/app_permission_service.dart';
 import '../../model/user_account_model.dart';
 import '../../repository/user_account_repository.dart';
 import '../state/user_account_state.dart';
@@ -7,8 +10,8 @@ import '../state/user_account_state.dart';
 // 1. Modern NotifierProvider definition matching your team template
 final userAccountViewModelProvider =
     NotifierProvider<UserAccountViewModel, UserAccountState>(
-  UserAccountViewModel.new,
-);
+      UserAccountViewModel.new,
+    );
 
 // 2. The modern Notifier class managing your module state lifecycle
 class UserAccountViewModel extends Notifier<UserAccountState> {
@@ -35,12 +38,10 @@ class UserAccountViewModel extends Notifier<UserAccountState> {
 
   Future<void> _loadProfile() async {
     final repository = ref.read(userAccountRepositoryProvider);
-    state = state.copyWith(
-      isLoading: true,
-      clearError: true,
-      clearUser: true,
-    );
+    state = state.copyWith(isLoading: true, clearError: true, clearUser: true);
     try {
+      // A missing row is represented by an authenticated empty draft so the
+      // first profile save can create it with an upsert.
       final initialUser = await repository.fetchCurrentAccount();
       state = state.copyWith(user: initialUser, isLoading: false);
     } catch (error) {
@@ -51,8 +52,8 @@ class UserAccountViewModel extends Notifier<UserAccountState> {
   /// Change the currently active sub-page within the user account module
   void goTo(UserAccountPage page) => state = state.copyWith(page: page);
 
-  Future<void> updateProfile(UserAccountProfileUpdate update) async {
-    if (state.user == null || update.username.trim().isEmpty) return;
+  Future<bool> updateProfile(UserAccountProfileUpdate update) async {
+    if (state.user == null || update.username.trim().isEmpty) return false;
 
     state = state.copyWith(isLoading: true, clearError: true);
     final repository = ref.read(userAccountRepositoryProvider);
@@ -67,17 +68,201 @@ class UserAccountViewModel extends Notifier<UserAccountState> {
         page: UserAccountPage.profile,
         isLoading: false,
       );
+      return true;
     } catch (e) {
       state = state.copyWith(error: e.toString(), isLoading: false);
+      return false;
     }
   }
 
-  Future<String?> selectProfileImage() async {
-    final image = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
-    );
-    return image?.path;
+  Future<String?> selectProfileImage({
+    ImageSource source = ImageSource.gallery,
+  }) async {
+    if (state.user == null || state.isLoading) return null;
+
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      if (source == ImageSource.camera) {
+        await const AppPermissionService().requireCameraPermission();
+      }
+      final image = await ImagePicker().pickImage(
+        source: source,
+        imageQuality: 85,
+      );
+      if (image == null) {
+        state = state.copyWith(isLoading: false);
+        return null;
+      }
+
+      final repository = ref.read(userAccountRepositoryProvider);
+      final updatedUser = await repository.updateProfilePhoto(image.path);
+      state = state.copyWith(user: updatedUser, isLoading: false);
+      return updatedUser.profilePhoto;
+    } catch (error) {
+      state = state.copyWith(
+        error: switch (error) {
+          ProfilePhotoUpdateException(:final message) => message,
+          AppPermissionException(:final message) => message,
+          _ => 'Unable to update profile photo. Please try again.',
+        },
+        isLoading: false,
+      );
+      return null;
+    }
+  }
+
+  Future<String?> addGalleryImage({
+    ImageSource source = ImageSource.gallery,
+  }) async {
+    if (state.user == null || state.isLoading) return null;
+
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      if (source == ImageSource.camera) {
+        await const AppPermissionService().requireCameraPermission();
+      }
+      final image = await ImagePicker().pickImage(
+        source: source,
+        imageQuality: 85,
+      );
+      if (image == null) {
+        state = state.copyWith(isLoading: false);
+        return null;
+      }
+
+      final updatedUser = await ref
+          .read(userAccountRepositoryProvider)
+          .addGalleryPhoto(image.path);
+      state = state.copyWith(user: updatedUser, isLoading: false);
+      return updatedUser.galleryPhotos.isEmpty
+          ? null
+          : updatedUser.galleryPhotos.first;
+    } catch (error) {
+      state = state.copyWith(
+        error: switch (error) {
+          ProfilePhotoUpdateException(:final message) => message,
+          AppPermissionException(:final message) => message,
+          _ => 'Unable to add this gallery photo. Please try again.',
+        },
+        isLoading: false,
+      );
+      return null;
+    }
+  }
+
+  Future<String?> selectBackgroundImage({
+    ImageSource source = ImageSource.gallery,
+  }) async {
+    if (state.user == null || state.isLoading) return null;
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      if (source == ImageSource.camera) {
+        await const AppPermissionService().requireCameraPermission();
+      }
+      final image = await ImagePicker().pickImage(
+        source: source,
+        imageQuality: 85,
+      );
+      if (image == null) {
+        state = state.copyWith(isLoading: false);
+        return null;
+      }
+      final croppedImage = await ImageCropper().cropImage(
+        sourcePath: image.path,
+        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+        maxWidth: 1600,
+        maxHeight: 1600,
+        compressFormat: ImageCompressFormat.jpg,
+        compressQuality: 90,
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Crop background photo',
+            toolbarColor: const Color(0xFF281950),
+            toolbarWidgetColor: Colors.white,
+            activeControlsWidgetColor: const Color(0xFF7C3AED),
+            dimmedLayerColor: Colors.black87,
+            cropFrameColor: Colors.white,
+            cropGridColor: Colors.white70,
+            lockAspectRatio: true,
+            hideBottomControls: true,
+            initAspectRatio: CropAspectRatioPreset.square,
+            aspectRatioPresets: const [CropAspectRatioPreset.square],
+          ),
+          IOSUiSettings(
+            title: 'Crop background photo',
+            doneButtonTitle: 'Save',
+            cancelButtonTitle: 'Cancel',
+            aspectRatioLockEnabled: true,
+            resetAspectRatioEnabled: false,
+            aspectRatioPickerButtonHidden: true,
+            aspectRatioPresets: const [CropAspectRatioPreset.square],
+          ),
+        ],
+      );
+      if (croppedImage == null) {
+        state = state.copyWith(isLoading: false);
+        return null;
+      }
+      final updatedUser = await ref
+          .read(userAccountRepositoryProvider)
+          .updateBackgroundPhoto(croppedImage.path);
+      state = state.copyWith(user: updatedUser, isLoading: false);
+      return updatedUser.backgroundPhoto;
+    } catch (error) {
+      state = state.copyWith(
+        error: switch (error) {
+          ProfilePhotoUpdateException(:final message) => message,
+          AppPermissionException(:final message) => message,
+          _ => 'Unable to update background photo. Please try again.',
+        },
+        isLoading: false,
+      );
+      return null;
+    }
+  }
+
+  Future<bool> deleteBackgroundImage() async {
+    if (state.user == null || state.isLoading) return false;
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final updatedUser = await ref
+          .read(userAccountRepositoryProvider)
+          .deleteBackgroundPhoto();
+      state = state.copyWith(user: updatedUser, isLoading: false);
+      return true;
+    } catch (error) {
+      state = state.copyWith(
+        error: error is ProfilePhotoUpdateException
+            ? error.message
+            : 'Unable to delete background photo. Please try again.',
+        isLoading: false,
+      );
+      return false;
+    }
+  }
+
+  Future<bool> deleteGalleryImages(List<String> photoUrls) async {
+    if (state.user == null || state.isLoading || photoUrls.isEmpty) {
+      return false;
+    }
+
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final updatedUser = await ref
+          .read(userAccountRepositoryProvider)
+          .deleteGalleryPhotos(photoUrls);
+      state = state.copyWith(user: updatedUser, isLoading: false);
+      return true;
+    } catch (error) {
+      state = state.copyWith(
+        error: switch (error) {
+          ProfilePhotoUpdateException(:final message) => message,
+          _ => 'Unable to delete the selected photos. Please try again.',
+        },
+        isLoading: false,
+      );
+      return false;
+    }
   }
 
   Future<String?> startIdentityVerification() async {

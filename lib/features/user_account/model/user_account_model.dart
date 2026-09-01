@@ -14,6 +14,7 @@ class UserAccount {
   final String? nationality;
   final String bio;
   final bool isVerified;
+  final List<String> galleryPhotos;
 
   const UserAccount({
     required this.uid,
@@ -29,6 +30,7 @@ class UserAccount {
     this.nationality,
     this.bio = '',
     this.isVerified = false,
+    this.galleryPhotos = const [],
   });
 
   UserAccount copyWith({
@@ -45,6 +47,7 @@ class UserAccount {
     String? nationality,
     String? bio,
     bool? isVerified,
+    List<String>? galleryPhotos,
   }) {
     return UserAccount(
       uid: uid ?? this.uid,
@@ -60,9 +63,11 @@ class UserAccount {
       nationality: nationality ?? this.nationality,
       bio: bio ?? this.bio,
       isVerified: isVerified ?? this.isVerified,
+      galleryPhotos: galleryPhotos ?? this.galleryPhotos,
     );
   }
 }
+
 class UserAccountProfileUpdate {
   const UserAccountProfileUpdate({
     required this.username,
@@ -71,6 +76,7 @@ class UserAccountProfileUpdate {
     this.profilePhoto,
     this.gender,
     this.nationality,
+    this.dateOfBirth,
   });
 
   final String? backgroundPhoto;
@@ -78,5 +84,6 @@ class UserAccountProfileUpdate {
   final String username;
   final String? gender;
   final String? nationality;
+  final DateTime? dateOfBirth;
   final String bio;
 }
