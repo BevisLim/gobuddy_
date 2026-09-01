@@ -10,12 +10,14 @@ import '../../model/matchmaking_page.dart';
 import '../../repository/matchmaking_repository.dart';
 import '../state/matchmaking_state.dart';
 
-final matchmakingInitialPageProvider =
-    Provider<MatchmakingPage>((ref) => MatchmakingPage.discover);
+final matchmakingInitialPageProvider = Provider<MatchmakingPage>(
+  (ref) => MatchmakingPage.discover,
+);
 
 final matchmakingViewModelProvider =
     NotifierProvider<MatchmakingViewModel, MatchmakingState>(
-        MatchmakingViewModel.new);
+      MatchmakingViewModel.new,
+    );
 
 class MatchmakingViewModel extends Notifier<MatchmakingState> {
   MatchmakingRepository get _repository =>
@@ -25,13 +27,14 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
     final connected = _repository.hasAuthenticatedUser;
     if (connected) unawaited(Future<void>.microtask(refresh));
     return MatchmakingState(
-        page: ref.watch(matchmakingInitialPageProvider),
-        availableFilters: _repository.discoveryFilters,
-        currentUserId: connected ? _repository.currentUserId : '',
-        trips: const [],
-        applicants: const [],
-        requests: const [],
-        isLoading: connected);
+      page: ref.watch(matchmakingInitialPageProvider),
+      availableFilters: _repository.discoveryFilters,
+      currentUserId: connected ? _repository.currentUserId : '',
+      trips: const [],
+      applicants: const [],
+      requests: const [],
+      isLoading: connected,
+    );
   }
 
   Future<void> refresh() async {
@@ -43,12 +46,13 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
     // remained alive in the root ProviderScope.
     if (state.currentUserId != userId) {
       state = MatchmakingState(
-          page: state.page,
-          selectedFilter: state.selectedFilter,
-          availableFilters: _repository.discoveryFilters,
-          filters: state.filters,
-          currentUserId: userId,
-          isLoading: true);
+        page: state.page,
+        selectedFilter: state.selectedFilter,
+        availableFilters: _repository.discoveryFilters,
+        filters: state.filters,
+        currentUserId: userId,
+        isLoading: true,
+      );
     } else {
       state = state.copyWith(isLoading: true, clearError: true);
     }
@@ -57,6 +61,7 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
       final savedIds = await _repository.fetchSavedTripIds();
       final requests = await _repository.fetchJoinRequests();
       final joinedTripIds = await _repository.fetchJoinedTripIds();
+      final dismissedGroupIds = await _repository.fetchDismissedGroupIds();
       final loadedApplicants = await _repository.fetchApplicants();
       final applicantsById = {
         for (final applicant in loadedApplicants) applicant.id: applicant,
@@ -88,15 +93,17 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
       // been replaced by another account.
       if (_repository.currentUserId != userId) return;
       state = state.copyWith(
-          currentUserId: userId,
-          trips: trips,
-          requests: requests,
-          joinedTripIds: joinedTripIds,
-          applicants: applicants,
-          notifications: notifications,
-          savedTripIds: savedIds,
-          isLoading: false,
-          clearError: true);
+        currentUserId: userId,
+        trips: trips,
+        requests: requests,
+        joinedTripIds: joinedTripIds,
+        dismissedGroupIds: dismissedGroupIds,
+        applicants: applicants,
+        notifications: notifications,
+        savedTripIds: savedIds,
+        isLoading: false,
+        clearError: true,
+      );
     } catch (error) {
       if (_repository.currentUserId != userId) return;
       state = state.copyWith(isLoading: false, errorMessage: error.toString());
@@ -105,8 +112,23 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
 
   void goTo(MatchmakingPage page) => state = state.copyWith(page: page);
   void dismissGroup(String tripId) => state = state.copyWith(
-        dismissedGroupIds: {...state.dismissedGroupIds, tripId},
-      );
+    dismissedGroupIds: {...state.dismissedGroupIds, tripId},
+  );
+  Future<void> dismissRemovedTrip(String tripId) async {
+    if (!state.wasRemovedFromTrip(tripId)) return;
+    final previousIds = state.dismissedGroupIds;
+    state = state.copyWith(
+      dismissedGroupIds: {...previousIds, tripId},
+      clearError: true,
+    );
+    try {
+      await _repository.dismissRemovedTrip(tripId);
+      state = state.copyWith(successMessage: 'Removed trip dismissed.');
+    } catch (error) {
+      state = state.copyWith(errorMessage: error.toString());
+    }
+  }
+
   void clearSuccessMessage() => state = state.copyWith(clearSuccess: true);
   Future<void> markNotificationsRead() async {
     if (!_repository.hasAuthenticatedUser ||
@@ -116,16 +138,20 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
     try {
       await _repository.markNotificationsRead();
       final now = DateTime.now();
-      state = state.copyWith(notifications: [
-        for (final notification in state.notifications)
-          MatchmakingNotification(
+      state = state.copyWith(
+        notifications: [
+          for (final notification in state.notifications)
+            MatchmakingNotification(
               id: notification.id,
               title: notification.title,
               body: notification.body,
               tripId: notification.tripId,
               createdAt: notification.createdAt,
-              readAt: notification.readAt ?? now)
-      ]);
+              readAt: notification.readAt ?? now,
+              dismissedAt: notification.dismissedAt,
+            ),
+        ],
+      );
     } catch (error) {
       state = state.copyWith(errorMessage: error.toString());
     }
@@ -139,19 +165,28 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
   }
 
   void applyFilters(MatchmakingFilters value) => state = state.copyWith(
-      filters: value, selectedFilter: 'All', page: MatchmakingPage.discover);
+    filters: value,
+    selectedFilter: 'All',
+    page: MatchmakingPage.discover,
+  );
   void resetFilters() => state = state.copyWith(
-      filters: const MatchmakingFilters(), selectedFilter: 'All');
+    filters: const MatchmakingFilters(),
+    selectedFilter: 'All',
+  );
 
   void openTrip(String id, MatchmakingPage page) {
     if (!state.trips.any((trip) => trip.id == id)) return;
     state = state.copyWith(selectedTripId: id, page: page);
   }
 
-  void openRequests(String tripId) => state =
-      state.copyWith(managedTripId: tripId, page: MatchmakingPage.manage);
+  void openRequests(String tripId) => state = state.copyWith(
+    managedTripId: tripId,
+    page: MatchmakingPage.manage,
+  );
   void openApplicant(String applicantId) => state = state.copyWith(
-      selectedApplicantId: applicantId, page: MatchmakingPage.applicant);
+    selectedApplicantId: applicantId,
+    page: MatchmakingPage.applicant,
+  );
 
   void toggleSavedTrip(String id) {
     final ids = {...state.savedTripIds};
@@ -175,6 +210,7 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
   void saveTrip(MatchmakingTrip trip) {
     try {
       MatchmakingValidation.validateTrip(trip);
+      MatchmakingValidation.validateHostAvailability(trip, state.ownedTrips);
     } on MatchmakingValidationException catch (error) {
       state = state.copyWith(errorMessage: error.message);
       return;
@@ -187,7 +223,10 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
       trips[index] = trip;
     }
     state = state.copyWith(
-        trips: trips, page: MatchmakingPage.myTrips, selectedTripId: trip.id);
+      trips: trips,
+      page: MatchmakingPage.myTrips,
+      selectedTripId: trip.id,
+    );
     if (_repository.hasAuthenticatedUser) unawaited(_persistTrip(trip));
   }
 
@@ -204,12 +243,14 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
 
   void deleteTrip(String id) {
     state = state.copyWith(
-        trips: state.trips.where((trip) => trip.id != id).toList(),
-        requests:
-            state.requests.where((request) => request.tripId != id).toList(),
-        savedTripIds: {...state.savedTripIds}..remove(id),
-        page: MatchmakingPage.myTrips,
-        clearSelectedTrip: true);
+      trips: state.trips.where((trip) => trip.id != id).toList(),
+      requests: state.requests
+          .where((request) => request.tripId != id)
+          .toList(),
+      savedTripIds: {...state.savedTripIds}..remove(id),
+      page: MatchmakingPage.myTrips,
+      clearSelectedTrip: true,
+    );
     if (_repository.hasAuthenticatedUser) unawaited(_deletePersistedTrip(id));
   }
 
@@ -233,12 +274,11 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
     String tripId,
     Uint8List bytes,
     String fileName,
-  ) =>
-      _repository.uploadTripCover(
-        tripId: tripId,
-        bytes: bytes,
-        fileName: fileName,
-      );
+  ) => _repository.uploadTripCover(
+    tripId: tripId,
+    bytes: bytes,
+    fileName: fileName,
+  );
 
   Future<void> _deletePersistedTrip(String id) async {
     try {
@@ -255,8 +295,10 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
     late final String text;
     try {
       text = MatchmakingValidation.normalizeRequestMessage(message);
-    } on MatchmakingValidationException catch (error) {
-      state = state.copyWith(errorMessage: error.message);
+    } on MatchmakingValidationException {
+      // RequestPage owns message validation and renders it inline. Do not
+      // misclassify a local form error as a Supabase synchronization failure.
+      state = state.copyWith(clearError: true);
       return false;
     }
     final applicantId = state.currentUserId;
@@ -264,23 +306,26 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
       state = state.copyWith(errorMessage: 'Please sign in first.');
       return false;
     }
-    if (state.requests.any((request) =>
-        request.tripId == tripId &&
-        request.applicantId == applicantId &&
-        const {
-          ApplicantDecision.pending,
-          ApplicantDecision.held,
-          ApplicantDecision.accepted,
-        }.contains(request.decision))) {
+    if (state.requests.any(
+      (request) =>
+          request.tripId == tripId &&
+          request.applicantId == applicantId &&
+          const {
+            ApplicantDecision.pending,
+            ApplicantDecision.held,
+            ApplicantDecision.accepted,
+          }.contains(request.decision),
+    )) {
       return false;
     }
     final requests = [
       ...state.requests,
       JoinRequest(
-          id: 'request-${DateTime.now().microsecondsSinceEpoch}',
-          tripId: tripId,
-          applicantId: applicantId,
-          message: text)
+        id: 'request-${DateTime.now().microsecondsSinceEpoch}',
+        tripId: tripId,
+        applicantId: applicantId,
+        message: text,
+      ),
     ];
     state = state.copyWith(requests: requests, page: MatchmakingPage.sent);
     if (_repository.hasAuthenticatedUser) {
@@ -304,11 +349,14 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
   }
 
   Future<void> cancelRequest(String requestId) async {
-    final request =
-        state.requests.where((item) => item.id == requestId).firstOrNull;
+    final request = state.requests
+        .where((item) => item.id == requestId)
+        .firstOrNull;
     if (request == null ||
-        !const {ApplicantDecision.pending, ApplicantDecision.held}
-            .contains(request.decision)) {
+        !const {
+          ApplicantDecision.pending,
+          ApplicantDecision.held,
+        }.contains(request.decision)) {
       return;
     }
     final previousRequests = state.requests;
@@ -329,65 +377,131 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
     }
   }
 
+  Future<void> removeRequest(String requestId) async {
+    final request = state.requests
+        .where((item) => item.id == requestId)
+        .firstOrNull;
+    if (request == null || request.applicantId != state.currentUserId) return;
+    if (const {
+      ApplicantDecision.pending,
+      ApplicantDecision.held,
+    }.contains(request.decision)) {
+      await cancelRequest(requestId);
+      return;
+    }
+    final previousRequests = state.requests;
+    state = state.copyWith(
+      requests: previousRequests
+          .where((item) => item.id != requestId)
+          .toList(growable: false),
+      clearError: true,
+    );
+    try {
+      await _repository.removeJoinRequest(requestId);
+      state = state.copyWith(successMessage: 'Join request removed.');
+    } catch (error) {
+      state = state.copyWith(
+        requests: previousRequests,
+        errorMessage: error.toString(),
+      );
+    }
+  }
+
+  Future<void> leaveTrip(String tripId) async {
+    if (!state.joinedTripIds.contains(tripId)) return;
+    final previousJoinedIds = state.joinedTripIds;
+    final previousRequests = state.requests;
+    state = state.copyWith(
+      joinedTripIds: {...previousJoinedIds}..remove(tripId),
+      requests: previousRequests
+          .where((request) => request.tripId != tripId)
+          .toList(growable: false),
+      clearError: true,
+    );
+    try {
+      await _repository.leaveTrip(tripId);
+      await refresh();
+      state = state.copyWith(successMessage: 'Joined trip removed.');
+    } catch (error) {
+      state = state.copyWith(
+        joinedTripIds: previousJoinedIds,
+        requests: previousRequests,
+        errorMessage: error.toString(),
+      );
+    }
+  }
+
   void decideRequest(String requestId, ApplicantDecision decision) {
-    final current =
-        state.requests.where((item) => item.id == requestId).firstOrNull;
+    final current = state.requests
+        .where((item) => item.id == requestId)
+        .firstOrNull;
     if (current == null) return;
     if (decision == ApplicantDecision.declined) {
       state = state.copyWith(
-          requests:
-              state.requests.where((item) => item.id != requestId).toList());
+        requests: state.requests.where((item) => item.id != requestId).toList(),
+      );
       if (_repository.hasAuthenticatedUser) {
         unawaited(_persistRequestDecision(requestId, decision));
       }
       return;
     }
-    final tripIndex =
-        state.trips.indexWhere((trip) => trip.id == current.tripId);
+    final tripIndex = state.trips.indexWhere(
+      (trip) => trip.id == current.tripId,
+    );
     final trips = [...state.trips];
     if (tripIndex >= 0) {
       final trip = trips[tripIndex];
-      final accepting = decision == ApplicantDecision.accepted &&
+      final accepting =
+          decision == ApplicantDecision.accepted &&
           current.decision != ApplicantDecision.accepted;
       final removingAcceptance =
           current.decision == ApplicantDecision.accepted &&
-              decision != ApplicantDecision.accepted;
+          decision != ApplicantDecision.accepted;
       if (accepting && trip.spotsLeft == 0) return;
       trips[tripIndex] = trip.copyWith(
-          joined: trip.joined +
-              (accepting
-                  ? 1
-                  : removingAcceptance
-                      ? -1
-                      : 0));
+        joined:
+            trip.joined +
+            (accepting
+                ? 1
+                : removingAcceptance
+                ? -1
+                : 0),
+      );
     }
-    state = state.copyWith(trips: trips, requests: [
-      for (final request in state.requests)
-        if (request.id == requestId)
-          request.copyWith(decision: decision)
-        else
-          request
-    ]);
+    state = state.copyWith(
+      trips: trips,
+      requests: [
+        for (final request in state.requests)
+          if (request.id == requestId)
+            request.copyWith(decision: decision)
+          else
+            request,
+      ],
+    );
     if (_repository.hasAuthenticatedUser) {
       unawaited(_persistRequestDecision(requestId, decision));
     } else {
       state = state.copyWith(
-          successMessage: decision == ApplicantDecision.accepted
-              ? 'Request accepted. The traveller was added to the group.'
-              : 'Request updated.');
+        successMessage: decision == ApplicantDecision.accepted
+            ? 'Request accepted. The traveller was added to the group.'
+            : 'Request updated.',
+      );
     }
   }
 
   Future<void> _persistRequestDecision(
-      String requestId, ApplicantDecision decision) async {
+    String requestId,
+    ApplicantDecision decision,
+  ) async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       await _repository.decideJoinRequest(requestId, decision);
       await refresh();
       state = state.copyWith(
-          successMessage: decision == ApplicantDecision.accepted
-              ? 'Request accepted. The traveller was added to the group.'
-              : 'Request updated.');
+        successMessage: decision == ApplicantDecision.accepted
+            ? 'Request accepted. The traveller was added to the group.'
+            : 'Request updated.',
+      );
     } catch (error) {
       await refresh();
       state = state.copyWith(errorMessage: error.toString());

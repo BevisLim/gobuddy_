@@ -3,25 +3,26 @@ import '../../model/matchmaking_notification.dart';
 import '../../model/matchmaking_page.dart';
 
 class MatchmakingState {
-  const MatchmakingState(
-      {this.page = MatchmakingPage.discover,
-      this.selectedFilter = 'All',
-      this.availableFilters = const [],
-      this.filters = const MatchmakingFilters(),
-      this.trips = const [],
-      this.applicants = const [],
-      this.requests = const [],
-      this.currentUserId = '',
-      this.joinedTripIds = const {},
-      this.dismissedGroupIds = const {},
-      this.notifications = const [],
-      this.savedTripIds = const {},
-      this.isLoading = false,
-      this.errorMessage,
-      this.successMessage,
-      this.selectedTripId,
-      this.selectedApplicantId,
-      this.managedTripId});
+  const MatchmakingState({
+    this.page = MatchmakingPage.discover,
+    this.selectedFilter = 'All',
+    this.availableFilters = const [],
+    this.filters = const MatchmakingFilters(),
+    this.trips = const [],
+    this.applicants = const [],
+    this.requests = const [],
+    this.currentUserId = '',
+    this.joinedTripIds = const {},
+    this.dismissedGroupIds = const {},
+    this.notifications = const [],
+    this.savedTripIds = const {},
+    this.isLoading = false,
+    this.errorMessage,
+    this.successMessage,
+    this.selectedTripId,
+    this.selectedApplicantId,
+    this.managedTripId,
+  });
   final MatchmakingPage page;
   final String selectedFilter;
   final List<String> availableFilters;
@@ -52,7 +53,12 @@ class MatchmakingState {
       .where((trip) => joinedTripIds.contains(trip.id))
       .toList(growable: false);
   List<MatchmakingTrip> get removedTrips => trips
-      .where((trip) => !trip.isOwned && wasRemovedFromTrip(trip.id))
+      .where(
+        (trip) =>
+            !trip.isOwned &&
+            !dismissedGroupIds.contains(trip.id) &&
+            wasRemovedFromTrip(trip.id),
+      )
       .toList(growable: false);
   List<MatchmakingTrip> get groupTrips => trips
       .where(
@@ -64,32 +70,43 @@ class MatchmakingState {
       )
       .toList(growable: false);
   List<JoinRequest> get myRequests => requests
-      .where((request) => request.applicantId == currentUserId)
+      .where(
+        (request) =>
+            request.applicantId == currentUserId &&
+            request.decision != ApplicantDecision.accepted &&
+            request.decision != ApplicantDecision.cancelled,
+      )
       .toList(growable: false);
   bool wasRemovedFromTrip(String tripId) {
     return notifications.any(
       (notification) =>
           notification.tripId == tripId &&
+          notification.dismissedAt == null &&
           notification.title.toLowerCase().contains('removed'),
     );
   }
+
   List<MatchmakingTrip> get discoveryTrips => trips
-      .where((trip) =>
-          !trip.isOwned &&
-          trip.isDiscoverable &&
-          !joinedTripIds.contains(trip.id) &&
-          !_hasActiveRequestFor(trip.id) &&
-          _matchesFilters(trip))
+      .where(
+        (trip) =>
+            !trip.isOwned &&
+            trip.isDiscoverable &&
+            !joinedTripIds.contains(trip.id) &&
+            !_hasActiveRequestFor(trip.id) &&
+            _matchesFilters(trip),
+      )
       .toList(growable: false);
 
-  bool _hasActiveRequestFor(String tripId) => requests.any((request) =>
-      request.tripId == tripId &&
-      request.applicantId == currentUserId &&
-      const {
-        ApplicantDecision.pending,
-        ApplicantDecision.held,
-        ApplicantDecision.accepted,
-      }.contains(request.decision));
+  bool _hasActiveRequestFor(String tripId) => requests.any(
+    (request) =>
+        request.tripId == tripId &&
+        request.applicantId == currentUserId &&
+        const {
+          ApplicantDecision.pending,
+          ApplicantDecision.held,
+          ApplicantDecision.accepted,
+        }.contains(request.decision),
+  );
   List<JoinRequest> get managedRequests => requests
       .where(
         (request) =>
@@ -133,50 +150,51 @@ class MatchmakingState {
     return selectedFilter == 'All' || trip.styles.contains(selectedFilter);
   }
 
-  MatchmakingState copyWith(
-          {MatchmakingPage? page,
-          String? selectedFilter,
-          List<String>? availableFilters,
-          MatchmakingFilters? filters,
-          List<MatchmakingTrip>? trips,
-          List<MatchmakingApplicant>? applicants,
-          List<JoinRequest>? requests,
-          String? currentUserId,
-          Set<String>? joinedTripIds,
-          Set<String>? dismissedGroupIds,
-          List<MatchmakingNotification>? notifications,
-          Set<String>? savedTripIds,
-          bool? isLoading,
-          String? errorMessage,
-          String? successMessage,
-          String? selectedTripId,
-          String? selectedApplicantId,
-          String? managedTripId,
-          bool clearSelectedTrip = false,
-          bool clearSelectedApplicant = false,
-          bool clearError = false,
-          bool clearSuccess = false}) =>
-      MatchmakingState(
-          page: page ?? this.page,
-          selectedFilter: selectedFilter ?? this.selectedFilter,
-          availableFilters: availableFilters ?? this.availableFilters,
-          filters: filters ?? this.filters,
-          trips: trips ?? this.trips,
-          applicants: applicants ?? this.applicants,
-          requests: requests ?? this.requests,
-          currentUserId: currentUserId ?? this.currentUserId,
-          joinedTripIds: joinedTripIds ?? this.joinedTripIds,
-          dismissedGroupIds: dismissedGroupIds ?? this.dismissedGroupIds,
-          notifications: notifications ?? this.notifications,
-          savedTripIds: savedTripIds ?? this.savedTripIds,
-          isLoading: isLoading ?? this.isLoading,
-          errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
-          successMessage:
-              clearSuccess ? null : successMessage ?? this.successMessage,
-          selectedTripId:
-              clearSelectedTrip ? null : selectedTripId ?? this.selectedTripId,
-          selectedApplicantId: clearSelectedApplicant
-              ? null
-              : selectedApplicantId ?? this.selectedApplicantId,
-          managedTripId: managedTripId ?? this.managedTripId);
+  MatchmakingState copyWith({
+    MatchmakingPage? page,
+    String? selectedFilter,
+    List<String>? availableFilters,
+    MatchmakingFilters? filters,
+    List<MatchmakingTrip>? trips,
+    List<MatchmakingApplicant>? applicants,
+    List<JoinRequest>? requests,
+    String? currentUserId,
+    Set<String>? joinedTripIds,
+    Set<String>? dismissedGroupIds,
+    List<MatchmakingNotification>? notifications,
+    Set<String>? savedTripIds,
+    bool? isLoading,
+    String? errorMessage,
+    String? successMessage,
+    String? selectedTripId,
+    String? selectedApplicantId,
+    String? managedTripId,
+    bool clearSelectedTrip = false,
+    bool clearSelectedApplicant = false,
+    bool clearError = false,
+    bool clearSuccess = false,
+  }) => MatchmakingState(
+    page: page ?? this.page,
+    selectedFilter: selectedFilter ?? this.selectedFilter,
+    availableFilters: availableFilters ?? this.availableFilters,
+    filters: filters ?? this.filters,
+    trips: trips ?? this.trips,
+    applicants: applicants ?? this.applicants,
+    requests: requests ?? this.requests,
+    currentUserId: currentUserId ?? this.currentUserId,
+    joinedTripIds: joinedTripIds ?? this.joinedTripIds,
+    dismissedGroupIds: dismissedGroupIds ?? this.dismissedGroupIds,
+    notifications: notifications ?? this.notifications,
+    savedTripIds: savedTripIds ?? this.savedTripIds,
+    isLoading: isLoading ?? this.isLoading,
+    errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
+    successMessage: clearSuccess ? null : successMessage ?? this.successMessage,
+    selectedTripId: clearSelectedTrip
+        ? null
+        : selectedTripId ?? this.selectedTripId,
+    selectedApplicantId: clearSelectedApplicant
+        ? null
+        : selectedApplicantId ?? this.selectedApplicantId,
+    managedTripId: managedTripId ?? this.managedTripId,
+  );
 }

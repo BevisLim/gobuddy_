@@ -42,7 +42,7 @@ class _AppLaunchingScreenState extends State<AppLaunchingScreen>
       begin: const Offset(0, .04),
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
-    _navigationTimer = Timer(_displayDuration, _goToLogin);
+    _navigationTimer = Timer(_displayDuration, _continueFromSplash);
   }
 
   Future<void> _continueFromSplash() async {

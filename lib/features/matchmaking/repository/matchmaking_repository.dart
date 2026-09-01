@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../common/remote/supabase_client.dart';
@@ -33,6 +34,7 @@ class MatchmakingRepository {
 
   Future<List<MatchmakingTrip>> fetchTrips() async {
     final user = _requireUser();
+    await _closeExpiredTripsIfAvailable();
     final blockRows = await supabase
         .from('user_blocks')
         .select('blocked_id')
@@ -41,12 +43,17 @@ class MatchmakingRepository {
       for (final row in blockRows) row['blocked_id'] as String,
     };
     final today = _date(DateTime.now());
-    final tripResults = await Future.wait([
+    final joinedRows = await supabase
+        .from('matchmaking_trip_members')
+        .select('trip_id')
+        .eq('user_id', user.id);
+    final joinedIds = {for (final row in joinedRows) row['trip_id'] as String};
+    final tripQueries = <Future<List<Map<String, dynamic>>>>[
       supabase
           .from('matchmaking_trips')
           .select()
           .eq('status', 'active')
-          .gte('start_date', today)
+          .gte('end_date', today)
           .order('created_at')
           .limit(50),
       supabase
@@ -55,7 +62,17 @@ class MatchmakingRepository {
           .eq('owner_id', user.id)
           .order('created_at')
           .limit(100),
-    ]);
+    ];
+    if (joinedIds.isNotEmpty) {
+      tripQueries.add(
+        supabase
+            .from('matchmaking_trips')
+            .select()
+            .inFilter('id', joinedIds.toList(growable: false))
+            .order('created_at'),
+      );
+    }
+    final tripResults = await Future.wait(tripQueries);
     final tripsById = <String, Map<String, dynamic>>{};
     for (final rows in tripResults) {
       for (final row in rows) {
@@ -106,35 +123,43 @@ class MatchmakingRepository {
       for (final row in profileRows)
         row['id'] as String: Map<String, dynamic>.from(row),
     };
-    return tripRows.where((row) {
-      return !blockedUserIds.contains(row['owner_id'] as String);
-    }).map((row) {
-      final data = Map<String, dynamic>.from(row);
-      final ownerId = data['owner_id'] as String;
-      final profile = profiles[ownerId];
-      final hostName = profile?['display_name'] as String? ?? 'Traveller';
-      return MatchmakingTrip(
-          id: data['id'] as String,
-          destination: data['destination'] as String,
-          startDate: DateTime.parse(data['start_date'] as String),
-          endDate: DateTime.parse(data['end_date'] as String),
-          budget: (data['budget'] as num).round(),
-          styles: stylesByTrip[data['id']] ?? const <String>{},
-          hostId: ownerId,
-          hostName: hostName,
-          hostInitials: _initials(hostName),
-          imageUrl: data['cover_image_url'] as String? ?? _bali,
-          gender: data['preferred_gender'] as String,
-          minAge: data['minimum_age'] as int,
-          maxAge: data['maximum_age'] as int,
-          vacancies: data['vacancies'] as int,
-          joined: membersByTrip[data['id']] ?? 0,
-          groupMemberCount: groupMembersByTrip[data['id']] ?? 0,
-          description: data['description'] as String,
-          verifiedHost: profile?['verification_status'] == 'verified',
-          status: TripStatus.values.byName(data['status'] as String),
-          isOwned: ownerId == user.id);
-    }).toList(growable: false);
+    return tripRows
+        .where((row) {
+          return !blockedUserIds.contains(row['owner_id'] as String);
+        })
+        .map((row) {
+          final data = Map<String, dynamic>.from(row);
+          final ownerId = data['owner_id'] as String;
+          final profile = profiles[ownerId];
+          final hostName = profile?['display_name'] as String? ?? 'Traveller';
+          return MatchmakingTrip(
+            id: data['id'] as String,
+            destination: data['destination'] as String,
+            startDate: DateTime.parse(data['start_date'] as String),
+            endDate: DateTime.parse(data['end_date'] as String),
+            startTime: data['start_time'] == null
+                ? null
+                : DateTime.parse(data['start_time'] as String).toLocal(),
+            budget: (data['budget'] as num).round(),
+            styles: stylesByTrip[data['id']] ?? const <String>{},
+            hostId: ownerId,
+            hostName: hostName,
+            hostInitials: _initials(hostName),
+            imageUrl: data['cover_image_url'] as String? ?? _bali,
+            gender: data['preferred_gender'] as String,
+            minAge: data['minimum_age'] as int,
+            maxAge: data['maximum_age'] as int,
+            vacancies: data['vacancies'] as int,
+            joined:
+                data['joined_count'] as int? ?? membersByTrip[data['id']] ?? 0,
+            groupMemberCount: groupMembersByTrip[data['id']] ?? 0,
+            description: data['description'] as String,
+            verifiedHost: profile?['verification_status'] == 'verified',
+            status: TripStatus.values.byName(data['status'] as String),
+            isOwned: ownerId == user.id,
+          );
+        })
+        .toList(growable: false);
   }
 
   Future<Set<String>> fetchSavedTripIds() async {
@@ -155,6 +180,15 @@ class MatchmakingRepository {
     return {for (final row in rows) row['trip_id'] as String};
   }
 
+  Future<Set<String>> fetchDismissedGroupIds() async {
+    final user = _requireUser();
+    final preferences = await SharedPreferences.getInstance();
+    return preferences
+            .getStringList('matchmaking.dismissed_groups.${user.id}')
+            ?.toSet() ??
+        const <String>{};
+  }
+
   Future<List<JoinRequest>> fetchJoinRequests() async {
     _requireUser();
     final rows = await supabase
@@ -162,14 +196,15 @@ class MatchmakingRepository {
         .select()
         .order('created_at');
     return rows
-        .map((row) => JoinRequest(
-              id: row['id'] as String,
-              tripId: row['trip_id'] as String,
-              applicantId: row['applicant_id'] as String,
-              message: row['message'] as String,
-              decision:
-                  ApplicantDecision.values.byName(row['status'] as String),
-            ))
+        .map(
+          (row) => JoinRequest(
+            id: row['id'] as String,
+            tripId: row['trip_id'] as String,
+            applicantId: row['applicant_id'] as String,
+            message: row['message'] as String,
+            decision: ApplicantDecision.values.byName(row['status'] as String),
+          ),
+        )
         .toList(growable: false);
   }
 
@@ -183,47 +218,53 @@ class MatchmakingRepository {
       for (final row in blockRows) row['blocked_id'] as String,
     };
     final rows = await supabase.from('user_accounts').select();
-    return rows.where((row) {
-      return !blockedUserIds.contains(row['id'] as String);
-    }).map((row) {
-      final name = row['display_name'] as String;
-      final dateOfBirth = row['date_of_birth'] == null
-          ? null
-          : DateTime.parse(row['date_of_birth'] as String);
-      return MatchmakingApplicant(
-        id: row['id'] as String,
-        name: name,
-        initials: _initials(name),
-        age: dateOfBirth == null ? 18 : _age(dateOfBirth),
-        gender: row['gender'] as String? ?? 'Prefer not to say',
-        languages: const {},
-        styles: const {},
-        bio: row['bio'] as String? ?? '',
-        introduction: '',
-        trips: 0,
-        rating: 0,
-        verified: row['verification_status'] == 'verified',
-      );
-    }).toList(growable: false);
+    return rows
+        .where((row) {
+          return !blockedUserIds.contains(row['id'] as String);
+        })
+        .map((row) {
+          final name = row['display_name'] as String;
+          final dateOfBirth = row['date_of_birth'] == null
+              ? null
+              : DateTime.parse(row['date_of_birth'] as String);
+          return MatchmakingApplicant(
+            id: row['id'] as String,
+            name: name,
+            initials: _initials(name),
+            age: dateOfBirth == null ? 18 : _age(dateOfBirth),
+            gender: row['gender'] as String? ?? 'Prefer not to say',
+            languages: const {},
+            styles: const {},
+            bio: row['bio'] as String? ?? '',
+            introduction: '',
+            trips: 0,
+            rating: 0,
+            verified: row['verification_status'] == 'verified',
+          );
+        })
+        .toList(growable: false);
   }
 
   Future<void> decideJoinRequest(
-      String requestId, ApplicantDecision decision) async {
+    String requestId,
+    ApplicantDecision decision,
+  ) async {
     _requireUser();
-    await supabase.rpc('decide_matchmaking_join_request', params: {
-      'p_request_id': requestId,
-      'p_status': decision.name,
-    });
+    await supabase.rpc(
+      'decide_matchmaking_join_request',
+      params: {'p_request_id': requestId, 'p_status': decision.name},
+    );
   }
 
   Future<void> sendJoinRequest(String tripId, String message) async {
     _requireUser();
-    final normalizedMessage =
-        MatchmakingValidation.normalizeRequestMessage(message);
-    await supabase.rpc('send_matchmaking_join_request', params: {
-      'p_trip_id': tripId,
-      'p_message': normalizedMessage,
-    });
+    final normalizedMessage = MatchmakingValidation.normalizeRequestMessage(
+      message,
+    );
+    await supabase.rpc(
+      'send_matchmaking_join_request',
+      params: {'p_trip_id': tripId, 'p_message': normalizedMessage},
+    );
   }
 
   Future<List<MatchmakingNotification>> fetchNotifications() async {
@@ -235,8 +276,10 @@ class MatchmakingRepository {
         .order('created_at', ascending: false)
         .limit(50);
     return rows
-        .map((row) =>
-            MatchmakingNotification.fromMap(Map<String, dynamic>.from(row)))
+        .map(
+          (row) =>
+              MatchmakingNotification.fromMap(Map<String, dynamic>.from(row)),
+        )
         .toList(growable: false);
   }
 
@@ -252,11 +295,12 @@ class MatchmakingRepository {
   Future<void> saveTrip(MatchmakingTrip trip) async {
     MatchmakingValidation.validateTrip(trip);
     _requireUser();
-    await supabase.rpc('save_matchmaking_trip', params: {
+    final params = <String, dynamic>{
       'p_id': trip.id,
       'p_destination': trip.destination,
       'p_start_date': _date(trip.startDate),
       'p_end_date': _date(trip.endDate),
+      'p_start_time': trip.startTime?.toUtc().toIso8601String(),
       'p_budget': trip.budget,
       'p_vacancies': trip.vacancies,
       'p_preferred_gender': trip.gender,
@@ -266,19 +310,75 @@ class MatchmakingRepository {
       'p_cover_image_url': trip.imageUrl,
       'p_status': trip.status.name,
       'p_styles': trip.styles.toList(growable: false),
-    });
+    };
+    try {
+      await supabase.rpc('save_matchmaking_trip', params: params);
+    } on PostgrestException catch (error) {
+      if (error.code != 'PGRST202') rethrow;
+      // Older deployments do not support start times yet. Preserve trip
+      // creation/editing until the lifecycle migration is applied.
+      await supabase.rpc(
+        'save_matchmaking_trip',
+        params: {...params}..remove('p_start_time'),
+      );
+    }
+  }
+
+  Future<void> _closeExpiredTripsIfAvailable() async {
+    try {
+      await supabase.rpc('close_expired_matchmaking_trips');
+    } on PostgrestException catch (error) {
+      // Missing migration: do not make the entire matchmaking refresh fail.
+      if (error.code != 'PGRST202') rethrow;
+    }
   }
 
   Future<void> cancelJoinRequest(String requestId) async {
     _requireUser();
-    await supabase.rpc('cancel_matchmaking_join_request', params: {
-      'p_request_id': requestId,
-    });
+    await supabase.rpc(
+      'cancel_matchmaking_join_request',
+      params: {'p_request_id': requestId},
+    );
   }
 
   Future<void> deleteTrip(String id) async {
     _requireUser();
     await supabase.from('matchmaking_trips').delete().eq('id', id);
+  }
+
+  Future<void> removeJoinRequest(String requestId) async {
+    final user = _requireUser();
+    await supabase
+        .from('matchmaking_join_requests')
+        .delete()
+        .eq('id', requestId)
+        .eq('applicant_id', user.id);
+  }
+
+  Future<void> leaveTrip(String tripId) async {
+    _requireUser();
+    await supabase.rpc('leave_matchmaking_trip', params: {'p_trip_id': tripId});
+  }
+
+  Future<void> dismissRemovedTrip(String tripId) async {
+    final user = _requireUser();
+    final preferences = await SharedPreferences.getInstance();
+    final key = 'matchmaking.dismissed_groups.${user.id}';
+    final dismissedIds = preferences.getStringList(key)?.toSet() ?? <String>{};
+    await preferences.setStringList(
+      key,
+      ({...dismissedIds, tripId}.toList()..sort()),
+    );
+    try {
+      await supabase.rpc(
+        'dismiss_removed_trip_group',
+        params: {'p_trip_id': tripId},
+      );
+    } on PostgrestException catch (error) {
+      // Preserve local dismissal on databases that have not deployed the
+      // cleanup RPC yet.
+      if (error.code != 'PGRST202') rethrow;
+    }
   }
 
   Future<void> finishTrip(String id) async {
@@ -302,11 +402,14 @@ class MatchmakingRepository {
     final extension = fileName.contains('.')
         ? fileName.split('.').last.toLowerCase()
         : 'jpg';
-    final safeExtension = const {'jpg', 'jpeg', 'png', 'webp'}.contains(extension)
+    final safeExtension =
+        const {'jpg', 'jpeg', 'png', 'webp'}.contains(extension)
         ? extension
         : 'jpg';
     final path = '${user.id}/$tripId/cover.$safeExtension';
-    await supabase.storage.from('trip-images').uploadBinary(
+    await supabase.storage
+        .from('trip-images')
+        .uploadBinary(
           path,
           bytes,
           fileOptions: const FileOptions(upsert: true),
@@ -317,9 +420,10 @@ class MatchmakingRepository {
   Future<void> setTripSaved(String tripId, {required bool saved}) async {
     final user = _requireUser();
     if (saved) {
-      await supabase
-          .from('matchmaking_saved_trips')
-          .upsert({'user_id': user.id, 'trip_id': tripId});
+      await supabase.from('matchmaking_saved_trips').upsert({
+        'user_id': user.id,
+        'trip_id': tripId,
+      });
     } else {
       await supabase
           .from('matchmaking_saved_trips')
@@ -357,22 +461,22 @@ class MatchmakingRepository {
       .join();
 
   List<String> get discoveryFilters => const [
-        'All',
-        'Adventure',
-        'Culture',
-        'Luxury',
-        'Nature',
-        'Foodie',
-      ];
+    'All',
+    'Adventure',
+    'Culture',
+    'Luxury',
+    'Nature',
+    'Foodie',
+  ];
 
   List<String> get travelStyles => const [
-        'Adventure',
-        'Foodie',
-        'Luxury',
-        'Backpacker',
-        'Nature',
-        'Culture',
-      ];
+    'Adventure',
+    'Foodie',
+    'Luxury',
+    'Backpacker',
+    'Nature',
+    'Culture',
+  ];
 }
 
 const _bali =
