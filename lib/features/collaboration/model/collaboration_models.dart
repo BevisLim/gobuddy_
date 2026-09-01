@@ -39,6 +39,11 @@ class TripCall {
     required this.status,
     required this.createdAt,
     this.initiatedByName,
+    this.connectedAt,
+    this.endedAt,
+    this.endReason,
+    this.durationSeconds,
+    this.hadVideo = false,
   });
 
   final String id;
@@ -47,8 +52,32 @@ class TripCall {
   final String status;
   final DateTime createdAt;
   final String? initiatedByName;
+  final DateTime? connectedAt;
+  final DateTime? endedAt;
+  final String? endReason;
+  final int? durationSeconds;
+  final bool hadVideo;
 
-  bool get isVideo => callType == 'video';
+  bool get isVideo => hadVideo || callType == 'video';
+
+  TripCall copyWith({
+    String? callType,
+    String? status,
+    DateTime? connectedAt,
+    bool? hadVideo,
+  }) => TripCall(
+    id: id,
+    initiatedBy: initiatedBy,
+    callType: callType ?? this.callType,
+    status: status ?? this.status,
+    createdAt: createdAt,
+    initiatedByName: initiatedByName,
+    connectedAt: connectedAt ?? this.connectedAt,
+    endedAt: endedAt,
+    endReason: endReason,
+    durationSeconds: durationSeconds,
+    hadVideo: hadVideo ?? this.hadVideo,
+  );
 
   factory TripCall.fromMap(
     Map<String, dynamic> map, {
@@ -60,6 +89,15 @@ class TripCall {
     status: map['status'] as String,
     createdAt: DateTime.parse(map['created_at'] as String).toLocal(),
     initiatedByName: initiatedByName,
+    connectedAt: map['connected_at'] == null
+        ? null
+        : DateTime.parse(map['connected_at'] as String).toLocal(),
+    endedAt: map['ended_at'] == null
+        ? null
+        : DateTime.parse(map['ended_at'] as String).toLocal(),
+    endReason: map['end_reason'] as String?,
+    durationSeconds: map['duration_seconds'] as int?,
+    hadVideo: map['had_video'] as bool? ?? false,
   );
 }
 
