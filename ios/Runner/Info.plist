@@ -7,7 +7,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>GoBuddy uses your camera for video calls and sharing photos with your trip group.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>GoBuddy uses your microphone for voice and video calls.</string>
+	<string>GoBuddy uses your microphone to record voice messages and for voice and video calls.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

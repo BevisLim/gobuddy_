@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
@@ -15,6 +17,7 @@ import 'package:flutter_mvvm_riverpod/features/collaboration/ui/view_model/group
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/activity_proposal_dialog.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_recorder.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_message_player.dart';
+import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_recording_preview.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/view_model/matchmaking_view_model.dart';
 import 'package:flutter_mvvm_riverpod/features/safety/ui/widgets/block_user_action.dart';
 import 'package:flutter_mvvm_riverpod/features/safety/ui/widgets/report_user_action.dart';
@@ -601,26 +604,36 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
   final _messageController = TextEditingController();
   final _messagesController = ScrollController();
   final _voiceRecorder = VoiceRecorder();
+  Timer? _recordingTimer;
   bool _isTyping = false;
   bool _readMarked = false;
   bool _isRecordingVoice = false;
+  bool _isSendingVoice = false;
+  Duration _recordingDuration = Duration.zero;
+  Uint8List? _voicePreviewBytes;
+  String _voicePreviewExtension = 'webm';
 
   @override
   void initState() {
     super.initState();
-    _scheduleScrollToBottom();
+    _scheduleScrollToBottom(animated: false);
   }
 
   @override
   void didUpdateWidget(covariant _ChatTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.state.messages.length != widget.state.messages.length) {
-      _scheduleScrollToBottom();
+    final oldLatest = _latestMessageId(oldWidget.state.messages);
+    final newLatest = _latestMessageId(widget.state.messages);
+    if (oldLatest != newLatest ||
+        oldWidget.state.messages.length != widget.state.messages.length) {
+      _readMarked = false;
+      _scheduleScrollToBottom(animated: true);
     }
   }
 
   @override
   void dispose() {
+    _recordingTimer?.cancel();
     _voiceRecorder.dispose();
     _messagesController.dispose();
     _messageController.dispose();
@@ -638,14 +651,21 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
         (_) => viewModel.markMessagesRead(),
       );
     }
+    final messages = [...widget.state.messages]
+      ..sort((first, second) {
+        final byTime = first.sentAt.compareTo(second.sentAt);
+        return byTime != 0 ? byTime : first.id.compareTo(second.id);
+      });
     return Column(
       children: [
         Expanded(
           child: ListView(
             controller: _messagesController,
+            reverse: false,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.all(16),
             children: [
-              ...widget.state.messages.map(
+              ...messages.map(
                 (message) => _MessageBubble(
                   message: message,
                   isMine: message.senderId == widget.state.currentUserId,
@@ -666,120 +686,333 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
           top: false,
           child: Padding(
             padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                IconButton(
-                  onPressed: () =>
-                      _runWorkspaceAction(context, viewModel.pickAndShareFile),
-                  icon: const Icon(Icons.attach_file),
-                  tooltip: 'Share file',
-                ),
-                IconButton(
-                  onPressed: widget.state.isMuted
-                      ? null
-                      : () => _runWorkspaceAction(
-                          context,
-                          viewModel.takeAndSharePhoto,
-                        ),
-                  icon: const Icon(Icons.camera_alt_outlined),
-                  tooltip: 'Take photo',
-                ),
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    onChanged: (value) {
-                      final typing = value.trim().isNotEmpty;
-                      if (typing != _isTyping) {
-                        _isTyping = typing;
-                        viewModel.setTyping(typing);
-                      }
-                    },
-                    enabled: !widget.state.isMuted,
-                    decoration: const InputDecoration(
-                      hintText: 'Message group',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                IconButton(
-                  onPressed: widget.state.isMuted
-                      ? null
-                      : () async {
-                          try {
-                            await viewModel.sendMessage(
-                              _messageController.text,
-                            );
-                            _messageController.clear();
-                            _isTyping = false;
-                          } catch (error) {
-                            if (!context.mounted) return;
-                            ScaffoldMessenger.of(context)
-                              ..hideCurrentSnackBar()
-                              ..showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Could not send message: $error',
-                                  ),
-                                ),
-                              );
-                          }
-                        },
-                  icon: const Icon(Icons.send),
-                ),
-                IconButton(
-                  onPressed: widget.state.isMuted
-                      ? null
-                      : () => _toggleVoiceRecording(viewModel),
-                  icon: Icon(
-                    _isRecordingVoice ? Icons.stop_circle : Icons.mic,
-                    color: _isRecordingVoice
-                        ? Theme.of(context).colorScheme.error
-                        : null,
-                  ),
-                  tooltip: _isRecordingVoice
-                      ? 'Stop and send voice message'
-                      : 'Record voice message',
-                ),
-              ],
-            ),
+            child: _buildComposer(viewModel),
           ),
         ),
       ],
     );
   }
 
-  void _scheduleScrollToBottom() {
+  Widget _buildComposer(GroupCollaborationViewModel viewModel) {
+    if (_isRecordingVoice) return _buildRecordingBar();
+    final previewBytes = _voicePreviewBytes;
+    if (previewBytes != null) {
+      return _buildVoicePreviewBar(viewModel, previewBytes);
+    }
+    return Row(
+      children: [
+        IconButton(
+          onPressed: () =>
+              _runWorkspaceAction(context, viewModel.pickAndShareFile),
+          icon: const Icon(Icons.attach_file),
+          tooltip: 'Share file',
+        ),
+        IconButton(
+          onPressed: widget.state.isMuted
+              ? null
+              : () => _runWorkspaceAction(context, viewModel.takeAndSharePhoto),
+          icon: const Icon(Icons.camera_alt_outlined),
+          tooltip: 'Take photo',
+        ),
+        Expanded(
+          child: TextField(
+            controller: _messageController,
+            onChanged: (value) {
+              final typing = value.trim().isNotEmpty;
+              if (typing != _isTyping) {
+                _isTyping = typing;
+                viewModel.setTyping(typing);
+              }
+            },
+            enabled: !widget.state.isMuted,
+            decoration: const InputDecoration(
+              hintText: 'Message group',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        IconButton(
+          onPressed: widget.state.isMuted ? null : () => _sendText(viewModel),
+          icon: const Icon(Icons.send),
+          tooltip: 'Send message',
+        ),
+        IconButton(
+          onPressed: widget.state.isMuted ? null : () => _startVoiceRecording(),
+          icon: const Icon(Icons.mic),
+          tooltip: 'Record voice message',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRecordingBar() {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: colors.errorContainer.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: _cancelVoiceRecording,
+            icon: const Icon(Icons.delete_outline_rounded),
+            tooltip: 'Discard recording',
+          ),
+          const _BlinkingRecordingDot(),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Recording  ${_formatVoiceDuration(_recordingDuration)}',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: colors.onErrorContainer,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+          IconButton.filled(
+            onPressed: _stopVoiceRecording,
+            style: IconButton.styleFrom(
+              backgroundColor: colors.error,
+              foregroundColor: colors.onError,
+            ),
+            icon: const Icon(Icons.stop_rounded),
+            tooltip: 'Stop recording',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVoicePreviewBar(
+    GroupCollaborationViewModel viewModel,
+    Uint8List previewBytes,
+  ) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: _isSendingVoice ? null : _discardVoicePreview,
+            color: colors.error,
+            icon: const Icon(Icons.delete_outline_rounded),
+            tooltip: 'Delete voice message',
+          ),
+          VoiceRecordingPreviewButton(
+            bytes: previewBytes,
+            fileExtension: _voicePreviewExtension,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Voice message preview',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  _formatVoiceDuration(_recordingDuration),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton.filled(
+            onPressed: _isSendingVoice
+                ? null
+                : () => _sendVoicePreview(viewModel, previewBytes),
+            icon: _isSendingVoice
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.send_rounded),
+            tooltip: 'Send voice message',
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _scheduleScrollToBottom({required bool animated}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_messagesController.hasClients) return;
-      _messagesController.animateTo(
-        _messagesController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-      );
+      if (!mounted || !_messagesController.hasClients) return;
+      final target = _messagesController.position.maxScrollExtent;
+      if (animated) {
+        _messagesController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+        );
+      } else {
+        _messagesController.jumpTo(target);
+      }
     });
   }
 
-  Future<void> _toggleVoiceRecording(
-    GroupCollaborationViewModel viewModel,
-  ) async {
-    try {
-      if (!_isRecordingVoice) {
-        await _voiceRecorder.start();
-        if (mounted) setState(() => _isRecordingVoice = true);
-        return;
-      }
-      final bytes = await _voiceRecorder.stop();
-      if (mounted) setState(() => _isRecordingVoice = false);
-      if (bytes != null) await viewModel.shareVoiceMessage(bytes);
-    } catch (error) {
-      if (mounted) {
-        setState(() => _isRecordingVoice = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not record voice message: $error')),
-        );
+  String? _latestMessageId(List<TripMessage> messages) {
+    if (messages.isEmpty) return null;
+    var latest = messages.first;
+    for (final message in messages.skip(1)) {
+      if (message.sentAt.isAfter(latest.sentAt) ||
+          (message.sentAt == latest.sentAt &&
+              message.id.compareTo(latest.id) > 0)) {
+        latest = message;
       }
     }
+    return latest.id;
   }
+
+  Future<void> _sendText(GroupCollaborationViewModel viewModel) async {
+    try {
+      await viewModel.sendMessage(_messageController.text);
+      _messageController.clear();
+      _isTyping = false;
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text('Could not send message: $error')),
+        );
+    }
+  }
+
+  Future<void> _startVoiceRecording() async {
+    try {
+      await _voiceRecorder.start();
+      if (!mounted) return;
+      _recordingTimer?.cancel();
+      setState(() {
+        _recordingDuration = Duration.zero;
+        _isRecordingVoice = true;
+      });
+      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) {
+          setState(() => _recordingDuration += const Duration(seconds: 1));
+        }
+      });
+    } catch (error) {
+      _showVoiceError(error);
+    }
+  }
+
+  Future<void> _stopVoiceRecording() async {
+    _recordingTimer?.cancel();
+    try {
+      final bytes = await _voiceRecorder.stop();
+      if (bytes == null || bytes.isEmpty) {
+        throw StateError('No sound was recorded. Please try again.');
+      }
+      if (!mounted) return;
+      setState(() {
+        _isRecordingVoice = false;
+        _voicePreviewBytes = bytes;
+        _voicePreviewExtension = _voiceRecorder.fileExtension;
+      });
+    } catch (error) {
+      if (mounted) setState(() => _isRecordingVoice = false);
+      _showVoiceError(error);
+    }
+  }
+
+  Future<void> _cancelVoiceRecording() async {
+    _recordingTimer?.cancel();
+    try {
+      await _voiceRecorder.stop();
+    } catch (_) {
+      // The recording is being discarded, so cleanup can continue.
+    }
+    _resetVoiceComposer();
+  }
+
+  void _discardVoicePreview() => _resetVoiceComposer();
+
+  Future<void> _sendVoicePreview(
+    GroupCollaborationViewModel viewModel,
+    Uint8List bytes,
+  ) async {
+    setState(() => _isSendingVoice = true);
+    try {
+      await viewModel.shareVoiceMessage(
+        bytes,
+        fileExtension: _voicePreviewExtension,
+      );
+      _resetVoiceComposer();
+    } catch (error) {
+      if (mounted) setState(() => _isSendingVoice = false);
+      _showVoiceError(error, action: 'send');
+    }
+  }
+
+  void _resetVoiceComposer() {
+    if (!mounted) return;
+    setState(() {
+      _recordingTimer?.cancel();
+      _isRecordingVoice = false;
+      _isSendingVoice = false;
+      _voicePreviewBytes = null;
+      _recordingDuration = Duration.zero;
+    });
+  }
+
+  void _showVoiceError(Object error, {String action = 'record'}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Could not $action voice message: $error')),
+    );
+  }
+}
+
+class _BlinkingRecordingDot extends StatefulWidget {
+  const _BlinkingRecordingDot();
+
+  @override
+  State<_BlinkingRecordingDot> createState() => _BlinkingRecordingDotState();
+}
+
+class _BlinkingRecordingDotState extends State<_BlinkingRecordingDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 650),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(
+    opacity: Tween<double>(begin: 0.25, end: 1).animate(_controller),
+    child: Container(
+      width: 11,
+      height: 11,
+      decoration: const BoxDecoration(
+        color: Colors.red,
+        shape: BoxShape.circle,
+      ),
+    ),
+  );
+}
+
+String _formatVoiceDuration(Duration duration) {
+  final minutes = duration.inMinutes;
+  final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+  return '$minutes:$seconds';
 }
 
 class _MessageBubble extends StatelessWidget {
@@ -840,7 +1073,11 @@ class _MessageBubble extends StatelessWidget {
                   ),
                 )
               else if (voiceUrl != null)
-                VoiceMessagePlayer(url: voiceUrl)
+                VoiceMessagePlayer(
+                  url: voiceUrl,
+                  isMine: isMine,
+                  isRead: message.readByCount > 0,
+                )
               else if (sharedActivity != null)
                 _SharedActivityPreview(parts: sharedActivity)
               else if (systemMessage != null)
@@ -1003,9 +1240,9 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
                         if (mounted) setState(() => _selectedDay = days.length);
                       } catch (error) {
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('$error')),
-                          );
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text('$error')));
                         }
                       }
                     },
@@ -1092,10 +1329,7 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
                           ),
                         ),
                         ...state.polls.map(
-                          (poll) => _TimelinePollCard(
-                            state: state,
-                            poll: poll,
-                          ),
+                          (poll) => _TimelinePollCard(state: state, poll: poll),
                         ),
                       ],
                     ],
@@ -1299,7 +1533,10 @@ class _TimelineActivityItem extends ConsumerWidget {
                 Container(
                   width: 10,
                   height: 10,
-                  decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+                  decoration: BoxDecoration(
+                    color: accent,
+                    shape: BoxShape.circle,
+                  ),
                 ),
                 if (!isLast)
                   Expanded(
@@ -1329,9 +1566,7 @@ class _TimelineActivityItem extends ConsumerWidget {
                     Row(
                       children: [
                         _TimelinePill(
-                          label: inProgress
-                              ? 'In Progress'
-                              : 'Upcoming',
+                          label: inProgress ? 'In Progress' : 'Upcoming',
                           foreground: inProgress
                               ? const Color(0xFF6D28D9)
                               : const Color(0xFFB45309),
@@ -1374,13 +1609,18 @@ class _TimelineActivityItem extends ConsumerWidget {
                       ),
                     ],
                     const SizedBox(height: 12),
-                    Text('Enjoy ${activity.title} as part of the group itinerary.'),
+                    Text(
+                      'Enjoy ${activity.title} as part of the group itinerary.',
+                    ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
                         CircleAvatar(
                           radius: 13,
-                          child: Text(_initials(organizer), style: const TextStyle(fontSize: 10)),
+                          child: Text(
+                            _initials(organizer),
+                            style: const TextStyle(fontSize: 10),
+                          ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(child: Text('Organised by $organizer')),
@@ -1466,9 +1706,7 @@ Future<void> _confirmDeleteActivity(
     context: context,
     builder: (dialogContext) => AlertDialog(
       title: const Text('Remove Activity?'),
-      content: Text(
-        'Are you sure you want to delete ${activity.title}?',
-      ),
+      content: Text('Are you sure you want to delete ${activity.title}?'),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(dialogContext, false),
@@ -1498,7 +1736,8 @@ Future<void> _showActivityShareSheet(
 ) async {
   final link =
       'https://gobuddy.app/trips/${state.tripId}/activities/${activity.id}';
-  final summary = '${activity.title}\n'
+  final summary =
+      '${activity.title}\n'
       '${_monthDay(activity.startTime)} at ${_clockTime(activity.startTime)}\n'
       '${activity.location ?? 'Location to be confirmed'}\n$link';
   await showModalBottomSheet<void>(
@@ -1625,8 +1864,18 @@ bool _sameDay(DateTime first, DateTime second) =>
 
 String _monthDay(DateTime date) {
   const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   return '${months[date.month - 1]} ${date.day}';
 }
@@ -1671,10 +1920,7 @@ class _TimelineTab extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Text(
-          'Timeline',
-          style: Theme.of(context).textTheme.headlineSmall,
-        ),
+        Text('Timeline', style: Theme.of(context).textTheme.headlineSmall),
         Text('${state.activities.length} planned activities'),
         const SizedBox(height: 16),
         Card(
