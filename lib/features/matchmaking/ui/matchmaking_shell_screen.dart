@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -17,6 +18,7 @@ import '../model/matchmaking_models.dart';
 import '../model/matchmaking_validation.dart';
 import '../model/matchmaking_notification.dart';
 import '../model/matchmaking_page.dart';
+import 'state/matchmaking_state.dart';
 import 'view_model/matchmaking_view_model.dart';
 import '../../safety/repository/safety_check_in_configuration_repository.dart';
 import '../../safety/ui/widgets/user_safety_actions.dart';
@@ -41,10 +43,18 @@ class _MatchmakingShellScreenState
   RealtimeChannel? _tripsChannel;
   StreamSubscription<AuthState>? _authSubscription;
   String? _subscribedUserId;
+  Timer? _tripStartTimer;
+  bool _checkingTripStarts = false;
+  bool _tripStartSyncPending = false;
 
   @override
   void initState() {
     super.initState();
+    ref.listenManual<MatchmakingState>(
+      matchmakingViewModelProvider,
+      (_, next) => unawaited(_syncTripStartPrompts(next)),
+      fireImmediately: true,
+    );
     _subscribeToTrips(supabase.auth.currentUser?.id);
     _authSubscription = supabase.auth.onAuthStateChange.listen((authState) {
       _subscribeToTrips(authState.session?.user.id);
@@ -114,6 +124,73 @@ class _MatchmakingShellScreenState
     }
   }
 
+  Future<void> _syncTripStartPrompts(MatchmakingState state) async {
+    _tripStartTimer?.cancel();
+    _tripStartTimer = null;
+    if (_checkingTripStarts) {
+      _tripStartSyncPending = true;
+      return;
+    }
+    if (!mounted || !state.isAuthenticated) return;
+
+    _checkingTripStarts = true;
+    try {
+      final involvedTrips = state.trips.where(
+        (trip) =>
+            trip.status == TripStatus.active &&
+            (trip.isOwned || state.joinedTripIds.contains(trip.id)),
+      );
+      final now = DateTime.now();
+      final startedTrips = involvedTrips
+          .where(
+            (trip) =>
+                !trip.startsAt.isAfter(now) && now.isBefore(trip.endsAfter),
+          )
+          .toList()
+        ..sort((a, b) => a.startsAt.compareTo(b.startsAt));
+      final preferences = await SharedPreferences.getInstance();
+
+      for (final trip in startedTrips) {
+        final promptKey = _tripStartPromptKey(state.currentUserId, trip.id);
+        if (preferences.getBool(promptKey) == true) continue;
+
+        // Persist before opening the dialog so realtime refreshes and app
+        // rebuilds cannot enqueue a duplicate prompt for this user and trip.
+        await preferences.setBool(promptKey, true);
+        await _offerSafetyCheckIn();
+        if (!mounted || state.currentUserId != _subscribedUserId) return;
+      }
+
+      final nextStart = involvedTrips
+          .map((trip) => trip.startsAt)
+          .where((start) => start.isAfter(now))
+          .fold<DateTime?>(
+            null,
+            (earliest, start) =>
+                earliest == null || start.isBefore(earliest) ? start : earliest,
+          );
+      if (nextStart != null && mounted) {
+        _tripStartTimer = Timer(
+          nextStart.difference(DateTime.now()),
+          () => _syncTripStartPrompts(
+            ref.read(matchmakingViewModelProvider),
+          ),
+        );
+      }
+    } finally {
+      _checkingTripStarts = false;
+      if (_tripStartSyncPending && mounted) {
+        _tripStartSyncPending = false;
+        unawaited(
+          _syncTripStartPrompts(ref.read(matchmakingViewModelProvider)),
+        );
+      }
+    }
+  }
+
+  String _tripStartPromptKey(String userId, String tripId) =>
+      'safety_check_in_trip_start_prompt:$userId:$tripId';
+
   Future<void> _offerSafetyCheckIn() async {
     final configuration = await ref
         .read(safetyCheckInConfigurationRepositoryProvider)
@@ -160,6 +237,7 @@ class _MatchmakingShellScreenState
   @override
   void dispose() {
     _authSubscription?.cancel();
+    _tripStartTimer?.cancel();
     final channel = _tripsChannel;
     if (channel != null) supabase.removeChannel(channel);
     super.dispose();
@@ -228,7 +306,6 @@ class _MatchmakingShellScreenState
         hostedTrips: state.ownedTrips,
         onBack: () => viewModel.goTo(MatchmakingPage.discover),
         onPublish: viewModel.saveTrip,
-        onTripStarted: _offerSafetyCheckIn,
         onUploadImage: viewModel.uploadTripCover,
       ),
       MatchmakingPage.edit => InteractiveTripFormPage(
@@ -1183,7 +1260,6 @@ class TripDetailsPage extends StatelessWidget {
 class InteractiveTripFormPage extends StatefulWidget {
   final VoidCallback onBack;
   final ValueChanged<MatchmakingTrip> onPublish;
-  final Future<void> Function()? onTripStarted;
   final Future<String> Function(String, Uint8List, String) onUploadImage;
   final VoidCallback? onDelete;
   final MatchmakingTrip? initialTrip;
@@ -1193,7 +1269,6 @@ class InteractiveTripFormPage extends StatefulWidget {
     super.key,
     required this.onBack,
     required this.onPublish,
-    this.onTripStarted,
     required this.onUploadImage,
     this.onDelete,
     this.initialTrip,
@@ -1512,9 +1587,6 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
         isOwned: true,
       ),
     );
-    if (!widget.edit) {
-      await widget.onTripStarted?.call();
-    }
   }
 
   DateTime? _parseDate(String value) {
