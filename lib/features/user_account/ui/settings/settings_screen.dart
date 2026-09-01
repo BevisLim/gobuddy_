@@ -146,11 +146,23 @@ class SettingsScreen extends ConsumerWidget {
                 const _SectionHeader(title: 'Privacy'),
                 const SizedBox(height: 8),
                 _SettingsCard(
-                  child: _SettingsTile(
-                    icon: Icons.block_rounded,
-                    title: 'Blocked Users',
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () => context.push(Routes.blockedUsers),
+                  child: Column(
+                    children: [
+                      _SettingsTile(
+                        icon: Icons.lock_reset_rounded,
+                        title: 'Change Password',
+                        subtitle: 'Update your account password',
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () => context.push(Routes.changePassword),
+                      ),
+                      const Divider(height: 1, indent: 56),
+                      _SettingsTile(
+                        icon: Icons.block_rounded,
+                        title: 'Blocked Users',
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () => context.push(Routes.blockedUsers),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 28),
