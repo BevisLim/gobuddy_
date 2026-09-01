@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
@@ -10,11 +12,12 @@ import 'package:flutter_mvvm_riverpod/core/environment/env.dart';
 import 'package:flutter_mvvm_riverpod/core/permissions/app_permission_service.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration_models.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/repository/collaboration_repository.dart';
-import 'package:flutter_mvvm_riverpod/features/collaboration/ui/jitsi_call_screen.dart';
+import 'package:flutter_mvvm_riverpod/features/collaboration/ui/call_screen.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/view_model/group_collaboration_view_model.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/activity_proposal_dialog.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_recorder.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_message_player.dart';
+import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_recording_preview.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/view_model/matchmaking_view_model.dart';
 import 'package:flutter_mvvm_riverpod/features/safety/ui/widgets/block_user_action.dart';
 import 'package:flutter_mvvm_riverpod/features/safety/ui/widgets/report_user_action.dart';
@@ -132,6 +135,8 @@ class _Workspace extends ConsumerStatefulWidget {
 
 class _WorkspaceState extends ConsumerState<_Workspace> {
   final Set<String> _seenNotificationIds = {};
+  final Set<String> _handledIncomingCallIds = {};
+  bool _incomingCallDialogVisible = false;
 
   @override
   Widget build(BuildContext context) {
@@ -142,6 +147,7 @@ class _WorkspaceState extends ConsumerState<_Workspace> {
     final viewModel = ref.read(
       groupCollaborationViewModelProvider(state.tripId).notifier,
     );
+    _scheduleIncomingCall(state, viewModel);
     return Scaffold(
       appBar: AppBar(
         title: InkWell(
@@ -161,6 +167,42 @@ class _WorkspaceState extends ConsumerState<_Workspace> {
           ),
         ),
         actions: [
+          IconButton(
+            onPressed: () {
+              final activeCall = _activeCall(state);
+              _openInAppCall(
+                context,
+                state,
+                activeCall?.callType ?? 'voice',
+                activeCall == null
+                    ? () => viewModel.startCall('voice')
+                    : () => viewModel.joinCall(activeCall),
+                viewModel,
+              );
+            },
+            icon: const Icon(Icons.call_outlined),
+            tooltip: _activeCall(state) == null
+                ? 'Start voice call'
+                : 'Join active call',
+          ),
+          IconButton(
+            onPressed: () {
+              final activeCall = _activeCall(state);
+              _openInAppCall(
+                context,
+                state,
+                activeCall?.callType ?? 'video',
+                activeCall == null
+                    ? () => viewModel.startCall('video')
+                    : () => viewModel.joinCall(activeCall),
+                viewModel,
+              );
+            },
+            icon: const Icon(Icons.videocam_outlined),
+            tooltip: _activeCall(state) == null
+                ? 'Start video call'
+                : 'Join active call',
+          ),
           IconButton(
             onPressed: () async {
               final newlySeenIds = state.unreadNotifications
@@ -193,6 +235,79 @@ class _WorkspaceState extends ConsumerState<_Workspace> {
       ),
       body: _ChatTab(state: state),
     );
+  }
+
+  void _scheduleIncomingCall(
+    GroupCollaborationState state,
+    GroupCollaborationViewModel viewModel,
+  ) {
+    if (_incomingCallDialogVisible) return;
+    final cutoff = DateTime.now().subtract(const Duration(minutes: 5));
+    final incomingCalls =
+        state.calls
+            .where(
+              (call) =>
+                  call.status != 'ended' &&
+                  call.initiatedBy != state.currentUserId &&
+                  call.createdAt.isAfter(cutoff) &&
+                  !_handledIncomingCallIds.contains(call.id),
+            )
+            .toList()
+          ..sort(
+            (first, second) => second.createdAt.compareTo(first.createdAt),
+          );
+    final call = incomingCalls.firstOrNull;
+    if (call == null) return;
+
+    _handledIncomingCallIds.add(call.id);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || _incomingCallDialogVisible) return;
+      _incomingCallDialogVisible = true;
+      final isVideo = call.callType == 'video';
+      final accepted = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          icon: CircleAvatar(
+            radius: 30,
+            backgroundColor: Theme.of(
+              dialogContext,
+            ).colorScheme.primaryContainer,
+            child: Icon(
+              isVideo ? Icons.videocam : Icons.call,
+              size: 30,
+              color: Theme.of(dialogContext).colorScheme.onPrimaryContainer,
+            ),
+          ),
+          title: Text('Incoming group ${isVideo ? 'video' : 'voice'} call'),
+          content: Text(
+            '${call.initiatedByName} started a call with the Trip workspace.',
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              icon: const Icon(Icons.call_end),
+              label: const Text('Decline'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              icon: const Icon(Icons.call),
+              label: const Text('Accept'),
+            ),
+          ],
+        ),
+      );
+      _incomingCallDialogVisible = false;
+      if (accepted != true || !mounted) return;
+      await _openInAppCall(
+        context,
+        state,
+        call.callType,
+        () => viewModel.joinCall(call),
+        viewModel,
+      );
+    });
   }
 }
 
@@ -236,9 +351,12 @@ class GroupInfoScreen extends ConsumerWidget {
                 label: 'Voice',
                 onTap: () => _openInAppCall(
                   context,
-                  state.tripId,
-                  'voice',
-                  () => viewModel.startCall('voice'),
+                  state,
+                  _activeCall(state)?.callType ?? 'voice',
+                  _activeCall(state) == null
+                      ? () => viewModel.startCall('voice')
+                      : () => viewModel.joinCall(_activeCall(state)!),
+                  viewModel,
                 ),
               ),
               _GroupInfoAction(
@@ -246,9 +364,12 @@ class GroupInfoScreen extends ConsumerWidget {
                 label: 'Video',
                 onTap: () => _openInAppCall(
                   context,
-                  state.tripId,
-                  'video',
-                  () => viewModel.startCall('video'),
+                  state,
+                  _activeCall(state)?.callType ?? 'video',
+                  _activeCall(state) == null
+                      ? () => viewModel.startCall('video')
+                      : () => viewModel.joinCall(_activeCall(state)!),
+                  viewModel,
                 ),
               ),
               _GroupInfoAction(
@@ -610,26 +731,36 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
   final _messageController = TextEditingController();
   final _messagesController = ScrollController();
   final _voiceRecorder = VoiceRecorder();
+  Timer? _recordingTimer;
   bool _isTyping = false;
   bool _readMarked = false;
   bool _isRecordingVoice = false;
+  bool _isSendingVoice = false;
+  Duration _recordingDuration = Duration.zero;
+  Uint8List? _voicePreviewBytes;
+  String _voicePreviewExtension = 'webm';
 
   @override
   void initState() {
     super.initState();
-    _scheduleScrollToBottom();
+    _scheduleScrollToBottom(animated: false);
   }
 
   @override
   void didUpdateWidget(covariant _ChatTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.state.messages.length != widget.state.messages.length) {
-      _scheduleScrollToBottom();
+    final oldLatest = _latestMessageId(oldWidget.state.messages);
+    final newLatest = _latestMessageId(widget.state.messages);
+    if (oldLatest != newLatest ||
+        oldWidget.state.messages.length != widget.state.messages.length) {
+      _readMarked = false;
+      _scheduleScrollToBottom(animated: true);
     }
   }
 
   @override
   void dispose() {
+    _recordingTimer?.cancel();
     _voiceRecorder.dispose();
     _messagesController.dispose();
     _messageController.dispose();
@@ -647,14 +778,21 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
         (_) => viewModel.markMessagesRead(),
       );
     }
+    final messages = [...widget.state.messages]
+      ..sort((first, second) {
+        final byTime = first.sentAt.compareTo(second.sentAt);
+        return byTime != 0 ? byTime : first.id.compareTo(second.id);
+      });
     return Column(
       children: [
         Expanded(
           child: ListView(
             controller: _messagesController,
+            reverse: false,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.all(16),
             children: [
-              ...widget.state.messages.map(
+              ...messages.map(
                 (message) => _MessageBubble(
                   message: message,
                   isMine: message.senderId == widget.state.currentUserId,
@@ -675,120 +813,333 @@ class _ChatTabState extends ConsumerState<_ChatTab> {
           top: false,
           child: Padding(
             padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                IconButton(
-                  onPressed: () =>
-                      _runWorkspaceAction(context, viewModel.pickAndShareFile),
-                  icon: const Icon(Icons.attach_file),
-                  tooltip: 'Share file',
-                ),
-                IconButton(
-                  onPressed: widget.state.isMuted
-                      ? null
-                      : () => _runWorkspaceAction(
-                          context,
-                          viewModel.takeAndSharePhoto,
-                        ),
-                  icon: const Icon(Icons.camera_alt_outlined),
-                  tooltip: 'Take photo',
-                ),
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    onChanged: (value) {
-                      final typing = value.trim().isNotEmpty;
-                      if (typing != _isTyping) {
-                        _isTyping = typing;
-                        viewModel.setTyping(typing);
-                      }
-                    },
-                    enabled: !widget.state.isMuted,
-                    decoration: const InputDecoration(
-                      hintText: 'Message group',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                IconButton(
-                  onPressed: widget.state.isMuted
-                      ? null
-                      : () async {
-                          try {
-                            await viewModel.sendMessage(
-                              _messageController.text,
-                            );
-                            _messageController.clear();
-                            _isTyping = false;
-                          } catch (error) {
-                            if (!context.mounted) return;
-                            ScaffoldMessenger.of(context)
-                              ..hideCurrentSnackBar()
-                              ..showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Could not send message: $error',
-                                  ),
-                                ),
-                              );
-                          }
-                        },
-                  icon: const Icon(Icons.send),
-                ),
-                IconButton(
-                  onPressed: widget.state.isMuted
-                      ? null
-                      : () => _toggleVoiceRecording(viewModel),
-                  icon: Icon(
-                    _isRecordingVoice ? Icons.stop_circle : Icons.mic,
-                    color: _isRecordingVoice
-                        ? Theme.of(context).colorScheme.error
-                        : null,
-                  ),
-                  tooltip: _isRecordingVoice
-                      ? 'Stop and send voice message'
-                      : 'Record voice message',
-                ),
-              ],
-            ),
+            child: _buildComposer(viewModel),
           ),
         ),
       ],
     );
   }
 
-  void _scheduleScrollToBottom() {
+  Widget _buildComposer(GroupCollaborationViewModel viewModel) {
+    if (_isRecordingVoice) return _buildRecordingBar();
+    final previewBytes = _voicePreviewBytes;
+    if (previewBytes != null) {
+      return _buildVoicePreviewBar(viewModel, previewBytes);
+    }
+    return Row(
+      children: [
+        IconButton(
+          onPressed: () =>
+              _runWorkspaceAction(context, viewModel.pickAndShareFile),
+          icon: const Icon(Icons.attach_file),
+          tooltip: 'Share file',
+        ),
+        IconButton(
+          onPressed: widget.state.isMuted
+              ? null
+              : () => _runWorkspaceAction(context, viewModel.takeAndSharePhoto),
+          icon: const Icon(Icons.camera_alt_outlined),
+          tooltip: 'Take photo',
+        ),
+        Expanded(
+          child: TextField(
+            controller: _messageController,
+            onChanged: (value) {
+              final typing = value.trim().isNotEmpty;
+              if (typing != _isTyping) {
+                _isTyping = typing;
+                viewModel.setTyping(typing);
+              }
+            },
+            enabled: !widget.state.isMuted,
+            decoration: const InputDecoration(
+              hintText: 'Message group',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        IconButton(
+          onPressed: widget.state.isMuted ? null : () => _sendText(viewModel),
+          icon: const Icon(Icons.send),
+          tooltip: 'Send message',
+        ),
+        IconButton(
+          onPressed: widget.state.isMuted ? null : () => _startVoiceRecording(),
+          icon: const Icon(Icons.mic),
+          tooltip: 'Record voice message',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRecordingBar() {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: colors.errorContainer.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: _cancelVoiceRecording,
+            icon: const Icon(Icons.delete_outline_rounded),
+            tooltip: 'Discard recording',
+          ),
+          const _BlinkingRecordingDot(),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Recording  ${_formatVoiceDuration(_recordingDuration)}',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: colors.onErrorContainer,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+          IconButton.filled(
+            onPressed: _stopVoiceRecording,
+            style: IconButton.styleFrom(
+              backgroundColor: colors.error,
+              foregroundColor: colors.onError,
+            ),
+            icon: const Icon(Icons.stop_rounded),
+            tooltip: 'Stop recording',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVoicePreviewBar(
+    GroupCollaborationViewModel viewModel,
+    Uint8List previewBytes,
+  ) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: _isSendingVoice ? null : _discardVoicePreview,
+            color: colors.error,
+            icon: const Icon(Icons.delete_outline_rounded),
+            tooltip: 'Delete voice message',
+          ),
+          VoiceRecordingPreviewButton(
+            bytes: previewBytes,
+            fileExtension: _voicePreviewExtension,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Voice message preview',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  _formatVoiceDuration(_recordingDuration),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton.filled(
+            onPressed: _isSendingVoice
+                ? null
+                : () => _sendVoicePreview(viewModel, previewBytes),
+            icon: _isSendingVoice
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.send_rounded),
+            tooltip: 'Send voice message',
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _scheduleScrollToBottom({required bool animated}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_messagesController.hasClients) return;
-      _messagesController.animateTo(
-        _messagesController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-      );
+      if (!mounted || !_messagesController.hasClients) return;
+      final target = _messagesController.position.maxScrollExtent;
+      if (animated) {
+        _messagesController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+        );
+      } else {
+        _messagesController.jumpTo(target);
+      }
     });
   }
 
-  Future<void> _toggleVoiceRecording(
-    GroupCollaborationViewModel viewModel,
-  ) async {
-    try {
-      if (!_isRecordingVoice) {
-        await _voiceRecorder.start();
-        if (mounted) setState(() => _isRecordingVoice = true);
-        return;
-      }
-      final bytes = await _voiceRecorder.stop();
-      if (mounted) setState(() => _isRecordingVoice = false);
-      if (bytes != null) await viewModel.shareVoiceMessage(bytes);
-    } catch (error) {
-      if (mounted) {
-        setState(() => _isRecordingVoice = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not record voice message: $error')),
-        );
+  String? _latestMessageId(List<TripMessage> messages) {
+    if (messages.isEmpty) return null;
+    var latest = messages.first;
+    for (final message in messages.skip(1)) {
+      if (message.sentAt.isAfter(latest.sentAt) ||
+          (message.sentAt == latest.sentAt &&
+              message.id.compareTo(latest.id) > 0)) {
+        latest = message;
       }
     }
+    return latest.id;
   }
+
+  Future<void> _sendText(GroupCollaborationViewModel viewModel) async {
+    try {
+      await viewModel.sendMessage(_messageController.text);
+      _messageController.clear();
+      _isTyping = false;
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text('Could not send message: $error')),
+        );
+    }
+  }
+
+  Future<void> _startVoiceRecording() async {
+    try {
+      await _voiceRecorder.start();
+      if (!mounted) return;
+      _recordingTimer?.cancel();
+      setState(() {
+        _recordingDuration = Duration.zero;
+        _isRecordingVoice = true;
+      });
+      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) {
+          setState(() => _recordingDuration += const Duration(seconds: 1));
+        }
+      });
+    } catch (error) {
+      _showVoiceError(error);
+    }
+  }
+
+  Future<void> _stopVoiceRecording() async {
+    _recordingTimer?.cancel();
+    try {
+      final bytes = await _voiceRecorder.stop();
+      if (bytes == null || bytes.isEmpty) {
+        throw StateError('No sound was recorded. Please try again.');
+      }
+      if (!mounted) return;
+      setState(() {
+        _isRecordingVoice = false;
+        _voicePreviewBytes = bytes;
+        _voicePreviewExtension = _voiceRecorder.fileExtension;
+      });
+    } catch (error) {
+      if (mounted) setState(() => _isRecordingVoice = false);
+      _showVoiceError(error);
+    }
+  }
+
+  Future<void> _cancelVoiceRecording() async {
+    _recordingTimer?.cancel();
+    try {
+      await _voiceRecorder.stop();
+    } catch (_) {
+      // The recording is being discarded, so cleanup can continue.
+    }
+    _resetVoiceComposer();
+  }
+
+  void _discardVoicePreview() => _resetVoiceComposer();
+
+  Future<void> _sendVoicePreview(
+    GroupCollaborationViewModel viewModel,
+    Uint8List bytes,
+  ) async {
+    setState(() => _isSendingVoice = true);
+    try {
+      await viewModel.shareVoiceMessage(
+        bytes,
+        fileExtension: _voicePreviewExtension,
+      );
+      _resetVoiceComposer();
+    } catch (error) {
+      if (mounted) setState(() => _isSendingVoice = false);
+      _showVoiceError(error, action: 'send');
+    }
+  }
+
+  void _resetVoiceComposer() {
+    if (!mounted) return;
+    setState(() {
+      _recordingTimer?.cancel();
+      _isRecordingVoice = false;
+      _isSendingVoice = false;
+      _voicePreviewBytes = null;
+      _recordingDuration = Duration.zero;
+    });
+  }
+
+  void _showVoiceError(Object error, {String action = 'record'}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Could not $action voice message: $error')),
+    );
+  }
+}
+
+class _BlinkingRecordingDot extends StatefulWidget {
+  const _BlinkingRecordingDot();
+
+  @override
+  State<_BlinkingRecordingDot> createState() => _BlinkingRecordingDotState();
+}
+
+class _BlinkingRecordingDotState extends State<_BlinkingRecordingDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 650),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(
+    opacity: Tween<double>(begin: 0.25, end: 1).animate(_controller),
+    child: Container(
+      width: 11,
+      height: 11,
+      decoration: const BoxDecoration(
+        color: Colors.red,
+        shape: BoxShape.circle,
+      ),
+    ),
+  );
+}
+
+String _formatVoiceDuration(Duration duration) {
+  final minutes = duration.inMinutes;
+  final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+  return '$minutes:$seconds';
 }
 
 class _MessageBubble extends StatelessWidget {
@@ -802,9 +1153,13 @@ class _MessageBubble extends StatelessWidget {
     final photoUrl = _messageAttachmentUrl(message.body, '[photo]');
     final voiceUrl = _messageAttachmentUrl(message.body, '[voice]');
     final sharedActivity = _sharedActivityParts(message.body);
+    final callHistory = _callHistoryParts(message.body);
     final systemMessage = message.body.startsWith('[system]')
         ? message.body.substring('[system]'.length)
         : null;
+    if (callHistory != null) {
+      return _CallHistoryMessage(parts: callHistory, sentAt: message.sentAt);
+    }
     final colorScheme = Theme.of(context).colorScheme;
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -849,7 +1204,11 @@ class _MessageBubble extends StatelessWidget {
                   ),
                 )
               else if (voiceUrl != null)
-                VoiceMessagePlayer(url: voiceUrl)
+                VoiceMessagePlayer(
+                  url: voiceUrl,
+                  isMine: isMine,
+                  isRead: message.readByCount > 0,
+                )
               else if (sharedActivity != null)
                 _SharedActivityPreview(parts: sharedActivity)
               else if (systemMessage != null)
@@ -876,6 +1235,83 @@ class _MessageBubble extends StatelessWidget {
       ),
     );
   }
+}
+
+List<String>? _callHistoryParts(String body) {
+  if (!body.startsWith('[call_history]|')) return null;
+  final parts = body.substring('[call_history]|'.length).split('|');
+  if (parts.length != 3 ||
+      !const {'completed', 'cancelled', 'missed'}.contains(parts[0]) ||
+      !const {'voice', 'video'}.contains(parts[1])) {
+    return null;
+  }
+  return parts;
+}
+
+class _CallHistoryMessage extends StatelessWidget {
+  const _CallHistoryMessage({required this.parts, required this.sentAt});
+
+  final List<String> parts;
+  final DateTime sentAt;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = parts[0];
+    final isVideo = parts[1] == 'video';
+    final duration = Duration(seconds: int.tryParse(parts[2]) ?? 0);
+    final label = switch (status) {
+      'completed' =>
+        '${isVideo ? 'Video' : 'Voice'} call • ${_formatCallHistoryDuration(duration)}',
+      'missed' => 'Missed ${isVideo ? 'video' : 'voice'} call',
+      _ => '${isVideo ? 'Video' : 'Voice'} call cancelled',
+    };
+    final iconColor = status == 'missed'
+        ? Theme.of(context).colorScheme.error
+        : status == 'completed'
+        ? Theme.of(context).colorScheme.primary
+        : Theme.of(context).colorScheme.onSurfaceVariant;
+
+    return Align(
+      alignment: Alignment.center,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isVideo ? Icons.videocam_rounded : Icons.call_rounded,
+              size: 18,
+              color: iconColor,
+            ),
+            const SizedBox(width: 8),
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(width: 8),
+            Text(
+              _shortTime(sentAt),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _formatCallHistoryDuration(Duration duration) {
+  final hours = duration.inHours;
+  final minutes = duration.inMinutes.remainder(60);
+  final seconds = duration.inSeconds.remainder(60);
+  if (hours > 0) return '${hours}h ${minutes}m ${seconds}s';
+  if (minutes > 0) return '${minutes}m ${seconds}s';
+  return '${seconds}s';
 }
 
 String? _messageAttachmentUrl(String body, String prefix) {
@@ -942,23 +1378,29 @@ class _TripTimelineScreen extends ConsumerStatefulWidget {
 }
 
 class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
-  int _selectedDay = 0;
+  DateTime? _selectedDate;
+  DateTime? _pendingDay;
+  final List<DateTime> _locallyDeletedDays = [];
+  bool _deletingDay = false;
 
   List<DateTime> _days(GroupCollaborationState state) {
-    final values = <DateTime>[...state.timelineDays];
+    final values = <DateTime>[];
+    void addUnique(DateTime value) {
+      final day = DateTime(value.year, value.month, value.day);
+      if (!values.any((existing) => _sameDay(existing, day))) values.add(day);
+    }
+
+    for (final day in state.timelineDays) {
+      addUnique(day);
+    }
     for (final activity in state.activities) {
-      final day = DateTime(
-        activity.startTime.year,
-        activity.startTime.month,
-        activity.startTime.day,
-      );
-      if (!values.contains(day)) values.add(day);
+      addUnique(activity.startTime);
     }
+    if (_pendingDay != null) addUnique(_pendingDay!);
+    values.removeWhere(
+      (day) => _locallyDeletedDays.any((deleted) => _sameDay(day, deleted)),
+    );
     values.sort();
-    if (values.isEmpty) {
-      final now = DateTime.now();
-      values.add(DateTime(now.year, now.month, now.day));
-    }
     return values;
   }
 
@@ -976,13 +1418,23 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
       _ => widget.state,
     };
     final days = _days(state);
-    final selectedIndex = _selectedDay.clamp(0, days.length - 1);
-    final selectedDate = days[selectedIndex];
+    final requestedDate = _selectedDate;
+    final requestedIndex = requestedDate == null
+        ? -1
+        : days.indexWhere((day) => _sameDay(day, requestedDate));
+    final selectedIndex = days.isEmpty
+        ? -1
+        : requestedIndex < 0
+        ? 0
+        : requestedIndex;
+    final selectedDate = selectedIndex < 0 ? null : days[selectedIndex];
     final activities = [...state.activities]
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
-    final selectedActivities = activities
-        .where((activity) => _sameDay(activity.startTime, selectedDate))
-        .toList();
+    final selectedActivities = selectedDate == null
+        ? <TripActivity>[]
+        : activities
+              .where((activity) => _sameDay(activity.startTime, selectedDate))
+              .toList();
     const purple = Color(0xFF7C3AED);
 
     return Scaffold(
@@ -1005,19 +1457,7 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
               itemBuilder: (context, index) {
                 if (index == days.length) {
                   return InkWell(
-                    onTap: () async {
-                      final nextDay = days.last.add(const Duration(days: 1));
-                      try {
-                        await _viewModel.addTimelineDay(nextDay);
-                        if (mounted) setState(() => _selectedDay = days.length);
-                      } catch (error) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(
-                            context,
-                          ).showSnackBar(SnackBar(content: Text('$error')));
-                        }
-                      }
-                    },
+                    onTap: () => _pickAndAddDay(days),
                     child: const SizedBox(
                       width: 88,
                       child: Column(
@@ -1036,10 +1476,14 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
                 }
                 final selected = index == selectedIndex;
                 return InkWell(
-                  onTap: () => setState(() => _selectedDay = index),
+                  onTap: () => setState(() => _selectedDate = days[index]),
+                  onLongPress: _deletingDay
+                      ? null
+                      : () =>
+                            _confirmDeleteDay(days: days, selectedIndex: index),
                   child: Container(
-                    width: 76,
-                    padding: const EdgeInsets.only(top: 10),
+                    width: 92,
+                    padding: const EdgeInsets.only(top: 4),
                     decoration: BoxDecoration(
                       border: Border(
                         bottom: BorderSide(
@@ -1050,12 +1494,35 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
                     ),
                     child: Column(
                       children: [
-                        Text(
-                          'Day ${index + 1}',
-                          style: TextStyle(
-                            color: selected ? purple : null,
-                            fontWeight: FontWeight.w700,
-                          ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Day ${index + 1}',
+                              style: TextStyle(
+                                color: selected ? purple : null,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            SizedBox(
+                              width: 30,
+                              height: 30,
+                              child: IconButton(
+                                padding: EdgeInsets.zero,
+                                tooltip: 'Delete Day ${index + 1}',
+                                onPressed: _deletingDay
+                                    ? null
+                                    : () => _confirmDeleteDay(
+                                        days: days,
+                                        selectedIndex: index,
+                                      ),
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  size: 17,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         Text(
                           _monthDay(days[index]),
@@ -1070,7 +1537,17 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
           ),
           const Divider(height: 1),
           Expanded(
-            child: selectedActivities.isEmpty && state.polls.isEmpty
+            child: selectedDate == null
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text(
+                        'No itinerary days yet. Use Add Day to create one.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  )
+                : selectedActivities.isEmpty && state.polls.isEmpty
                 ? const Center(child: Text('No activities for this day yet.'))
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(20, 16, 16, 96),
@@ -1109,13 +1586,15 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: const Color(0xFF281950),
-        foregroundColor: Colors.white,
-        onPressed: () => _showAddActivity(selectedDate),
-        icon: const Icon(Icons.add),
-        label: const Text('Add Activity'),
-      ),
+      floatingActionButton: selectedDate == null
+          ? null
+          : FloatingActionButton.extended(
+              backgroundColor: const Color(0xFF281950),
+              foregroundColor: Colors.white,
+              onPressed: () => _showAddActivity(selectedDate),
+              icon: const Icon(Icons.add),
+              label: const Text('Add Activity'),
+            ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: 3,
         onDestinationSelected: (index) {
@@ -1163,6 +1642,132 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
           _viewModel.createActivityPoll(question: question, options: options),
     ),
   );
+
+  Future<void> _pickAndAddDay(List<DateTime> existingDays) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final lastDate = DateTime(today.year + 10, 12, 31);
+    var initialDate = today;
+    while (existingDays.any((day) => _sameDay(day, initialDate)) &&
+        initialDate.isBefore(lastDate)) {
+      initialDate = initialDate.add(const Duration(days: 1));
+    }
+    if (existingDays.any((day) => _sameDay(day, initialDate))) {
+      _showDayError('No additional itinerary dates are available.');
+      return;
+    }
+
+    final selected = await showDatePicker(
+      context: context,
+      helpText: 'Select itinerary date',
+      cancelText: 'Cancel',
+      confirmText: 'Add day',
+      initialDate: initialDate,
+      firstDate: today,
+      lastDate: lastDate,
+      selectableDayPredicate: (date) =>
+          !existingDays.any((day) => _sameDay(day, date)),
+    );
+    if (selected == null || !mounted) return;
+
+    final selectedDay = DateTime(selected.year, selected.month, selected.day);
+    if (selectedDay.isBefore(today)) {
+      _showDayError('Past dates cannot be added to the trip schedule.');
+      return;
+    }
+    if (existingDays.any((day) => _sameDay(day, selectedDay))) {
+      _showDayError('${_monthDay(selectedDay)} is already in the itinerary.');
+      return;
+    }
+
+    try {
+      await _viewModel.addTimelineDay(selectedDay);
+      if (!mounted) return;
+      setState(() {
+        _locallyDeletedDays.removeWhere(
+          (deleted) => _sameDay(deleted, selectedDay),
+        );
+        _pendingDay = selectedDay;
+        _selectedDate = selectedDay;
+      });
+    } catch (error) {
+      if (mounted) _showDayError('$error');
+    }
+  }
+
+  Future<void> _confirmDeleteDay({
+    required List<DateTime> days,
+    required int selectedIndex,
+  }) async {
+    final day = days[selectedIndex];
+    final dayNumber = selectedIndex + 1;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Day?'),
+        content: Text(
+          'Are you sure you want to delete Day $dayNumber '
+          '(${_monthDay(day)})? All activities scheduled for this day will be removed.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deletingDay = true);
+    try {
+      final deletedActivities = await _viewModel.deleteTimelineDay(day);
+      if (!mounted) return;
+      final remainingDays = days
+          .where((candidate) => !_sameDay(candidate, day))
+          .toList(growable: false);
+      final adjacentDay = remainingDays.isEmpty
+          ? null
+          : selectedIndex > 0
+          ? remainingDays[selectedIndex - 1]
+          : remainingDays.first;
+      setState(() {
+        if (!_locallyDeletedDays.any((deleted) => _sameDay(deleted, day))) {
+          _locallyDeletedDays.add(day);
+        }
+        if (_pendingDay != null && _sameDay(_pendingDay!, day)) {
+          _pendingDay = null;
+        }
+        _selectedDate = adjacentDay;
+        _deletingDay = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            deletedActivities == 0
+                ? 'Day $dayNumber was deleted.'
+                : 'Day $dayNumber and $deletedActivities '
+                      '${deletedActivities == 1 ? 'activity' : 'activities'} were deleted.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _deletingDay = false);
+      _showDayError('Could not delete the day: $error');
+    }
+  }
+
+  void _showDayError(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
 }
 
 class _TimelinePollCard extends ConsumerWidget {
@@ -2208,7 +2813,7 @@ class _CallsTab extends ConsumerWidget {
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 4),
-        const Text('Join any group call in the shared Jitsi room.'),
+        const Text('Join active in-app voice and video calls.'),
         const SizedBox(height: 12),
         if (state.calls.isEmpty)
           const Card(
@@ -2233,9 +2838,10 @@ class _CallsTab extends ConsumerWidget {
                         ? null
                         : () => _openInAppCall(
                             context,
-                            state.tripId,
+                            state,
                             call.callType,
                             () => viewModel.joinCall(call),
+                            viewModel,
                           ),
                     child: Text(call.status == 'ended' ? 'Ended' : 'Join'),
                   ),
@@ -2334,9 +2940,10 @@ Future<void> _runWorkspaceAction(
 
 Future<void> _openInAppCall(
   BuildContext context,
-  String tripId,
+  GroupCollaborationState state,
   String callType,
   Future<TripCall?> Function() action,
+  GroupCollaborationViewModel viewModel,
 ) async {
   try {
     await const AppPermissionService().requireCallPermissions(
@@ -2346,8 +2953,20 @@ Future<void> _openInAppCall(
     if (call == null || !context.mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            JitsiCallScreen(tripId: tripId, callType: call.callType),
+        fullscreenDialog: true,
+        builder: (_) => CallScreen(
+          tripId: state.tripId,
+          call: call,
+          currentUserId: state.currentUserId,
+          displayName: _currentMemberName(state),
+          onVideoEnabled: () => viewModel.markCallVideoUsed(call),
+          onCallEnded: (details) => viewModel.leaveCall(
+            call,
+            reason: details.reason.name,
+            hadVideo: details.hadVideo,
+            duration: details.duration,
+          ),
+        ),
       ),
     );
   } catch (error) {
@@ -2358,6 +2977,22 @@ Future<void> _openInAppCall(
     }
   }
 }
+
+TripCall? _activeCall(GroupCollaborationState state) {
+  final activeCalls =
+      state.calls.where((call) => call.status != 'ended').toList()
+        ..sort((first, second) => second.createdAt.compareTo(first.createdAt));
+  return activeCalls.firstOrNull;
+}
+
+String _currentMemberName(GroupCollaborationState state) =>
+    state.members
+        .where((member) => member.userId == state.currentUserId)
+        .map((member) => member.displayName?.trim())
+        .whereType<String>()
+        .where((name) => name.isNotEmpty)
+        .firstOrNull ??
+    'GoBuddy member';
 
 String _shortDate(DateTime value) =>
     '${value.day}/${value.month}/${value.year} ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';

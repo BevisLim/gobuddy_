@@ -10,9 +10,12 @@ create table if not exists public.trip_call_signals (
   payload jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
+
 create index if not exists trip_call_signals_call_created_idx
   on public.trip_call_signals(call_id, created_at);
+
 alter table public.trip_call_signals enable row level security;
+
 drop policy if exists "trip members read call signals" on public.trip_call_signals;
 create policy "trip members read call signals"
   on public.trip_call_signals for select to authenticated
@@ -20,6 +23,7 @@ create policy "trip members read call signals"
     public.is_trip_member(trip_id)
     and (target_id is null or target_id = auth.uid() or sender_id = auth.uid())
   );
+
 drop policy if exists "trip members send call signals" on public.trip_call_signals;
 create policy "trip members send call signals"
   on public.trip_call_signals for insert to authenticated
@@ -33,8 +37,11 @@ create policy "trip members send call signals"
         and call.status <> 'ended'
     )
   );
+
 grant select, insert on public.trip_call_signals to authenticated;
+
 alter publication supabase_realtime add table public.trip_call_signals;
+
 create or replace function public.clear_ended_trip_call_signals()
 returns trigger
 language plpgsql
@@ -48,6 +55,7 @@ begin
   return new;
 end;
 $$;
+
 drop trigger if exists clear_ended_trip_call_signals on public.trip_calls;
 create trigger clear_ended_trip_call_signals
 after update of status on public.trip_calls

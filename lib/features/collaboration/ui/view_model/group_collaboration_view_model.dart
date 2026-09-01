@@ -41,10 +41,7 @@ class GroupCollaborationViewModel
             'The trip workspace took too long to load. Check your Supabase connection and trip membership.',
           ),
         );
-    final channel = _repository.subscribe(
-      _tripId,
-      () => ref.invalidateSelf(),
-    );
+    final channel = _repository.subscribe(_tripId, () => ref.invalidateSelf());
     _channel = channel;
     ref.onDispose(() {
       supabase.removeChannel(channel);
@@ -201,8 +198,66 @@ class GroupCollaborationViewModel
   Future<void> addTimelineDay(DateTime day) async {
     final current = _current;
     if (current == null) return;
-    await _repository.addTimelineDay(current.tripId, day);
+    final selectedDay = DateTime(day.year, day.month, day.day);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (selectedDay.isBefore(today)) {
+      throw StateError('Past dates cannot be added to the trip schedule.');
+    }
+    final alreadyExists =
+        current.timelineDays.any(
+          (existing) => _sameCalendarDay(existing, selectedDay),
+        ) ||
+        current.activities.any(
+          (activity) => _sameCalendarDay(activity.startTime, selectedDay),
+        );
+    if (alreadyExists) {
+      throw StateError('This date is already in the trip itinerary.');
+    }
+    try {
+      await _repository.addTimelineDay(current.tripId, selectedDay);
+    } on PostgrestException catch (error) {
+      if (error.code == '23505') {
+        throw StateError('This date is already in the trip itinerary.');
+      }
+      rethrow;
+    }
     ref.invalidateSelf();
+  }
+
+  Future<int> deleteTimelineDay(DateTime day) async {
+    final current = _current;
+    if (current == null) return 0;
+    final selectedDay = DateTime(day.year, day.month, day.day);
+    final deletedActivities = await _repository.deleteTimelineDay(
+      current.tripId,
+      selectedDay,
+    );
+    final dateLabel =
+        '${selectedDay.day}/${selectedDay.month}/${selectedDay.year}';
+    try {
+      await _repository.sendMessage(
+        current.tripId,
+        current.currentUserId,
+        '[system]Schedule day removed: $dateLabel'
+        '${deletedActivities == 0 ? '' : ' ($deletedActivities activities removed)'}',
+      );
+    } catch (_) {
+      // Day deletion is already committed; a muted member may not post chat.
+    }
+    try {
+      await _repository.recordEvent(
+        tripId: current.tripId,
+        actorId: current.currentUserId,
+        type: 'activity_removed',
+        summary:
+            'Schedule day $dateLabel was removed with $deletedActivities activities.',
+      );
+    } catch (_) {
+      // Realtime day/activity changes still update every workspace member.
+    }
+    ref.invalidateSelf();
+    return deletedActivities;
   }
 
   Future<void> togglePin(TripActivity activity) async {
@@ -430,7 +485,10 @@ class GroupCollaborationViewModel
     ref.invalidateSelf();
   }
 
-  Future<void> shareVoiceMessage(Uint8List bytes) async {
+  Future<void> shareVoiceMessage(
+    Uint8List bytes, {
+    String fileExtension = 'm4a',
+  }) async {
     final current = _current;
     if (current == null || bytes.isEmpty) return;
     if (current.isMuted) {
@@ -441,7 +499,7 @@ class GroupCollaborationViewModel
     final url = await _repository.uploadFile(
       tripId: current.tripId,
       userId: current.currentUserId,
-      fileName: 'voice_${DateTime.now().millisecondsSinceEpoch}.webm',
+      fileName: 'voice_${DateTime.now().millisecondsSinceEpoch}.$fileExtension',
       bytes: bytes,
     );
     await _repository.sendMessage(
@@ -465,7 +523,6 @@ class GroupCollaborationViewModel
       tripId: current.tripId,
       type: type,
     );
-    await _repository.updateCallStatus(callId: call.id, status: 'active');
     await _repository.recordEvent(
       tripId: current.tripId,
       actorId: current.currentUserId,
@@ -480,7 +537,7 @@ class GroupCollaborationViewModel
     final current = _current;
     if (current == null || call.status == 'ended') return null;
     if (call.status == 'ringing') {
-      await _repository.updateCallStatus(callId: call.id, status: 'active');
+      await _repository.joinCall(call.id);
     }
     await _repository.recordEvent(
       tripId: current.tripId,
@@ -489,23 +546,71 @@ class GroupCollaborationViewModel
       summary: 'A member joined a ${call.callType} call.',
     );
     ref.invalidateSelf();
-    return call;
+    return call.copyWith(
+      status: 'active',
+      connectedAt: call.connectedAt ?? DateTime.now(),
+    );
   }
 
-  Future<void> endCall(TripCall call) async {
+  Future<void> markCallVideoUsed(TripCall call) async {
+    await _repository.markCallVideoUsed(call.id);
+    ref.invalidateSelf();
+  }
+
+  Future<void> leaveCall(
+    TripCall call, {
+    required String reason,
+    required bool hadVideo,
+    required Duration duration,
+  }) async {
     final current = _current;
-    if (current == null ||
-        (call.initiatedBy != current.currentUserId &&
-            !current.canManageMembers)) {
-      throw StateError('Only the call starter or an admin can end this call.');
+    if (current == null) return;
+    final remainingParticipants = await _repository.leaveCall(call.id);
+    if (remainingParticipants == 0) {
+      await endCall(
+        call,
+        reason: reason,
+        hadVideo: hadVideo,
+        duration: duration,
+      );
+      return;
     }
-    await _repository.updateCallStatus(callId: call.id, status: 'ended');
+    ref.invalidateSelf();
+  }
+
+  Future<void> endCall(
+    TripCall call, {
+    String? reason,
+    bool? hadVideo,
+    Duration? duration,
+  }) async {
+    final current = _current;
+    if (current == null) return;
+    final completedDuration =
+        duration ??
+        (call.connectedAt == null
+            ? Duration.zero
+            : DateTime.now().difference(call.connectedAt!));
+    final finalReason =
+        reason ??
+        (call.status == 'active'
+            ? 'completed'
+            : call.initiatedBy == current.currentUserId
+            ? 'cancelled'
+            : 'missed');
+    final ended = await _repository.finishCall(
+      callId: call.id,
+      reason: finalReason,
+      hadVideo: hadVideo ?? call.isVideo,
+      duration: completedDuration,
+    );
+    if (!ended) return;
     await _repository.recordEvent(
       tripId: current.tripId,
       actorId: current.currentUserId,
       type: 'call_ended',
       summary:
-          '${_memberName(current, current.currentUserId)} ended a ${call.callType} call.',
+          '${_memberName(current, current.currentUserId)} ended a ${(hadVideo ?? call.isVideo) ? 'video' : 'voice'} call.',
     );
     ref.invalidateSelf();
   }
@@ -577,3 +682,8 @@ class GroupCollaborationViewModel
         'A member';
   }
 }
+
+bool _sameCalendarDay(DateTime first, DateTime second) =>
+    first.year == second.year &&
+    first.month == second.month &&
+    first.day == second.day;

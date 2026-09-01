@@ -7,15 +7,18 @@ import 'dart:typed_data';
 
 class VoiceRecorder {
   html.MediaRecorder? _recorder;
+  html.MediaStream? _stream;
   final List<html.Blob> _chunks = [];
 
   bool get isRecording => _recorder?.state == 'recording';
+  String get fileExtension => 'webm';
 
   Future<void> start() async {
     if (isRecording) return;
     final stream = await html.window.navigator.mediaDevices!.getUserMedia({
       'audio': true,
     });
+    _stream = stream;
     final recorder = html.MediaRecorder(stream);
     _chunks.clear();
     recorder.addEventListener('dataavailable', (event) {
@@ -35,9 +38,15 @@ class VoiceRecorder {
       final reader = html.FileReader();
       reader.onLoadEnd.first.then((_) {
         final result = reader.result;
-        completed.complete(
-          result is ByteBuffer ? Uint8List.view(result) : null,
-        );
+        // dart:html exposes an ArrayBuffer result as Uint8List on current
+        // Flutter web builds. Older runtimes can still expose ByteBuffer.
+        final bytes = switch (result) {
+          Uint8List value => value,
+          ByteBuffer value => value.asUint8List(),
+          _ => null,
+        };
+        completed.complete(bytes?.isNotEmpty == true ? bytes : null);
+        _stopStream();
       });
       reader.readAsArrayBuffer(blob);
     });
@@ -48,5 +57,13 @@ class VoiceRecorder {
 
   void dispose() {
     if (isRecording) _recorder?.stop();
+    _stopStream();
+  }
+
+  void _stopStream() {
+    for (final track in _stream?.getTracks() ?? <html.MediaStreamTrack>[]) {
+      track.stop();
+    }
+    _stream = null;
   }
 }

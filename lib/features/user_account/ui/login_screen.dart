@@ -104,7 +104,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           .read(authenticationViewModelProvider.notifier)
           .hasCompletedProfileOnboarding();
       if (mounted) {
-        context.go(hasCompletedOnboarding ? Routes.main : Routes.profileSetup);
+        context.go(
+          hasCompletedOnboarding ? Routes.main : Routes.profileOnboarding,
+        );
       }
     } catch (_) {
       _isRoutingAfterGoogleSignIn = false;
@@ -152,19 +154,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         password: _passwordController.text,
       );
       widget.onContinue?.call(email);
-      final pending = await const AuthenticationRepository()
-          .isRegistrationPending();
+      final repository = const AuthenticationRepository();
+      final pending = await repository.isRegistrationPending();
+      final hasCompletedOnboarding = pending
+          ? false
+          : await repository.hasCompletedProfileOnboarding();
       if (mounted) {
-        if (pending) {
-          context.go(Routes.setPassword);
-        } else {
-          final hasProfile = await ref
-              .read(authenticationViewModelProvider.notifier)
-              .hasCurrentUserProfile();
-          if (mounted) {
-            context.go(hasProfile ? Routes.main : Routes.profileSetup);
-          }
-        }
+        context.go(
+          pending
+              ? Routes.setPassword
+              : hasCompletedOnboarding
+              ? Routes.main
+              : Routes.profileOnboarding,
+        );
       }
     } on AuthException catch (error) {
       if (mounted) {
