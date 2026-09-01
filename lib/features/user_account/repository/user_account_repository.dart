@@ -89,6 +89,7 @@ class UserAccountRepository {
         backgroundPhoto: _publicStorageUrl(
           'background-images',
           row['background_photo_path'] as String?,
+          cacheBust: true,
         ),
         gender: row['gender'] as String?,
         nationality: (row['nationality'] as String?)?.trim(),
@@ -216,6 +217,105 @@ class UserAccountRepository {
     } catch (_) {
       throw const ProfilePhotoUpdateException(
         'Unable to update profile photo. Please try again.',
+      );
+    }
+  }
+
+  Future<UserAccount> updateBackgroundPhoto(String localPath) async {
+    final authUser = supabase.auth.currentUser;
+    if (authUser == null) {
+      throw const ProfilePhotoUpdateException(
+        'Your session has expired. Please sign in again.',
+      );
+    }
+    try {
+      final file = File(localPath);
+      final fileSize = await file.length();
+      if (fileSize <= 0 || fileSize > 10 * 1024 * 1024) {
+        throw const ProfilePhotoUpdateException(
+          'Select a JPEG, PNG, or WebP image smaller than 10 MB.',
+        );
+      }
+      final extension = _validatedImageExtension(localPath);
+      final objectPath =
+          '${authUser.id}/background_${DateTime.now().microsecondsSinceEpoch}.$extension';
+      final bytes = await file.readAsBytes();
+      await supabase.storage.from('background-images').uploadBinary(
+            objectPath,
+            bytes,
+            fileOptions: FileOptions(contentType: _imageContentType(extension)),
+          );
+      final oldValue = await supabase
+          .from('user_accounts')
+          .select('background_photo_path')
+          .eq('id', authUser.id)
+          .maybeSingle();
+      final oldPath = oldValue?['background_photo_path'] as String?;
+      await supabase.from('user_accounts').update(<String, Object?>{
+        'background_photo_path': objectPath,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', authUser.id);
+      if (oldPath != null && oldPath.startsWith('${authUser.id}/')) {
+        try {
+          await supabase.storage.from('background-images').remove([oldPath]);
+        } catch (_) {}
+      }
+      return fetchCurrentAccount();
+    } on ProfilePhotoUpdateException {
+      rethrow;
+    } on FileSystemException {
+      throw const ProfilePhotoUpdateException(
+        'Unable to read the selected image. Please choose another image.',
+      );
+    } on StorageException catch (error) {
+      final message = error.message.toLowerCase();
+      if (message.contains('mime type') && message.contains('not supported')) {
+        throw const ProfilePhotoUpdateException(
+          'Background photo storage is not configured for JPEG images. '
+          'Apply the latest Supabase migrations and try again.',
+        );
+      }
+      throw ProfilePhotoUpdateException(
+        'Unable to upload background photo: ${error.message}',
+      );
+    } on PostgrestException catch (error) {
+      throw ProfilePhotoUpdateException(
+        'Unable to save background photo: ${error.message}',
+      );
+    } catch (_) {
+      throw const ProfilePhotoUpdateException(
+        'Unable to update background photo. Please try again.',
+      );
+    }
+  }
+
+  Future<UserAccount> deleteBackgroundPhoto() async {
+    final authUser = supabase.auth.currentUser;
+    if (authUser == null) {
+      throw const ProfilePhotoUpdateException(
+        'Your session has expired. Please sign in again.',
+      );
+    }
+    try {
+      final row = await supabase
+          .from('user_accounts')
+          .select('background_photo_path')
+          .eq('id', authUser.id)
+          .maybeSingle();
+      final oldPath = row?['background_photo_path'] as String?;
+      await supabase.from('user_accounts').update(<String, Object?>{
+        'background_photo_path': null,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', authUser.id);
+      if (oldPath != null && oldPath.startsWith('${authUser.id}/')) {
+        try {
+          await supabase.storage.from('background-images').remove([oldPath]);
+        } catch (_) {}
+      }
+      return fetchCurrentAccount();
+    } catch (_) {
+      throw const ProfilePhotoUpdateException(
+        'Unable to delete background photo. Please try again.',
       );
     }
   }

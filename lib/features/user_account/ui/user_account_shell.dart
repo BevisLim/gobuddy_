@@ -110,6 +110,9 @@ class _UserAccountScreenState extends ConsumerState<UserAccountScreen> {
                 matchmakingState.unreadNotificationCount,
             onEditPhoto: (source) => viewModel.addGalleryImage(source: source),
             onDeletePhotos: viewModel.deleteGalleryImages,
+            onEditBackgroundPhoto: (source) =>
+                viewModel.selectBackgroundImage(source: source),
+            onDeleteBackgroundPhoto: viewModel.deleteBackgroundImage,
             onEditBio: (bio) => viewModel.updateProfile(
               UserAccountProfileUpdate(
                 profilePhoto: state.user!.profilePhoto,
@@ -203,6 +206,8 @@ class _AccountDashboardView extends StatelessWidget {
   final Future<void> Function() onNotifications;
   final Future<String?> Function(ImageSource source) onEditPhoto;
   final Future<bool> Function(List<String> photos) onDeletePhotos;
+  final Future<String?> Function(ImageSource source) onEditBackgroundPhoto;
+  final Future<bool> Function() onDeleteBackgroundPhoto;
   final Future<void> Function(String bio) onEditBio;
 
   const _AccountDashboardView({
@@ -214,6 +219,8 @@ class _AccountDashboardView extends StatelessWidget {
     required this.onNotifications,
     required this.onEditPhoto,
     required this.onDeletePhotos,
+    required this.onEditBackgroundPhoto,
+    required this.onDeleteBackgroundPhoto,
     required this.onEditBio,
   });
 
@@ -233,6 +240,8 @@ class _AccountDashboardView extends StatelessWidget {
             unreadNotificationCount: unreadNotificationCount,
             onNotifications: onNotifications,
             onSettings: () => context.push(Routes.settings),
+            onEditBackgroundPhoto: onEditBackgroundPhoto,
+            onDeleteBackgroundPhoto: onDeleteBackgroundPhoto,
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -278,12 +287,14 @@ class _AccountDashboardView extends StatelessWidget {
   }
 }
 
-class _ProfileHeader extends StatelessWidget {
+class _ProfileHeader extends StatefulWidget {
   final UserAccount user;
   final VoidCallback onBack;
   final VoidCallback onSettings;
   final int unreadNotificationCount;
   final Future<void> Function() onNotifications;
+  final Future<String?> Function(ImageSource source) onEditBackgroundPhoto;
+  final Future<bool> Function() onDeleteBackgroundPhoto;
 
   const _ProfileHeader({
     required this.user,
@@ -291,33 +302,106 @@ class _ProfileHeader extends StatelessWidget {
     required this.onSettings,
     required this.unreadNotificationCount,
     required this.onNotifications,
+    required this.onEditBackgroundPhoto,
+    required this.onDeleteBackgroundPhoto,
   });
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-        height: 410,
+  State<_ProfileHeader> createState() => _ProfileHeaderState();
+}
+
+class _ProfileHeaderState extends State<_ProfileHeader> {
+  bool _isBackgroundExpanded = false;
+  ScrollPosition? _scrollPosition;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final position = Scrollable.maybeOf(context)?.position;
+    if (identical(position, _scrollPosition)) return;
+    _scrollPosition?.removeListener(_handleScroll);
+    _scrollPosition = position;
+    _scrollPosition?.addListener(_handleScroll);
+  }
+
+  void _handleScroll() {
+    if (_isBackgroundExpanded && (_scrollPosition?.pixels ?? 0) > 0) {
+      setState(() => _isBackgroundExpanded = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollPosition?.removeListener(_handleScroll);
+    super.dispose();
+  }
+
+  Future<void> _onBackgroundTap() async {
+    if (!_isBackgroundExpanded) {
+      setState(() => _isBackgroundExpanded = true);
+      return;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => _BackgroundPhotoViewer(
+          photo: widget.user.backgroundPhoto,
+          onEdit: widget.onEditBackgroundPhoto,
+          onDelete: widget.onDeleteBackgroundPhoto,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenSize = MediaQuery.sizeOf(context);
+    final expandedSize = screenSize.shortestSide;
+    final backgroundHeight = _isBackgroundExpanded ? expandedSize : 285.0;
+    final avatarTop = backgroundHeight - 80;
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeInOut,
+      alignment: Alignment.topCenter,
+      child: SizedBox(
+        height: backgroundHeight + 125,
         child: Stack(
           clipBehavior: Clip.none,
           children: [
             SizedBox(
-              height: 285,
+              height: backgroundHeight,
               width: double.infinity,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image(
-                    image: _accountImageProvider(
-                      user.backgroundPhoto,
-                      fallback: _coverPhotoUrl,
+                  Semantics(
+                    button: true,
+                    label: _isBackgroundExpanded
+                        ? 'Open background photo full screen'
+                        : 'Expand background photo',
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _onBackgroundTap,
+                      child: Image(
+                        image: _accountImageProvider(
+                          widget.user.backgroundPhoto,
+                          fallback: _coverPhotoUrl,
+                        ),
+                        fit: _isBackgroundExpanded
+                            ? BoxFit.contain
+                            : BoxFit.cover,
+                        width: double.infinity,
+                        height: backgroundHeight,
+                      ),
                     ),
-                    fit: BoxFit.cover,
                   ),
-                  const DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Colors.transparent, Color(0x99281950)],
+                  const IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Colors.transparent, Color(0x99281950)],
+                        ),
                       ),
                     ),
                   ),
@@ -326,7 +410,7 @@ class _ProfileHeader extends StatelessWidget {
                     left: 16,
                     child: _FrostedIconButton(
                       icon: Icons.arrow_back_rounded,
-                      onTap: onBack,
+                      onTap: widget.onBack,
                     ),
                   ),
                   Positioned(
@@ -334,8 +418,8 @@ class _ProfileHeader extends StatelessWidget {
                     right: 62,
                     child: _FrostedIconButton(
                       icon: Icons.notifications_none_rounded,
-                      badgeCount: unreadNotificationCount,
-                      onTap: onNotifications,
+                      badgeCount: widget.unreadNotificationCount,
+                      onTap: widget.onNotifications,
                     ),
                   ),
                   Positioned(
@@ -343,14 +427,14 @@ class _ProfileHeader extends StatelessWidget {
                     right: 16,
                     child: _FrostedIconButton(
                       icon: Icons.settings_outlined,
-                      onTap: onSettings,
+                      onTap: widget.onSettings,
                     ),
                   ),
                 ],
               ),
             ),
             Positioned(
-              top: 205,
+              top: avatarTop,
               left: 0,
               right: 0,
               child: Center(
@@ -360,7 +444,7 @@ class _ProfileHeader extends StatelessWidget {
                   child: GestureDetector(
                     onTap: () => _showProfilePhotoPreview(
                       context,
-                      user.profilePhoto,
+                      widget.user.profilePhoto,
                     ),
                     child: Container(
                       width: 112,
@@ -378,7 +462,7 @@ class _ProfileHeader extends StatelessWidget {
                       child: ClipOval(
                         child: Image(
                           image: _accountImageProvider(
-                            user.profilePhoto,
+                            widget.user.profilePhoto,
                             fallback: 'assets/images/avatar.webp',
                           ),
                           fit: BoxFit.cover,
@@ -390,7 +474,7 @@ class _ProfileHeader extends StatelessWidget {
               ),
             ),
             Positioned(
-              top: 330,
+              top: backgroundHeight + 45,
               left: 20,
               right: 20,
               child: Column(
@@ -400,7 +484,7 @@ class _ProfileHeader extends StatelessWidget {
                     children: [
                       Flexible(
                         child: Text(
-                          _profileDisplayName(user),
+                          _profileDisplayName(widget.user),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.center,
@@ -413,7 +497,7 @@ class _ProfileHeader extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (user.isVerified) ...[
+                      if (widget.user.isVerified) ...[
                         const SizedBox(width: 8),
                         const Icon(
                           Icons.verified_rounded,
@@ -425,7 +509,7 @@ class _ProfileHeader extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    _profileSummary(user),
+                    _profileSummary(widget.user),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
@@ -440,7 +524,9 @@ class _ProfileHeader extends StatelessWidget {
             ),
           ],
         ),
-      );
+      ),
+    );
+  }
 }
 
 class _ProfileStatsCard extends StatelessWidget {
@@ -1033,7 +1119,7 @@ class _ProfileAboutCard extends StatelessWidget {
   final VoidCallback onEdit;
 
   @override
-      Widget build(BuildContext context) => _ProfileCard(
+  Widget build(BuildContext context) => _ProfileCard(
         title: 'About Me',
         onEdit: onEdit,
         child: Text(
@@ -1620,6 +1706,140 @@ Future<void> _showProfilePhotoPreview(
       ),
     ),
   );
+}
+
+class _BackgroundPhotoViewer extends StatefulWidget {
+  const _BackgroundPhotoViewer({
+    required this.photo,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final String? photo;
+  final Future<String?> Function(ImageSource source) onEdit;
+  final Future<bool> Function() onDelete;
+
+  @override
+  State<_BackgroundPhotoViewer> createState() =>
+      _BackgroundPhotoViewerState();
+}
+
+class _BackgroundPhotoViewerState extends State<_BackgroundPhotoViewer> {
+  bool _isWorking = false;
+
+  Future<void> _edit() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              title: Text('Update background photo',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('Take a photo'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from gallery'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+    setState(() => _isWorking = true);
+    final updated = await widget.onEdit(source);
+    if (!mounted) return;
+    setState(() => _isWorking = false);
+    if (updated != null) Navigator.of(context).pop();
+  }
+
+  Future<void> _delete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete background photo?'),
+        content: const Text(
+          'Your background photo will be removed from your profile.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _isWorking = true);
+    final deleted = await widget.onDelete();
+    if (!mounted) return;
+    setState(() => _isWorking = false);
+    if (deleted) Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              InteractiveViewer(
+                minScale: 1,
+                maxScale: 4,
+                child: Image(
+                  image: _accountImageProvider(
+                    widget.photo,
+                    fallback: _coverPhotoUrl,
+                  ),
+                  fit: BoxFit.contain,
+                ),
+              ),
+              Positioned(
+                top: 12,
+                left: 12,
+                child: Row(
+                  children: [
+                    _FrostedIconButton(
+                      icon: Icons.edit_outlined,
+                      onTap: _isWorking ? () {} : _edit,
+                    ),
+                    const SizedBox(width: 8),
+                    _FrostedIconButton(
+                      icon: Icons.delete_outline,
+                      onTap: _isWorking ? () {} : _delete,
+                    ),
+                  ],
+                ),
+              ),
+              Positioned(
+                top: 12,
+                right: 12,
+                child: _FrostedIconButton(
+                  icon: Icons.close_rounded,
+                  onTap: _isWorking ? () {} : () => Navigator.of(context).pop(),
+                ),
+              ),
+              if (_isWorking)
+                const Center(child: CircularProgressIndicator(color: Colors.white)),
+            ],
+          ),
+        ),
+      );
 }
 
 String _profileDisplayName(UserAccount user) {
