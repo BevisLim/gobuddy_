@@ -24,6 +24,7 @@ class Routes {
   static const settlementHistory = '/expenses/settlement/history';
   static const budgetAnalytics = '/expenses/analytics';
   static const userAccount = '/user_account';
+  static const publicProfile = '/profile';
   static const groupCollaboration = '/group-collaboration';
   static const identityVerification = '/identity-verification';
   static const settings = '/settings';

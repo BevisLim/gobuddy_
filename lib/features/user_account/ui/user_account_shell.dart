@@ -10,6 +10,7 @@ import '../../common/ui/widgets/app_module_navigation.dart';
 import '../../matchmaking/ui/matchmaking_shell_screen.dart';
 import '../../matchmaking/ui/view_model/matchmaking_view_model.dart';
 import '../model/user_account_model.dart';
+import '../repository/user_account_repository.dart';
 import 'edit_profile_view.dart';
 import 'view_model/user_account_view_model.dart';
 
@@ -40,16 +41,19 @@ const _label = TextStyle(
 
 BoxDecoration _cardDecoration({double radius = 16, bool feed = false}) =>
     BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: _border),
-        boxShadow: [
-          BoxShadow(
-              color: (feed ? _ink : Colors.black)
-                  .withValues(alpha: feed ? .12 : .08),
-              blurRadius: feed ? 40 : 25,
-              offset: feed ? const Offset(0, 8) : const Offset(0, 2))
-        ]);
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: _border),
+      boxShadow: [
+        BoxShadow(
+          color: (feed ? _ink : Colors.black).withValues(
+            alpha: feed ? .12 : .08,
+          ),
+          blurRadius: feed ? 40 : 25,
+          offset: feed ? const Offset(0, 8) : const Offset(0, 2),
+        ),
+      ],
+    );
 
 // ==========================================================================
 // 🛡️ Main Module Screen Container
@@ -88,8 +92,9 @@ class _UserAccountScreenState extends ConsumerState<UserAccountScreen> {
     final state = ref.watch(userAccountViewModelProvider);
     final viewModel = ref.read(userAccountViewModelProvider.notifier);
     final matchmakingState = ref.watch(matchmakingViewModelProvider);
-    final matchmakingViewModel =
-        ref.read(matchmakingViewModelProvider.notifier);
+    final matchmakingViewModel = ref.read(
+      matchmakingViewModelProvider.notifier,
+    );
 
     final Widget body;
     if (state.isLoading && state.user == null) {
@@ -102,52 +107,51 @@ class _UserAccountScreenState extends ConsumerState<UserAccountScreen> {
     } else {
       body = switch (state.page) {
         UserAccountPage.profile => _AccountDashboardView(
-            user: state.user!,
-            onNavigate: viewModel.goTo,
-            onRefresh: viewModel.refresh,
-            onVerify: () => context.push(Routes.identityVerification),
-            unreadNotificationCount:
-                matchmakingState.unreadNotificationCount,
-            onEditPhoto: (source) => viewModel.addGalleryImage(source: source),
-            onDeletePhotos: viewModel.deleteGalleryImages,
-            onEditBackgroundPhoto: (source) =>
-                viewModel.selectBackgroundImage(source: source),
-            onDeleteBackgroundPhoto: viewModel.deleteBackgroundImage,
-            onEditBio: (bio) => viewModel.updateProfile(
-              UserAccountProfileUpdate(
-                profilePhoto: state.user!.profilePhoto,
-                username: state.user!.username,
-                gender: state.user!.gender,
-                nationality: state.user!.nationality,
-                bio: bio,
-              ),
+          user: state.user!,
+          onNavigate: viewModel.goTo,
+          onRefresh: viewModel.refresh,
+          onVerify: () => context.push(Routes.identityVerification),
+          unreadNotificationCount: matchmakingState.unreadNotificationCount,
+          onEditPhoto: (source) => viewModel.addGalleryImage(source: source),
+          onDeletePhotos: viewModel.deleteGalleryImages,
+          onEditBackgroundPhoto: (source) =>
+              viewModel.selectBackgroundImage(source: source),
+          onDeleteBackgroundPhoto: viewModel.deleteBackgroundImage,
+          onEditBio: (bio) => viewModel.updateProfile(
+            UserAccountProfileUpdate(
+              profilePhoto: state.user!.profilePhoto,
+              username: state.user!.username,
+              gender: state.user!.gender,
+              nationality: state.user!.nationality,
+              bio: bio,
             ),
-            onNotifications: () async {
-              await showDialog<void>(
-                context: context,
-                builder: (context) => MatchmakingNotificationsDialog(
-                  notifications: matchmakingState.notifications,
-                ),
-              );
-              await matchmakingViewModel.markNotificationsRead();
-            },
           ),
+          onNotifications: () async {
+            await showDialog<void>(
+              context: context,
+              builder: (context) => MatchmakingNotificationsDialog(
+                notifications: matchmakingState.notifications,
+              ),
+            );
+            await matchmakingViewModel.markNotificationsRead();
+          },
+        ),
         UserAccountPage.editProfile => EditProfileView(
-            user: state.user!,
-            isSaving: state.isLoading,
-            onBack: () => viewModel.goTo(UserAccountPage.profile),
-            onSave: viewModel.updateProfile,
-            onSelectImage: (source) =>
-                viewModel.selectProfileImage(source: source),
-            onVerify: () => context.push(Routes.identityVerification),
-          ),
+          user: state.user!,
+          isSaving: state.isLoading,
+          onBack: () => viewModel.goTo(UserAccountPage.profile),
+          onSave: viewModel.updateProfile,
+          onSelectImage: (source) =>
+              viewModel.selectProfileImage(source: source),
+          onVerify: () => context.push(Routes.identityVerification),
+        ),
         UserAccountPage.security => _AccountStaticFrame(
-            title: 'Security',
-            subtitle: 'ACCESS MANAGEMENT',
-            description:
-                'Manage active authorization keys, session duration thresholds, and multi-factor validation credentials.',
-            onBack: () => viewModel.goTo(UserAccountPage.profile),
-          ),
+          title: 'Security',
+          subtitle: 'ACCESS MANAGEMENT',
+          description:
+              'Manage active authorization keys, session duration thresholds, and multi-factor validation credentials.',
+          onBack: () => viewModel.goTo(UserAccountPage.profile),
+        ),
       };
     }
 
@@ -179,22 +183,24 @@ class _AccountErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.person_off_outlined, color: _muted, size: 42),
-              const SizedBox(height: 14),
-              Text(message,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: _muted, height: 1.5)),
-              const SizedBox(height: 18),
-              FilledButton(onPressed: onRetry, child: const Text('Try again')),
-            ],
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.person_off_outlined, color: _muted, size: 42),
+          const SizedBox(height: 14),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: _muted, height: 1.5),
           ),
-        ),
-      );
+          const SizedBox(height: 18),
+          FilledButton(onPressed: onRetry, child: const Text('Try again')),
+        ],
+      ),
+    ),
+  );
 }
 
 class _AccountDashboardView extends StatelessWidget {
@@ -234,9 +240,8 @@ class _AccountDashboardView extends StatelessWidget {
         children: [
           _ProfileHeader(
             user: user,
-            onBack: () => context.canPop()
-                ? context.pop()
-                : context.go(Routes.main),
+            onBack: () =>
+                context.canPop() ? context.pop() : context.go(Routes.main),
             unreadNotificationCount: unreadNotificationCount,
             onNotifications: onNotifications,
             onSettings: () => context.push(Routes.settings),
@@ -295,6 +300,7 @@ class _ProfileHeader extends StatefulWidget {
   final Future<void> Function() onNotifications;
   final Future<String?> Function(ImageSource source) onEditBackgroundPhoto;
   final Future<bool> Function() onDeleteBackgroundPhoto;
+  final bool isReadOnly;
 
   const _ProfileHeader({
     required this.user,
@@ -304,10 +310,108 @@ class _ProfileHeader extends StatefulWidget {
     required this.onNotifications,
     required this.onEditBackgroundPhoto,
     required this.onDeleteBackgroundPhoto,
+    this.isReadOnly = false,
   });
 
   @override
   State<_ProfileHeader> createState() => _ProfileHeaderState();
+}
+
+class PublicUserProfileScreen extends StatefulWidget {
+  const PublicUserProfileScreen({required this.userId, super.key});
+
+  final String userId;
+
+  @override
+  State<PublicUserProfileScreen> createState() =>
+      _PublicUserProfileScreenState();
+}
+
+class _PublicUserProfileScreenState extends State<PublicUserProfileScreen> {
+  late Future<UserAccount> _profile;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  void _load() {
+    _profile = const UserAccountRepository().fetchPublicAccount(widget.userId);
+  }
+
+  Future<void> _retry() async {
+    setState(_load);
+    await _profile;
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: _bgSubtle,
+    body: SafeArea(
+      child: FutureBuilder<UserAccount>(
+        future: _profile,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: _violet),
+            );
+          }
+          if (!snapshot.hasData) {
+            final error = snapshot.error;
+            return _AccountErrorView(
+              message: error is UserAccountLoadException
+                  ? error.message
+                  : 'Unable to load this profile. Please try again.',
+              onRetry: _retry,
+            );
+          }
+
+          final user = snapshot.data!;
+          return RefreshIndicator(
+            onRefresh: _retry,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.only(bottom: 32),
+              children: [
+                _ProfileHeader(
+                  user: user,
+                  onBack: () => context.pop(),
+                  isReadOnly: true,
+                  unreadNotificationCount: 0,
+                  onNotifications: () async {},
+                  onSettings: () {},
+                  onEditBackgroundPhoto: (_) async => null,
+                  onDeleteBackgroundPhoto: () async => false,
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: _ProfilePhotosCard(
+                    photos: user.galleryPhotos,
+                    isReadOnly: true,
+                    onEdit: (_) async => null,
+                    onDelete: (_) async => false,
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: _ProfileAboutCard(
+                    bio: user.bio,
+                    isReadOnly: true,
+                    onEdit: () {},
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: _ProfileInterestsCard(),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    ),
+  );
 }
 
 class _ProfileHeaderState extends State<_ProfileHeader> {
@@ -345,8 +449,8 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
       MaterialPageRoute(
         builder: (_) => _BackgroundPhotoViewer(
           photo: widget.user.backgroundPhoto,
-          onEdit: widget.onEditBackgroundPhoto,
-          onDelete: widget.onDeleteBackgroundPhoto,
+          onEdit: widget.isReadOnly ? null : widget.onEditBackgroundPhoto,
+          onDelete: widget.isReadOnly ? null : widget.onDeleteBackgroundPhoto,
         ),
       ),
     );
@@ -413,23 +517,25 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
                       onTap: widget.onBack,
                     ),
                   ),
-                  Positioned(
-                    top: 14,
-                    right: 62,
-                    child: _FrostedIconButton(
-                      icon: Icons.notifications_none_rounded,
-                      badgeCount: widget.unreadNotificationCount,
-                      onTap: widget.onNotifications,
+                  if (!widget.isReadOnly) ...[
+                    Positioned(
+                      top: 14,
+                      right: 62,
+                      child: _FrostedIconButton(
+                        icon: Icons.notifications_none_rounded,
+                        badgeCount: widget.unreadNotificationCount,
+                        onTap: widget.onNotifications,
+                      ),
                     ),
-                  ),
-                  Positioned(
-                    top: 14,
-                    right: 16,
-                    child: _FrostedIconButton(
-                      icon: Icons.settings_outlined,
-                      onTap: widget.onSettings,
+                    Positioned(
+                      top: 14,
+                      right: 16,
+                      child: _FrostedIconButton(
+                        icon: Icons.settings_outlined,
+                        onTap: widget.onSettings,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -453,10 +559,15 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
-                            color: const Color(0x59FFFFFF), width: 3),
+                          color: const Color(0x59FFFFFF),
+                          width: 3,
+                        ),
                         boxShadow: const [
                           BoxShadow(
-                              color: _violet, blurRadius: 0, spreadRadius: 4)
+                            color: _violet,
+                            blurRadius: 0,
+                            spreadRadius: 4,
+                          ),
                         ],
                       ),
                       child: ClipOval(
@@ -542,51 +653,61 @@ class _ProfileStatsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(18),
-        decoration: _cardDecoration(),
-        child: Column(children: [
-          const Row(children: [
-            Expanded(child: _ProfileStat(number: '—', label: 'TRIPS')),
+    padding: const EdgeInsets.all(18),
+    decoration: _cardDecoration(),
+    child: Column(
+      children: [
+        const Row(
+          children: [
+            Expanded(
+              child: _ProfileStat(number: '—', label: 'TRIPS'),
+            ),
             SizedBox(height: 38, child: VerticalDivider(color: _border)),
-            Expanded(child: _ProfileStat(number: '—', label: 'CITIES')),
-          ]),
-          const SizedBox(height: 18),
+            Expanded(
+              child: _ProfileStat(number: '—', label: 'CITIES'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: FilledButton(
+            onPressed: onEdit,
+            style: FilledButton.styleFrom(
+              backgroundColor: _violet,
+              foregroundColor: Colors.white,
+              shape: const StadiumBorder(),
+            ),
+            child: const Text(
+              'Edit Profile',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ),
+        if (!isVerified) ...[
+          const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             height: 50,
-            child: FilledButton(
-              onPressed: onEdit,
-              style: FilledButton.styleFrom(
-                backgroundColor: _violet,
-                foregroundColor: Colors.white,
+            child: OutlinedButton.icon(
+              onPressed: onVerify,
+              icon: const Icon(Icons.verified_user_outlined),
+              label: const Text(
+                'Verify Identity',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _violet,
+                side: const BorderSide(color: _violet),
                 shape: const StadiumBorder(),
               ),
-              child: const Text('Edit Profile',
-                  style: TextStyle(fontWeight: FontWeight.w700)),
             ),
           ),
-          if (!isVerified) ...[
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: OutlinedButton.icon(
-                onPressed: onVerify,
-                icon: const Icon(Icons.verified_user_outlined),
-                label: const Text(
-                  'Verify Identity',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _violet,
-                  side: const BorderSide(color: _violet),
-                  shape: const StadiumBorder(),
-                ),
-              ),
-            ),
-          ],
-        ]),
-      );
+        ],
+      ],
+    ),
+  );
 }
 
 class _ProfileStat extends StatelessWidget {
@@ -595,15 +716,20 @@ class _ProfileStat extends StatelessWidget {
   const _ProfileStat({required this.number, required this.label});
 
   @override
-  Widget build(BuildContext context) => Column(children: [
-        Text(number,
-            style: const TextStyle(
-                fontFamily: 'Georgia',
-                fontSize: 22,
-                color: _ink,
-                fontWeight: FontWeight.w600)),
-        Text(label, style: _label),
-      ]);
+  Widget build(BuildContext context) => Column(
+    children: [
+      Text(
+        number,
+        style: const TextStyle(
+          fontFamily: 'Georgia',
+          fontSize: 22,
+          color: _ink,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      Text(label, style: _label),
+    ],
+  );
 }
 
 class _AccountMenuTile extends StatelessWidget {
@@ -619,35 +745,32 @@ class _AccountMenuTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Ink(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-            decoration: _cardDecoration(),
-            child: Row(
-              children: [
-                Icon(icon, color: _violet),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(
-                      color: _ink,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+    color: Colors.transparent,
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Ink(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        decoration: _cardDecoration(),
+        child: Row(
+          children: [
+            Icon(icon, color: _violet),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  color: _ink,
+                  fontWeight: FontWeight.w700,
                 ),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: _muted,
-                ),
-              ],
+              ),
             ),
-          ),
+            const Icon(Icons.chevron_right_rounded, color: _muted),
+          ],
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class _ProfilePhotosCard extends StatelessWidget {
@@ -655,11 +778,13 @@ class _ProfilePhotosCard extends StatelessWidget {
     required this.photos,
     required this.onEdit,
     required this.onDelete,
+    this.isReadOnly = false,
   });
 
   final List<String> photos;
   final Future<String?> Function(ImageSource source) onEdit;
   final Future<bool> Function(List<String> photos) onDelete;
+  final bool isReadOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -667,78 +792,82 @@ class _ProfilePhotosCard extends StatelessWidget {
     final hiddenPhotoCount = photos.length > 3 ? photos.length - 2 : 0;
 
     return _ProfileCard(
-        title: 'Photos',
-        onEdit: () => _showPhotoActions(context),
-        child: photos.isEmpty
-            ? const Text(
-                'No travel photos added yet.',
-                style: TextStyle(color: _muted, height: 1.6),
-              )
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  const spacing = 10.0;
-                  final tileSize = constraints.maxWidth.isFinite
-                      ? ((constraints.maxWidth - spacing * 2) / 3)
+      title: 'Photos',
+      edit: !isReadOnly,
+      onEdit: () => _showPhotoActions(context),
+      child: photos.isEmpty
+          ? const Text(
+              'No travel photos added yet.',
+              style: TextStyle(color: _muted, height: 1.6),
+            )
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                const spacing = 10.0;
+                final tileSize = constraints.maxWidth.isFinite
+                    ? ((constraints.maxWidth - spacing * 2) / 3)
                           .clamp(0.0, 104.0)
                           .toDouble()
-                      : 104.0;
+                    : 104.0;
 
-                  return Row(
-                    children: [
-                      for (var index = 0;
-                          index < visiblePhotos.length;
-                          index++) ...[
-                        if (index > 0) const SizedBox(width: spacing),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Semantics(
-                            button: true,
-                            label: index == 2 && hiddenPhotoCount > 0
-                                ? 'View all ${photos.length} photos'
-                                : 'Open photo ${index + 1} full screen',
-                            child: GestureDetector(
-                              onTap: index == 2 && hiddenPhotoCount > 0
-                                  ? () => _openGallery(context)
-                                  : () => _openPhotoViewer(context, index),
-                              child: SizedBox.square(
-                                dimension: tileSize,
-                                child: Stack(
-                                  fit: StackFit.expand,
-                                  children: [
-                                    Image(
-                                      image: _accountImageProvider(
-                                        visiblePhotos[index],
-                                      ),
-                                      fit: BoxFit.cover,
+                return Row(
+                  children: [
+                    for (
+                      var index = 0;
+                      index < visiblePhotos.length;
+                      index++
+                    ) ...[
+                      if (index > 0) const SizedBox(width: spacing),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Semantics(
+                          button: true,
+                          label: index == 2 && hiddenPhotoCount > 0
+                              ? 'View all ${photos.length} photos'
+                              : 'Open photo ${index + 1} full screen',
+                          child: GestureDetector(
+                            onTap: index == 2 && hiddenPhotoCount > 0
+                                ? () => _openGallery(context)
+                                : () => _openPhotoViewer(context, index),
+                            child: SizedBox.square(
+                              dimension: tileSize,
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  Image(
+                                    image: _accountImageProvider(
+                                      visiblePhotos[index],
                                     ),
-                                    if (index == 2 && hiddenPhotoCount > 0) ...[
-                                      ColoredBox(
-                                        color:
-                                            Colors.black.withValues(alpha: .52),
+                                    fit: BoxFit.cover,
+                                  ),
+                                  if (index == 2 && hiddenPhotoCount > 0) ...[
+                                    ColoredBox(
+                                      color: Colors.black.withValues(
+                                        alpha: .52,
                                       ),
-                                      Center(
-                                        child: Text(
-                                          '+$hiddenPhotoCount',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 24,
-                                            fontWeight: FontWeight.w700,
-                                          ),
+                                    ),
+                                    Center(
+                                      child: Text(
+                                        '+$hiddenPhotoCount',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.w700,
                                         ),
                                       ),
-                                    ],
+                                    ),
                                   ],
-                                ),
+                                ],
                               ),
                             ),
                           ),
                         ),
-                      ],
+                      ),
                     ],
-                  );
-                },
-              ),
-      );
+                  ],
+                );
+              },
+            ),
+    );
   }
 
   void _openGallery(BuildContext context) {
@@ -752,10 +881,8 @@ class _ProfilePhotosCard extends StatelessWidget {
   void _openPhotoViewer(BuildContext context, int initialIndex) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => _FullScreenPhotoViewer(
-          photos: photos,
-          initialIndex: initialIndex,
-        ),
+        builder: (_) =>
+            _FullScreenPhotoViewer(photos: photos, initialIndex: initialIndex),
       ),
     );
   }
@@ -779,8 +906,7 @@ class _ProfilePhotosCard extends StatelessWidget {
               ListTile(
                 leading: const Icon(Icons.add_photo_alternate_outlined),
                 title: const Text('Add photo'),
-                onTap: () =>
-                    Navigator.pop(sheetContext, _PhotoAction.addPhoto),
+                onTap: () => Navigator.pop(sheetContext, _PhotoAction.addPhoto),
               ),
               ListTile(
                 enabled: photos.isNotEmpty,
@@ -789,9 +915,9 @@ class _ProfilePhotosCard extends StatelessWidget {
                 onTap: photos.isEmpty
                     ? null
                     : () => Navigator.pop(
-                          sheetContext,
-                          _PhotoAction.deletePhotos,
-                        ),
+                        sheetContext,
+                        _PhotoAction.deletePhotos,
+                      ),
               ),
             ],
           ),
@@ -892,8 +1018,8 @@ class _UserPhotoGalleryScreenState extends State<_UserPhotoGalleryScreen> {
           widget.selectionMode && _selectedIndexes.isNotEmpty
               ? '${_selectedIndexes.length} selected'
               : widget.selectionMode
-                  ? 'Select photos'
-                  : 'Photos',
+              ? 'Select photos'
+              : 'Photos',
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
@@ -994,8 +1120,8 @@ class _UserPhotoGalleryScreenState extends State<_UserPhotoGalleryScreen> {
                     _isDeleting
                         ? 'Deleting...'
                         : _selectedIndexes.isEmpty
-                            ? 'Delete'
-                            : 'Delete (${_selectedIndexes.length})',
+                        ? 'Delete'
+                        : 'Delete (${_selectedIndexes.length})',
                   ),
                 ),
               ),
@@ -1026,9 +1152,7 @@ class _UserPhotoGalleryScreenState extends State<_UserPhotoGalleryScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red.shade700,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
             onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Delete'),
           ),
@@ -1061,8 +1185,7 @@ class _FullScreenPhotoViewer extends StatefulWidget {
   final int initialIndex;
 
   @override
-  State<_FullScreenPhotoViewer> createState() =>
-      _FullScreenPhotoViewerState();
+  State<_FullScreenPhotoViewer> createState() => _FullScreenPhotoViewerState();
 }
 
 class _FullScreenPhotoViewerState extends State<_FullScreenPhotoViewer> {
@@ -1084,49 +1207,54 @@ class _FullScreenPhotoViewerState extends State<_FullScreenPhotoViewer> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.black,
-        appBar: AppBar(
-          backgroundColor: Colors.black,
-          foregroundColor: Colors.white,
-          surfaceTintColor: Colors.transparent,
-          title: Text('${_currentIndex + 1} of ${widget.photos.length}'),
-        ),
-        body: PageView.builder(
-          controller: _pageController,
-          itemCount: widget.photos.length,
-          onPageChanged: (index) => setState(() => _currentIndex = index),
-          itemBuilder: (context, index) => Semantics(
-            image: true,
-            label:
-                'Full-size photo ${index + 1} of ${widget.photos.length}',
-            child: Center(
-              child: Image(
-                image: _accountImageProvider(widget.photos[index]),
-                width: double.infinity,
-                height: double.infinity,
-                fit: BoxFit.contain,
-              ),
-            ),
+    backgroundColor: Colors.black,
+    appBar: AppBar(
+      backgroundColor: Colors.black,
+      foregroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      title: Text('${_currentIndex + 1} of ${widget.photos.length}'),
+    ),
+    body: PageView.builder(
+      controller: _pageController,
+      itemCount: widget.photos.length,
+      onPageChanged: (index) => setState(() => _currentIndex = index),
+      itemBuilder: (context, index) => Semantics(
+        image: true,
+        label: 'Full-size photo ${index + 1} of ${widget.photos.length}',
+        child: Center(
+          child: Image(
+            image: _accountImageProvider(widget.photos[index]),
+            width: double.infinity,
+            height: double.infinity,
+            fit: BoxFit.contain,
           ),
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class _ProfileAboutCard extends StatelessWidget {
-  const _ProfileAboutCard({required this.bio, required this.onEdit});
+  const _ProfileAboutCard({
+    required this.bio,
+    required this.onEdit,
+    this.isReadOnly = false,
+  });
 
   final String bio;
   final VoidCallback onEdit;
+  final bool isReadOnly;
 
   @override
   Widget build(BuildContext context) => _ProfileCard(
-        title: 'About Me',
-        onEdit: onEdit,
-        child: Text(
-          bio.isEmpty ? 'Not set' : bio,
-          style: const TextStyle(color: _muted, height: 1.7),
-        ),
-      );
+    title: 'About Me',
+    edit: !isReadOnly,
+    onEdit: onEdit,
+    child: Text(
+      bio.isEmpty ? 'Not set' : bio,
+      style: const TextStyle(color: _muted, height: 1.7),
+    ),
+  );
 }
 
 class _ProfileInterestsCard extends StatelessWidget {
@@ -1134,20 +1262,21 @@ class _ProfileInterestsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _ProfileCard(
-        title: 'Style & Interests',
-        edit: false,
-        child: const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('TRAVEL STYLE', style: _label),
-              SizedBox(height: 9),
-              Text('Not set', style: TextStyle(color: _muted)),
-              SizedBox(height: 22),
-              Text('INTERESTS', style: _label),
-              SizedBox(height: 9),
-              Text('Not set', style: TextStyle(color: _muted)),
-            ]),
-      );
+    title: 'Style & Interests',
+    edit: false,
+    child: const Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('TRAVEL STYLE', style: _label),
+        SizedBox(height: 9),
+        Text('Not set', style: TextStyle(color: _muted)),
+        SizedBox(height: 22),
+        Text('INTERESTS', style: _label),
+        SizedBox(height: 9),
+        Text('Not set', style: TextStyle(color: _muted)),
+      ],
+    ),
+  );
 }
 
 class _ProfileCard extends StatelessWidget {
@@ -1165,13 +1294,21 @@ class _ProfileCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(18),
-        decoration: _cardDecoration(),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Text(title,
-                style: const TextStyle(
-                    color: _ink, fontSize: 18, fontWeight: FontWeight.w700)),
+    padding: const EdgeInsets.all(18),
+    decoration: _cardDecoration(),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                color: _ink,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
             const Spacer(),
             if (edit)
               IconButton(
@@ -1179,11 +1316,13 @@ class _ProfileCard extends StatelessWidget {
                 icon: const Icon(Icons.edit_outlined, color: _violet),
                 tooltip: 'Edit $title',
               ),
-          ]),
-          const SizedBox(height: 12),
-          child,
-        ]),
-      );
+          ],
+        ),
+        const SizedBox(height: 12),
+        child,
+      ],
+    ),
+  );
 }
 
 Future<String?> _showAboutMeEditor(
@@ -1194,33 +1333,30 @@ Future<String?> _showAboutMeEditor(
   return showDialog<String>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-        title: const Text('About Me'),
-        content: TextFormField(
-          initialValue: currentBio,
-          autofocus: true,
-          minLines: 4,
-          maxLines: 7,
-          maxLength: 500,
-          onChanged: (value) => bio = value,
-          decoration: const InputDecoration(
-            hintText: 'Tell other travellers about yourself',
-            border: OutlineInputBorder(),
-          ),
+      title: const Text('About Me'),
+      content: TextFormField(
+        initialValue: currentBio,
+        autofocus: true,
+        minLines: 4,
+        maxLines: 7,
+        maxLength: 500,
+        onChanged: (value) => bio = value,
+        decoration: const InputDecoration(
+          hintText: 'Tell other travellers about yourself',
+          border: OutlineInputBorder(),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(
-              dialogContext,
-              bio.trim(),
-            ),
-            child: const Text('Save'),
-          ),
-        ],
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(dialogContext, bio.trim()),
+          child: const Text('Save'),
+        ),
+      ],
+    ),
   );
 }
 
@@ -1237,21 +1373,22 @@ class _FrostedIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Material(
-        color: Colors.white.withValues(alpha: .15),
-        shape: const StadiumBorder(),
-        child: InkWell(
-          onTap: onTap,
-          customBorder: const StadiumBorder(),
-          child: SizedBox(
-              width: 38,
-              height: 38,
-              child: Badge(
-                isLabelVisible: badgeCount > 0,
-                label: Text(badgeCount > 99 ? '99+' : '$badgeCount'),
-                child: Icon(icon, color: Colors.white, size: 20),
-              )),
+    color: Colors.white.withValues(alpha: .15),
+    shape: const StadiumBorder(),
+    child: InkWell(
+      onTap: onTap,
+      customBorder: const StadiumBorder(),
+      child: SizedBox(
+        width: 38,
+        height: 38,
+        child: Badge(
+          isLabelVisible: badgeCount > 0,
+          label: Text(badgeCount > 99 ? '99+' : '$badgeCount'),
+          child: Icon(icon, color: Colors.white, size: 20),
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class _VerifiedBadge extends StatelessWidget {
@@ -1259,20 +1396,27 @@ class _VerifiedBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-        decoration: BoxDecoration(
-            color: const Color(0x337C3AED),
-            borderRadius: BorderRadius.circular(99)),
-        child: const Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.verified_rounded, size: 13, color: Colors.white),
-          SizedBox(width: 3),
-          Text('Verified',
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700)),
-        ]),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+    decoration: BoxDecoration(
+      color: const Color(0x337C3AED),
+      borderRadius: BorderRadius.circular(99),
+    ),
+    child: const Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.verified_rounded, size: 13, color: Colors.white),
+        SizedBox(width: 3),
+        Text(
+          'Verified',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 const _coverPhotoUrl =
@@ -1315,8 +1459,9 @@ class _AccountEditViewState extends State<_AccountEditView> {
   void initState() {
     super.initState();
     _usernameController = TextEditingController(text: widget.user.username);
-    _nationalityController =
-        TextEditingController(text: widget.user.nationality);
+    _nationalityController = TextEditingController(
+      text: widget.user.nationality,
+    );
     _bioController = TextEditingController(text: widget.user.bio);
     _gender = widget.user.gender;
     _backgroundPhoto = widget.user.backgroundPhoto;
@@ -1386,10 +1531,10 @@ class _AccountEditViewState extends State<_AccountEditView> {
               initialValue: _gender,
               decoration: _editInputDecoration('GENDER'),
               items: const ['Female', 'Male', 'Non-binary', 'Prefer not to say']
-                  .map((value) => DropdownMenuItem(
-                        value: value,
-                        child: Text(value),
-                      ))
+                  .map(
+                    (value) =>
+                        DropdownMenuItem(value: value, child: Text(value)),
+                  )
                   .toList(),
               onChanged: widget.isSaving
                   ? null
@@ -1716,12 +1861,11 @@ class _BackgroundPhotoViewer extends StatefulWidget {
   });
 
   final String? photo;
-  final Future<String?> Function(ImageSource source) onEdit;
-  final Future<bool> Function() onDelete;
+  final Future<String?> Function(ImageSource source)? onEdit;
+  final Future<bool> Function()? onDelete;
 
   @override
-  State<_BackgroundPhotoViewer> createState() =>
-      _BackgroundPhotoViewerState();
+  State<_BackgroundPhotoViewer> createState() => _BackgroundPhotoViewerState();
 }
 
 class _BackgroundPhotoViewerState extends State<_BackgroundPhotoViewer> {
@@ -1736,8 +1880,10 @@ class _BackgroundPhotoViewerState extends State<_BackgroundPhotoViewer> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const ListTile(
-              title: Text('Update background photo',
-                  style: TextStyle(fontWeight: FontWeight.w700)),
+              title: Text(
+                'Update background photo',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
             ),
             ListTile(
               leading: const Icon(Icons.camera_alt_outlined),
@@ -1756,7 +1902,7 @@ class _BackgroundPhotoViewerState extends State<_BackgroundPhotoViewer> {
     );
     if (source == null || !mounted) return;
     setState(() => _isWorking = true);
-    final updated = await widget.onEdit(source);
+    final updated = await widget.onEdit?.call(source);
     if (!mounted) return;
     setState(() => _isWorking = false);
     if (updated != null) Navigator.of(context).pop();
@@ -1785,7 +1931,7 @@ class _BackgroundPhotoViewerState extends State<_BackgroundPhotoViewer> {
     );
     if (confirmed != true || !mounted) return;
     setState(() => _isWorking = true);
-    final deleted = await widget.onDelete();
+    final deleted = await widget.onDelete?.call() ?? false;
     if (!mounted) return;
     setState(() => _isWorking = false);
     if (deleted) Navigator.of(context).pop();
@@ -1793,53 +1939,54 @@ class _BackgroundPhotoViewerState extends State<_BackgroundPhotoViewer> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.black,
-        body: SafeArea(
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              InteractiveViewer(
-                minScale: 1,
-                maxScale: 4,
-                child: Image(
-                  image: _accountImageProvider(
-                    widget.photo,
-                    fallback: _coverPhotoUrl,
-                  ),
-                  fit: BoxFit.contain,
-                ),
+    backgroundColor: Colors.black,
+    body: SafeArea(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          InteractiveViewer(
+            minScale: 1,
+            maxScale: 4,
+            child: Image(
+              image: _accountImageProvider(
+                widget.photo,
+                fallback: _coverPhotoUrl,
               ),
-              Positioned(
-                top: 12,
-                left: 12,
-                child: Row(
-                  children: [
-                    _FrostedIconButton(
-                      icon: Icons.edit_outlined,
-                      onTap: _isWorking ? () {} : _edit,
-                    ),
-                    const SizedBox(width: 8),
-                    _FrostedIconButton(
-                      icon: Icons.delete_outline,
-                      onTap: _isWorking ? () {} : _delete,
-                    ),
-                  ],
-                ),
-              ),
-              Positioned(
-                top: 12,
-                right: 12,
-                child: _FrostedIconButton(
-                  icon: Icons.close_rounded,
-                  onTap: _isWorking ? () {} : () => Navigator.of(context).pop(),
-                ),
-              ),
-              if (_isWorking)
-                const Center(child: CircularProgressIndicator(color: Colors.white)),
-            ],
+              fit: BoxFit.contain,
+            ),
           ),
-        ),
-      );
+          if (widget.onEdit != null && widget.onDelete != null)
+            Positioned(
+              top: 12,
+              left: 12,
+              child: Row(
+                children: [
+                  _FrostedIconButton(
+                    icon: Icons.edit_outlined,
+                    onTap: _isWorking ? () {} : _edit,
+                  ),
+                  const SizedBox(width: 8),
+                  _FrostedIconButton(
+                    icon: Icons.delete_outline,
+                    onTap: _isWorking ? () {} : _delete,
+                  ),
+                ],
+              ),
+            ),
+          Positioned(
+            top: 12,
+            right: 12,
+            child: _FrostedIconButton(
+              icon: Icons.close_rounded,
+              onTap: _isWorking ? () {} : () => Navigator.of(context).pop(),
+            ),
+          ),
+          if (_isWorking)
+            const Center(child: CircularProgressIndicator(color: Colors.white)),
+        ],
+      ),
+    ),
+  );
 }
 
 String _profileDisplayName(UserAccount user) {
@@ -1866,8 +2013,8 @@ String _profileSummary(UserAccount user) {
 
 String _nationalityWithFlag(String nationality) {
   return switch (nationality.toLowerCase()) {
-    'malaysia' || 'malaysian' =>
-        '${String.fromCharCodes([0x1F1F2, 0x1F1FE])} Malaysia',
+    'malaysia' ||
+    'malaysian' => '${String.fromCharCodes([0x1F1F2, 0x1F1FE])} Malaysia',
     _ => nationality,
   };
 }
@@ -1876,7 +2023,8 @@ int? _ageFromDateOfBirth(DateTime? dateOfBirth) {
   if (dateOfBirth == null) return null;
   final today = DateTime.now();
   var age = today.year - dateOfBirth.year;
-  final birthdayHasPassed = today.month > dateOfBirth.month ||
+  final birthdayHasPassed =
+      today.month > dateOfBirth.month ||
       (today.month == dateOfBirth.month && today.day >= dateOfBirth.day);
   if (!birthdayHasPassed) age--;
   return age < 0 ? null : age;
@@ -1914,8 +2062,10 @@ class _AccountStaticFrame extends StatelessWidget {
         children: [
           Text(subtitle, style: _label),
           const SizedBox(height: 12),
-          Text(description,
-              style: const TextStyle(color: _muted, height: 1.6, fontSize: 14)),
+          Text(
+            description,
+            style: const TextStyle(color: _muted, height: 1.6, fontSize: 14),
+          ),
         ],
       ),
     );
@@ -1930,8 +2080,11 @@ class _AccountLayoutWrapper extends StatelessWidget {
   final VoidCallback onBack;
   final Widget child;
 
-  const _AccountLayoutWrapper(
-      {required this.title, required this.onBack, required this.child});
+  const _AccountLayoutWrapper({
+    required this.title,
+    required this.onBack,
+    required this.child,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1941,8 +2094,11 @@ class _AccountLayoutWrapper extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                color: _ink, size: 20),
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: _ink,
+              size: 20,
+            ),
             onPressed: onBack,
           ),
           const SizedBox(height: 16),
