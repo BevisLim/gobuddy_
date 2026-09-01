@@ -39,12 +39,7 @@ import '../../features/safety/ui/safety_check_in_settings_screen.dart';
 
 import 'routes.dart';
 
-enum SlideDirection {
-  right,
-  left,
-  up,
-  down,
-}
+enum SlideDirection { right, left, up, down }
 
 extension GoRouterStateExtension on GoRouterState {
   SlideRouteTransition slidePage(
@@ -65,36 +60,33 @@ class SlideRouteTransition extends CustomTransitionPage<void> {
     required super.child,
     SlideDirection direction = SlideDirection.left,
   }) : super(
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            final curve = CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeInOut,
-            );
+         transitionsBuilder: (context, animation, secondaryAnimation, child) {
+           final curve = CurvedAnimation(
+             parent: animation,
+             curve: Curves.easeInOut,
+           );
 
-            Offset begin;
-            switch (direction) {
-              case SlideDirection.right:
-                begin = const Offset(-1.0, 0.0);
-                break;
-              case SlideDirection.left:
-                begin = const Offset(1.0, 0.0);
-                break;
-              case SlideDirection.up:
-                begin = const Offset(0.0, 1.0);
-                break;
-              case SlideDirection.down:
-                begin = const Offset(0.0, -1.0);
-                break;
-            }
-            final tween = Tween(begin: begin, end: Offset.zero);
-            final offsetAnimation = tween.animate(curve);
+           Offset begin;
+           switch (direction) {
+             case SlideDirection.right:
+               begin = const Offset(-1.0, 0.0);
+               break;
+             case SlideDirection.left:
+               begin = const Offset(1.0, 0.0);
+               break;
+             case SlideDirection.up:
+               begin = const Offset(0.0, 1.0);
+               break;
+             case SlideDirection.down:
+               begin = const Offset(0.0, -1.0);
+               break;
+           }
+           final tween = Tween(begin: begin, end: Offset.zero);
+           final offsetAnimation = tween.animate(curve);
 
-            return SlideTransition(
-              position: offsetAnimation,
-              child: child,
-            );
-          },
-        );
+           return SlideTransition(position: offsetAnimation, child: child);
+         },
+       );
 }
 
 final rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -129,15 +121,14 @@ final GoRouter router = GoRouter(
           state.slidePage(const ForgotPasswordScreen()),
     ),
     GoRoute(
-        path: Routes.otp,
-        pageBuilder: (context, state) {
-          final map = state.extra as Map?;
-          return state.slidePage(
-            OtpScreen(
-              email: map?['email'] as String? ?? '',
-            ),
-          );
-        }),
+      path: Routes.otp,
+      pageBuilder: (context, state) {
+        final map = state.extra as Map?;
+        return state.slidePage(
+          OtpScreen(email: map?['email'] as String? ?? ''),
+        );
+      },
+    ),
     GoRoute(
       path: Routes.setPassword,
       pageBuilder: (context, state) =>
@@ -193,25 +184,19 @@ final GoRouter router = GoRouter(
     GoRoute(
       path: '${Routes.createBudget}/:tripId',
       pageBuilder: (context, state) => state.slidePage(
-        CreateBudgetScreen(
-          tripId: int.parse(state.pathParameters['tripId']!),
-        ),
+        CreateBudgetScreen(tripId: int.parse(state.pathParameters['tripId']!)),
       ),
     ),
     GoRoute(
       path: '${Routes.editBudget}/:tripId',
       pageBuilder: (context, state) => state.slidePage(
-        EditBudgetScreen(
-          tripId: int.parse(state.pathParameters['tripId']!),
-        ),
+        EditBudgetScreen(tripId: int.parse(state.pathParameters['tripId']!)),
       ),
     ),
     GoRoute(
       path: '${Routes.addExpense}/:tripId',
       pageBuilder: (context, state) => state.slidePage(
-        AddExpenseScreen(
-          tripId: int.parse(state.pathParameters['tripId']!),
-        ),
+        AddExpenseScreen(tripId: int.parse(state.pathParameters['tripId']!)),
       ),
     ),
     GoRoute(
@@ -277,6 +262,12 @@ final GoRouter router = GoRouter(
           state.slidePage(const UserAccountScreen()),
     ),
     GoRoute(
+      path: '${Routes.publicProfile}/:userId',
+      pageBuilder: (context, state) => state.slidePage(
+        PublicUserProfileScreen(userId: state.pathParameters['userId']!),
+      ),
+    ),
+    GoRoute(
       path: Routes.identityVerification,
       pageBuilder: (context, state) => state.slidePage(
         IdentityVerificationScreen(
@@ -332,10 +323,7 @@ final GoRouter router = GoRouter(
         final tripId = state.uri.queryParameters['tripId'] ?? '';
         final knownRemoved = state.uri.queryParameters['removed'] == 'true';
         return state.slidePage(
-          GroupCollaborationScreen(
-            tripId: tripId,
-            knownRemoved: knownRemoved,
-          ),
+          GroupCollaborationScreen(tripId: tripId, knownRemoved: knownRemoved),
         );
       },
     ),

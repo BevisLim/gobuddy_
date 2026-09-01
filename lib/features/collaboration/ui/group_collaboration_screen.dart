@@ -556,6 +556,11 @@ Future<void> _showMemberSafetyActions({
         mainAxisSize: MainAxisSize.min,
         children: [
           ListTile(
+            leading: const Icon(Icons.person_outline),
+            title: const Text('View profile'),
+            onTap: () => Navigator.pop(sheetContext, 'profile'),
+          ),
+          ListTile(
             leading: const Icon(Icons.block, color: Colors.red),
             title: const Text('Block user'),
             onTap: () => Navigator.pop(sheetContext, 'block'),
@@ -572,7 +577,11 @@ Future<void> _showMemberSafetyActions({
   if (action == null || !context.mounted) return;
 
   final displayName = member.displayName ?? 'Trip member';
-  if (action == 'block') {
+  if (action == 'profile') {
+    await context.push(
+      '${Routes.publicProfile}/${Uri.encodeComponent(member.userId)}',
+    );
+  } else if (action == 'block') {
     await BlockUserAction.show(
       context: context,
       ref: ref,
@@ -1003,9 +1012,9 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
                         if (mounted) setState(() => _selectedDay = days.length);
                       } catch (error) {
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('$error')),
-                          );
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text('$error')));
                         }
                       }
                     },
@@ -1092,10 +1101,7 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
                           ),
                         ),
                         ...state.polls.map(
-                          (poll) => _TimelinePollCard(
-                            state: state,
-                            poll: poll,
-                          ),
+                          (poll) => _TimelinePollCard(state: state, poll: poll),
                         ),
                       ],
                     ],
@@ -1299,7 +1305,10 @@ class _TimelineActivityItem extends ConsumerWidget {
                 Container(
                   width: 10,
                   height: 10,
-                  decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+                  decoration: BoxDecoration(
+                    color: accent,
+                    shape: BoxShape.circle,
+                  ),
                 ),
                 if (!isLast)
                   Expanded(
@@ -1329,9 +1338,7 @@ class _TimelineActivityItem extends ConsumerWidget {
                     Row(
                       children: [
                         _TimelinePill(
-                          label: inProgress
-                              ? 'In Progress'
-                              : 'Upcoming',
+                          label: inProgress ? 'In Progress' : 'Upcoming',
                           foreground: inProgress
                               ? const Color(0xFF6D28D9)
                               : const Color(0xFFB45309),
@@ -1374,13 +1381,18 @@ class _TimelineActivityItem extends ConsumerWidget {
                       ),
                     ],
                     const SizedBox(height: 12),
-                    Text('Enjoy ${activity.title} as part of the group itinerary.'),
+                    Text(
+                      'Enjoy ${activity.title} as part of the group itinerary.',
+                    ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
                         CircleAvatar(
                           radius: 13,
-                          child: Text(_initials(organizer), style: const TextStyle(fontSize: 10)),
+                          child: Text(
+                            _initials(organizer),
+                            style: const TextStyle(fontSize: 10),
+                          ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(child: Text('Organised by $organizer')),
@@ -1466,9 +1478,7 @@ Future<void> _confirmDeleteActivity(
     context: context,
     builder: (dialogContext) => AlertDialog(
       title: const Text('Remove Activity?'),
-      content: Text(
-        'Are you sure you want to delete ${activity.title}?',
-      ),
+      content: Text('Are you sure you want to delete ${activity.title}?'),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(dialogContext, false),
@@ -1498,7 +1508,8 @@ Future<void> _showActivityShareSheet(
 ) async {
   final link =
       'https://gobuddy.app/trips/${state.tripId}/activities/${activity.id}';
-  final summary = '${activity.title}\n'
+  final summary =
+      '${activity.title}\n'
       '${_monthDay(activity.startTime)} at ${_clockTime(activity.startTime)}\n'
       '${activity.location ?? 'Location to be confirmed'}\n$link';
   await showModalBottomSheet<void>(
@@ -1625,8 +1636,18 @@ bool _sameDay(DateTime first, DateTime second) =>
 
 String _monthDay(DateTime date) {
   const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   return '${months[date.month - 1]} ${date.day}';
 }
@@ -1671,10 +1692,7 @@ class _TimelineTab extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Text(
-          'Timeline',
-          style: Theme.of(context).textTheme.headlineSmall,
-        ),
+        Text('Timeline', style: Theme.of(context).textTheme.headlineSmall),
         Text('${state.activities.length} planned activities'),
         const SizedBox(height: 16),
         Card(
