@@ -5,7 +5,7 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>GoBuddy uses your location while you share it with your trip group.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>GoBuddy uses your camera for video calls and sharing photos with your trip group.</string>
+	<string>GoBuddy uses your camera for profile photos, video calls, and sharing photos with your trip group.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>GoBuddy uses your microphone for voice and video calls.</string>
 	<key>CFBundleDevelopmentRegion</key>

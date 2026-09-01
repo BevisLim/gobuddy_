@@ -29,6 +29,7 @@ import '../../features/user_account/ui/login_screen.dart';
 import '../../features/user_account/ui/register_account_screen.dart';
 import '../../features/user_account/ui/personal_information_setup_screen.dart';
 import '../../features/user_account/ui/set_password_screen.dart';
+import '../../features/user_account/ui/profile_onboarding_screen.dart';
 import '../../features/user_account/ui/legal/privacy_policy_screen.dart';
 import '../../features/user_account/ui/legal/terms_screen.dart';
 import '../../features/safety/ui/add_emergency_contact_screen.dart';
@@ -133,6 +134,11 @@ final GoRouter router = GoRouter(
       path: Routes.setPassword,
       pageBuilder: (context, state) =>
           state.slidePage(const SetPasswordScreen()),
+    ),
+    GoRoute(
+      path: Routes.profileOnboarding,
+      pageBuilder: (context, state) =>
+          state.slidePage(const ProfileOnboardingScreen()),
     ),
     GoRoute(
       path: Routes.resetPassword,
@@ -262,9 +268,18 @@ final GoRouter router = GoRouter(
           state.slidePage(const UserAccountScreen()),
     ),
     GoRoute(
+      path: '${Routes.publicProfile}/:userId',
+      pageBuilder: (context, state) => state.slidePage(
+        PublicUserProfileScreen(userId: state.pathParameters['userId']!),
+      ),
+    ),
+    GoRoute(
       path: Routes.identityVerification,
-      pageBuilder: (context, state) =>
-          state.slidePage(const IdentityVerificationScreen()),
+      pageBuilder: (context, state) => state.slidePage(
+        IdentityVerificationScreen(
+          fromOnboarding: state.uri.queryParameters['onboarding'] == 'true',
+        ),
+      ),
     ),
     GoRoute(
       path: Routes.settings,

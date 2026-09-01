@@ -33,15 +33,32 @@ class _ActivityProposalDialogState extends State<ActivityProposalDialog> {
   }
 
   Future<void> _submit() async {
+    final title = _titleController.text.trim();
+    if (title.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter an activity title or poll question.'),
+        ),
+      );
+      return;
+    }
+    if (_creatingPoll &&
+        (_optionOneController.text.trim().isEmpty ||
+            _optionTwoController.text.trim().isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter both voting options.')),
+      );
+      return;
+    }
     setState(() => _submitting = true);
     try {
       if (_creatingPoll) {
-        await widget.onCreatePoll(_titleController.text, [
+        await widget.onCreatePoll(title, [
           _optionOneController.text,
           _optionTwoController.text,
         ]);
       } else {
-        await widget.onPropose(_titleController.text, _locationController.text);
+        await widget.onPropose(title, _locationController.text.trim());
       }
       if (mounted) Navigator.pop(context);
     } catch (error) {

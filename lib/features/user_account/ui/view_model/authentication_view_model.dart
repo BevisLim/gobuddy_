@@ -90,6 +90,9 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
 
   Future<bool> hasCurrentUserProfile() => _repository.hasCurrentUserProfile();
 
+  Future<bool> hasCompletedProfileOnboarding() =>
+      _repository.hasCompletedProfileOnboarding();
+
   Future<void> signInWithApple() async {
     state = const AsyncValue.loading();
     final result = await AsyncValue.guard(_repository.signInWithApple);

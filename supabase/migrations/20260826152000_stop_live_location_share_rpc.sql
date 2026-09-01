@@ -24,3 +24,4 @@ $$;
 
 revoke all on function public.stop_live_location_share(uuid) from public;
 grant execute on function public.stop_live_location_share(uuid) to authenticated;
+

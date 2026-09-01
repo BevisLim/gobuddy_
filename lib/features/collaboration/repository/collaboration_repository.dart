@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -97,6 +98,7 @@ class CollaborationRepository {
           .select('event_id')
           .eq('trip_id', tripId)
           .eq('user_id', currentUserId),
+      _loadTimelineDays(tripId),
     ]);
     final profileNames = <String, String>{
       for (final profile in results[8] as List<dynamic>)
@@ -171,6 +173,13 @@ class CollaborationRepository {
                 TripActivity.fromMap(activity as Map<String, dynamic>),
           )
           .toList(),
+      timelineDays: (results[13] as List<dynamic>)
+          .map(
+            (row) => DateTime.parse(
+              (row as Map<String, dynamic>)['day_date'] as String,
+            ),
+          )
+          .toList(),
       polls: polls,
       files: (results[3] as List<dynamic>).map((file) {
         final row = file as Map<String, dynamic>;
@@ -214,6 +223,29 @@ class CollaborationRepository {
           .map((userId) => profileNames[userId] ?? 'A trip member')
           .toList(),
     );
+  }
+
+  Future<List<dynamic>> _loadTimelineDays(String tripId) async {
+    try {
+      return await _client
+          .from('trip_timeline_days')
+          .select('day_date')
+          .eq('trip_id', tripId)
+          .order('day_date')
+          .timeout(const Duration(seconds: 3));
+    } on PostgrestException catch (error) {
+      // Keep existing workspaces usable while the optional timeline-days
+      // migration is being deployed. Other collaboration data must not be
+      // blocked by a missing new table.
+      if (error.code == 'PGRST205' ||
+          error.code == '42P01' ||
+          error.message.contains('trip_timeline_days')) {
+        return const [];
+      }
+      rethrow;
+    } on TimeoutException {
+      return const [];
+    }
   }
 
   RealtimeChannel subscribe(String tripId, void Function() onChange) {
@@ -277,6 +309,45 @@ class CollaborationRepository {
           column: 'trip_id',
           value: tripId,
         ),
+        callback: (_) => onChange(),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'trip_timeline_days',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'trip_id',
+          value: tripId,
+        ),
+        callback: (_) => onChange(),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'matchmaking_trip_members',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'trip_id',
+          value: tripId,
+        ),
+        callback: (_) => onChange(),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'trip_member_roles',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'trip_id',
+          value: tripId,
+        ),
+        callback: (_) => onChange(),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'trip_poll_options',
         callback: (_) => onChange(),
       )
       ..onPostgresChanges(
@@ -389,8 +460,29 @@ class CollaborationRepository {
     'location': location,
   });
 
+  Future<void> addTimelineDay(String tripId, DateTime day) => _client
+      .from('trip_timeline_days')
+      .insert({
+        'trip_id': tripId,
+        'day_date':
+            '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}',
+      });
+
   Future<void> updateActivity(String activityId, Map<String, dynamic> values) =>
       _client.from('trip_activities').update(values).eq('id', activityId);
+
+  Future<void> deleteActivity(String activityId) async {
+    final deleted = await _client
+        .from('trip_activities')
+        .delete()
+        .eq('id', activityId)
+        .select('id');
+    if ((deleted as List<dynamic>).isEmpty) {
+      throw StateError(
+        'The activity was not removed. Apply the latest Supabase migration and check your trip membership.',
+      );
+    }
+  }
 
   Future<void> createPoll({
     required String tripId,
@@ -420,22 +512,30 @@ class CollaborationRepository {
     required String fileName,
     required Uint8List bytes,
   }) async {
+    final safeFileName = fileName
+        .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')
+        .replaceAll(RegExp(r'_+'), '_');
     final storagePath =
-        '$tripId/${DateTime.now().microsecondsSinceEpoch}_$fileName';
+        '$tripId/${DateTime.now().microsecondsSinceEpoch}_${safeFileName.isEmpty ? 'attachment' : safeFileName}';
     await _client.storage
         .from('trip-documents')
         .uploadBinary(storagePath, bytes);
     final url = _client.storage
         .from('trip-documents')
         .getPublicUrl(storagePath);
-    await _client.from('trip_files').insert({
-      'trip_id': tripId,
-      'file_name': fileName,
-      'file_url': url,
-      'storage_path': storagePath,
-      'uploaded_by': userId,
-      'file_size_bytes': bytes.length,
-    });
+    try {
+      await _client.from('trip_files').insert({
+        'trip_id': tripId,
+        'file_name': fileName,
+        'file_url': url,
+        'storage_path': storagePath,
+        'uploaded_by': userId,
+        'file_size_bytes': bytes.length,
+      });
+    } catch (_) {
+      await _client.storage.from('trip-documents').remove([storagePath]);
+      rethrow;
+    }
     return url;
   }
 

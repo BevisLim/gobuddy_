@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
@@ -271,10 +273,10 @@ class GroupInfoScreen extends ConsumerWidget {
             icon: Icons.calendar_month_outlined,
             title: 'Timeline & activities',
             subtitle: 'Proposals, polls, RSVPs and activity comments',
-            onTap: () => _openGroupSection(
-              context,
-              'Timeline & activities',
-              _TimelineTab(state: state),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => _TripTimelineScreen(state: state),
+              ),
             ),
           ),
           _GroupInfoTile(
@@ -554,6 +556,11 @@ Future<void> _showMemberSafetyActions({
         mainAxisSize: MainAxisSize.min,
         children: [
           ListTile(
+            leading: const Icon(Icons.person_outline),
+            title: const Text('View profile'),
+            onTap: () => Navigator.pop(sheetContext, 'profile'),
+          ),
+          ListTile(
             leading: const Icon(Icons.block, color: Colors.red),
             title: const Text('Block user'),
             onTap: () => Navigator.pop(sheetContext, 'block'),
@@ -570,7 +577,11 @@ Future<void> _showMemberSafetyActions({
   if (action == null || !context.mounted) return;
 
   final displayName = member.displayName ?? 'Trip member';
-  if (action == 'block') {
+  if (action == 'profile') {
+    await context.push(
+      '${Routes.publicProfile}/${Uri.encodeComponent(member.userId)}',
+    );
+  } else if (action == 'block') {
     await BlockUserAction.show(
       context: context,
       ref: ref,
@@ -790,6 +801,10 @@ class _MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final photoUrl = _messageAttachmentUrl(message.body, '[photo]');
     final voiceUrl = _messageAttachmentUrl(message.body, '[voice]');
+    final sharedActivity = _sharedActivityParts(message.body);
+    final systemMessage = message.body.startsWith('[system]')
+        ? message.body.substring('[system]'.length)
+        : null;
     final colorScheme = Theme.of(context).colorScheme;
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -835,6 +850,17 @@ class _MessageBubble extends StatelessWidget {
                 )
               else if (voiceUrl != null)
                 VoiceMessagePlayer(url: voiceUrl)
+              else if (sharedActivity != null)
+                _SharedActivityPreview(parts: sharedActivity)
+              else if (systemMessage != null)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.info_outline, size: 17),
+                    const SizedBox(width: 7),
+                    Flexible(child: Text(systemMessage)),
+                  ],
+                )
               else
                 Text(message.body),
               const SizedBox(height: 4),
@@ -858,6 +884,786 @@ String? _messageAttachmentUrl(String body, String prefix) {
   return Uri.tryParse(url)?.hasScheme == true ? url : null;
 }
 
+List<String>? _sharedActivityParts(String body) {
+  if (!body.startsWith('[activity_share]')) return null;
+  final parts = body.substring('[activity_share]'.length).split('|');
+  return parts.length >= 4 ? parts : null;
+}
+
+class _SharedActivityPreview extends StatelessWidget {
+  const _SharedActivityPreview({required this.parts});
+  final List<String> parts;
+
+  @override
+  Widget build(BuildContext context) {
+    final date = DateTime.tryParse(parts[2])?.toLocal();
+    return Container(
+      width: 280,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.calendar_month_outlined, size: 17),
+              SizedBox(width: 6),
+              Text(
+                'Shared activity',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            parts[1],
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+          if (date != null) Text('${_monthDay(date)} at ${_clockTime(date)}'),
+          if (parts[3].isNotEmpty) Text(parts[3]),
+        ],
+      ),
+    );
+  }
+}
+
+class _TripTimelineScreen extends ConsumerStatefulWidget {
+  const _TripTimelineScreen({required this.state});
+
+  final GroupCollaborationState state;
+
+  @override
+  ConsumerState<_TripTimelineScreen> createState() =>
+      _TripTimelineScreenState();
+}
+
+class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
+  int _selectedDay = 0;
+
+  List<DateTime> _days(GroupCollaborationState state) {
+    final values = <DateTime>[...state.timelineDays];
+    for (final activity in state.activities) {
+      final day = DateTime(
+        activity.startTime.year,
+        activity.startTime.month,
+        activity.startTime.day,
+      );
+      if (!values.contains(day)) values.add(day);
+    }
+    values.sort();
+    if (values.isEmpty) {
+      final now = DateTime.now();
+      values.add(DateTime(now.year, now.month, now.day));
+    }
+    return values;
+  }
+
+  GroupCollaborationViewModel get _viewModel => ref.read(
+    groupCollaborationViewModelProvider(widget.state.tripId).notifier,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final workspace = ref.watch(
+      groupCollaborationViewModelProvider(widget.state.tripId),
+    );
+    final state = switch (workspace) {
+      AsyncData<GroupCollaborationState>(:final value) => value,
+      _ => widget.state,
+    };
+    final days = _days(state);
+    final selectedIndex = _selectedDay.clamp(0, days.length - 1);
+    final selectedDate = days[selectedIndex];
+    final activities = [...state.activities]
+      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+    final selectedActivities = activities
+        .where((activity) => _sameDay(activity.startTime, selectedDate))
+        .toList();
+    const purple = Color(0xFF7C3AED);
+
+    return Scaffold(
+      appBar: AppBar(
+        toolbarHeight: 72,
+        titleSpacing: 0,
+        title: Text(
+          'Bali Summer Trip - ${days.length} ${days.length == 1 ? 'day' : 'days'}',
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+        ),
+      ),
+      body: Column(
+        children: [
+          SizedBox(
+            height: 68,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              itemCount: days.length + 1,
+              itemBuilder: (context, index) {
+                if (index == days.length) {
+                  return InkWell(
+                    onTap: () async {
+                      final nextDay = days.last.add(const Duration(days: 1));
+                      try {
+                        await _viewModel.addTimelineDay(nextDay);
+                        if (mounted) setState(() => _selectedDay = days.length);
+                      } catch (error) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text('$error')));
+                        }
+                      }
+                    },
+                    child: const SizedBox(
+                      width: 88,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.add_circle_outline),
+                          SizedBox(height: 3),
+                          Text(
+                            'Add Day',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+                final selected = index == selectedIndex;
+                return InkWell(
+                  onTap: () => setState(() => _selectedDay = index),
+                  child: Container(
+                    width: 76,
+                    padding: const EdgeInsets.only(top: 10),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: selected ? purple : Colors.transparent,
+                          width: 3,
+                        ),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          'Day ${index + 1}',
+                          style: TextStyle(
+                            color: selected ? purple : null,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          _monthDay(days[index]),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: selectedActivities.isEmpty && state.polls.isEmpty
+                ? const Center(child: Text('No activities for this day yet.'))
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 16, 96),
+                    children: [
+                      ...selectedActivities.indexed.map(
+                        (entry) => _TimelineActivityItem(
+                          state: state,
+                          activity: entry.$2,
+                          isLast: entry.$1 == selectedActivities.length - 1,
+                        ),
+                      ),
+                      if (selectedActivities.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 24),
+                          child: Center(
+                            child: Text('No activities for this day yet.'),
+                          ),
+                        ),
+                      if (state.polls.isNotEmpty) ...[
+                        const Padding(
+                          padding: EdgeInsets.only(top: 8, bottom: 8),
+                          child: Text(
+                            'Activity Polls',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        ...state.polls.map(
+                          (poll) => _TimelinePollCard(state: state, poll: poll),
+                        ),
+                      ],
+                    ],
+                  ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: const Color(0xFF281950),
+        foregroundColor: Colors.white,
+        onPressed: () => _showAddActivity(selectedDate),
+        icon: const Icon(Icons.add),
+        label: const Text('Add Activity'),
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: 3,
+        onDestinationSelected: (index) {
+          final route = switch (index) {
+            0 || 1 => Routes.main,
+            2 => Routes.myTrips,
+            3 => Routes.messages,
+            _ => Routes.userAccount,
+          };
+          context.go(route);
+        },
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
+          NavigationDestination(
+            icon: Icon(Icons.search_rounded),
+            label: 'Discover',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.location_on_outlined),
+            label: 'Trips',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.chat_bubble_outline),
+            selectedIcon: Icon(Icons.chat_bubble),
+            label: 'Messages',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            label: 'Profile',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showAddActivity(DateTime day) => showDialog<void>(
+    context: context,
+    builder: (_) => ActivityProposalDialog(
+      onPropose: (title, location) => _viewModel.proposeActivity(
+        title: title,
+        location: location,
+        startTime: day.add(const Duration(hours: 12, minutes: 30)),
+      ),
+      onCreatePoll: (question, options) =>
+          _viewModel.createActivityPoll(question: question, options: options),
+    ),
+  );
+}
+
+class _TimelinePollCard extends ConsumerWidget {
+  const _TimelinePollCard({required this.state, required this.poll});
+
+  final GroupCollaborationState state;
+  final ActivityPoll poll;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final viewModel = ref.read(
+      groupCollaborationViewModelProvider(state.tripId).notifier,
+    );
+    final totalVotes = poll.options.fold<int>(
+      0,
+      (total, option) => total + option.voterIds.length,
+    );
+    return Card(
+      margin: const EdgeInsets.only(bottom: 14),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.how_to_vote_outlined, size: 19),
+                SizedBox(width: 7),
+                Text(
+                  'Group vote',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              poll.question,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 10),
+            ...poll.options.map((option) {
+              final selected = option.voterIds.contains(state.currentUserId);
+              final percentage = totalVotes == 0
+                  ? 0.0
+                  : option.voterIds.length / totalVotes;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () => _runWorkspaceAction(
+                    context,
+                    () => viewModel.castVote(poll.id, option.id),
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? Theme.of(context).colorScheme.primaryContainer
+                          : Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: selected
+                            ? Theme.of(context).colorScheme.primary
+                            : Theme.of(context).colorScheme.outlineVariant,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              selected
+                                  ? Icons.radio_button_checked
+                                  : Icons.radio_button_unchecked,
+                              size: 19,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(option.label)),
+                            Text('${option.voterIds.length}'),
+                          ],
+                        ),
+                        const SizedBox(height: 7),
+                        LinearProgressIndicator(
+                          value: percentage,
+                          minHeight: 4,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+            Text(
+              '$totalVotes ${totalVotes == 1 ? 'vote' : 'votes'}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TimelineActivityItem extends ConsumerWidget {
+  const _TimelineActivityItem({
+    required this.state,
+    required this.activity,
+    required this.isLast,
+  });
+
+  final GroupCollaborationState state;
+  final TripActivity activity;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final viewModel = ref.read(
+      groupCollaborationViewModelProvider(state.tripId).notifier,
+    );
+    final inProgress = activity.startTime.isBefore(DateTime.now());
+    final accent = inProgress
+        ? const Color(0xFF7C3AED)
+        : const Color(0xFFF59E0B);
+    final creator = state.members
+        .where((member) => member.userId == state.creatorId)
+        .firstOrNull;
+    final organizer = creator?.displayName ?? 'Trip organiser';
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 34,
+            child: Column(
+              children: [
+                const SizedBox(height: 18),
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: accent,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 5),
+                      color: const Color(0xFFD8CFF0),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Card(
+              margin: const EdgeInsets.only(bottom: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: activity.isPinned
+                    ? const BorderSide(color: Color(0xFF7C3AED), width: 1.5)
+                    : BorderSide(color: Theme.of(context).dividerColor),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        _TimelinePill(
+                          label: inProgress ? 'In Progress' : 'Upcoming',
+                          foreground: inProgress
+                              ? const Color(0xFF6D28D9)
+                              : const Color(0xFFB45309),
+                          background: inProgress
+                              ? const Color(0xFFF1EAFE)
+                              : const Color(0xFFFFF3D6),
+                        ),
+                        const Spacer(),
+                        _TimelinePill(
+                          label: _clockTime(activity.startTime),
+                          foreground: const Color(0xFF7C3AED),
+                          background: const Color(0xFFF4EFFF),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            activity.title,
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        if (activity.isLocked)
+                          const Icon(Icons.lock_outline, size: 17),
+                      ],
+                    ),
+                    if (activity.location?.trim().isNotEmpty == true) ...[
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          const Icon(Icons.location_on_outlined, size: 16),
+                          const SizedBox(width: 4),
+                          Expanded(child: Text(activity.location!)),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    Text(
+                      'Enjoy ${activity.title} as part of the group itinerary.',
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 13,
+                          child: Text(
+                            _initials(organizer),
+                            style: const TextStyle(fontSize: 10),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text('Organised by $organizer')),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        _TimelineAction(
+                          icon: Icons.edit_outlined,
+                          label: 'Edit',
+                          onTap: activity.isLocked && !state.isCreator
+                              ? null
+                              : () => _showEditActivityDialog(
+                                  context,
+                                  activity,
+                                  viewModel,
+                                ),
+                        ),
+                        _TimelineAction(
+                          icon: Icons.share_outlined,
+                          label: 'Share',
+                          onTap: () => _showActivityShareSheet(
+                            context,
+                            state,
+                            activity,
+                            viewModel,
+                          ),
+                        ),
+                        _TimelineAction(
+                          icon: activity.isPinned
+                              ? Icons.push_pin
+                              : Icons.push_pin_outlined,
+                          label: 'Pin',
+                          onTap: () => _runWorkspaceAction(
+                            context,
+                            () => viewModel.togglePin(activity),
+                          ),
+                        ),
+                        _TimelineAction(
+                          icon: activity.isLocked
+                              ? Icons.lock_open_outlined
+                              : Icons.lock_outline,
+                          label: activity.isLocked ? 'Unlock' : 'Lock',
+                          onTap: state.isCreator
+                              ? () => _runWorkspaceAction(
+                                  context,
+                                  () => viewModel.toggleLock(activity),
+                                )
+                              : null,
+                        ),
+                        _TimelineAction(
+                          icon: Icons.delete_outline,
+                          label: 'Remove',
+                          foreground: Colors.red,
+                          onTap: !activity.isLocked || state.isCreator
+                              ? () => _confirmDeleteActivity(
+                                  context,
+                                  activity,
+                                  viewModel,
+                                )
+                              : null,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _confirmDeleteActivity(
+  BuildContext context,
+  TripActivity activity,
+  GroupCollaborationViewModel viewModel,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Remove Activity?'),
+      content: Text('Are you sure you want to delete ${activity.title}?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: Colors.red),
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: const Text('Remove'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed == true && context.mounted) {
+    await _runWorkspaceAction(
+      context,
+      () => viewModel.deleteActivity(activity),
+    );
+  }
+}
+
+Future<void> _showActivityShareSheet(
+  BuildContext context,
+  GroupCollaborationState state,
+  TripActivity activity,
+  GroupCollaborationViewModel viewModel,
+) async {
+  final link =
+      'https://gobuddy.app/trips/${state.tripId}/activities/${activity.id}';
+  final summary =
+      '${activity.title}\n'
+      '${_monthDay(activity.startTime)} at ${_clockTime(activity.startTime)}\n'
+      '${activity.location ?? 'Location to be confirmed'}\n$link';
+  await showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) => SafeArea(
+      child: Wrap(
+        children: [
+          const ListTile(
+            title: Text(
+              'Share activity',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.chat_bubble_outline),
+            title: const Text('Share to Group Chat'),
+            subtitle: const Text('Post an activity preview for trip members.'),
+            onTap: () async {
+              Navigator.pop(sheetContext);
+              await _runWorkspaceAction(
+                context,
+                () => viewModel.shareActivityToChat(activity),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.ios_share_outlined),
+            title: const Text('Share via External Apps'),
+            subtitle: const Text('WhatsApp, email, SMS and more.'),
+            onTap: () async {
+              Navigator.pop(sheetContext);
+              await Share.share(summary, subject: activity.title);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.link),
+            title: const Text('Copy Link'),
+            subtitle: const Text('Copy a view-only activity link.'),
+            onTap: () async {
+              await Clipboard.setData(ClipboardData(text: link));
+              if (!sheetContext.mounted) return;
+              Navigator.pop(sheetContext);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Activity link copied.')),
+                );
+              }
+            },
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _TimelinePill extends StatelessWidget {
+  const _TimelinePill({
+    required this.label,
+    required this.foreground,
+    required this.background,
+  });
+  final String label;
+  final Color foreground;
+  final Color background;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+    decoration: BoxDecoration(
+      color: background,
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(
+        color: foreground,
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
+}
+
+class _TimelineAction extends StatelessWidget {
+  const _TimelineAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.foreground,
+  });
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+  final Color? foreground;
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: OutlinedButton(
+        onPressed: onTap,
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 2),
+          foregroundColor: foreground,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16),
+            const SizedBox(height: 3),
+            Text(label, style: const TextStyle(fontSize: 10)),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+bool _sameDay(DateTime first, DateTime second) =>
+    first.year == second.year &&
+    first.month == second.month &&
+    first.day == second.day;
+
+String _monthDay(DateTime date) {
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return '${months[date.month - 1]} ${date.day}';
+}
+
+String _clockTime(DateTime date) {
+  final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
+  final minute = date.minute.toString().padLeft(2, '0');
+  return '$hour:$minute ${date.hour < 12 ? 'AM' : 'PM'}';
+}
+
+String _initials(String name) {
+  final parts = name.trim().split(RegExp(r'\s+'));
+  if (parts.isEmpty || parts.first.isEmpty) return '?';
+  return parts.take(2).map((part) => part[0].toUpperCase()).join();
+}
+
 class _TimelineTab extends ConsumerWidget {
   const _TimelineTab({required this.state});
   final GroupCollaborationState state;
@@ -867,111 +1673,247 @@ class _TimelineTab extends ConsumerWidget {
     final viewModel = ref.read(
       groupCollaborationViewModelProvider(state.tripId).notifier,
     );
+    final activities = [...state.activities]
+      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+    final days = <DateTime>[...state.timelineDays];
+    for (final activity in activities) {
+      final day = DateTime(
+        activity.startTime.year,
+        activity.startTime.month,
+        activity.startTime.day,
+      );
+      if (!days.contains(day)) days.add(day);
+    }
+    days.sort();
+    if (days.isEmpty) {
+      final now = DateTime.now();
+      days.add(DateTime(now.year, now.month, now.day));
+    }
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        Text('Timeline', style: Theme.of(context).textTheme.headlineSmall),
+        Text('${state.activities.length} planned activities'),
+        const SizedBox(height: 16),
         Card(
-          color: Theme.of(context).colorScheme.errorContainer,
-          child: ListTile(
-            leading: Icon(
-              Icons.sos,
-              color: Theme.of(context).colorScheme.onErrorContainer,
-            ),
-            title: const Text('Emergency SOS'),
-            subtitle: const Text(
-              'Share your location and call the local emergency number',
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push(Routes.sos),
-          ),
-        ),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: () => showDialog<void>(
-            context: context,
-            builder: (_) => ActivityProposalDialog(
-              onPropose: (title, location) => viewModel.proposeActivity(
-                title: title,
-                location: location,
-                startTime: DateTime.now().add(const Duration(days: 1)),
-              ),
-              onCreatePoll: (question, options) => viewModel.createActivityPoll(
-                question: question,
-                options: options,
-              ),
-            ),
-          ),
-          icon: const Icon(Icons.add),
-          label: const Text('Propose activity'),
-        ),
-        const SizedBox(height: 12),
-        ...state.activities.map(
-          (activity) => Card(
-            child: ListTile(
-              title: Text(activity.title),
-              subtitle: Text(
-                '${activity.startTime}\n${state.comments.where((comment) => comment.activityId == activity.id).length} comment(s) · ${_rsvpSummary(state, activity.id)}',
-              ),
-              isThreeLine: true,
-              trailing: Wrap(
-                children: [
-                  IconButton(
-                    onPressed: () =>
-                        _showComments(context, state, activity, viewModel),
-                    icon: const Icon(Icons.comment_outlined),
-                    tooltip: 'Activity comments',
-                  ),
-                  PopupMenuButton<String>(
-                    tooltip: 'Your RSVP',
-                    onSelected: (status) => _runWorkspaceAction(
-                      context,
-                      () => viewModel.setActivityRsvp(
-                        activityId: activity.id,
-                        status: status,
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Trip days',
+                        style: TextStyle(fontWeight: FontWeight.bold),
                       ),
+                      Text('Add another day to your itinerary.'),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: () => _runWorkspaceAction(
+                    context,
+                    () => viewModel.addTimelineDay(
+                      days.last.add(const Duration(days: 1)),
                     ),
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'going', child: Text('Going')),
-                      PopupMenuItem(value: 'maybe', child: Text('Maybe')),
-                      PopupMenuItem(
-                        value: 'not_going',
-                        child: Text('Not going'),
+                  ),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Day'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: 82,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: days.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            itemBuilder: (_, index) {
+              final day = days[index];
+              return Container(
+                width: 88,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: index == 0
+                      ? Theme.of(context).colorScheme.primaryContainer
+                      : Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      'Day ${index + 1}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    Text(_weekday(day)),
+                    Text(_calendarDate(day)),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 16),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.icon(
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (_) => ActivityProposalDialog(
+                onPropose: (title, location) => viewModel.proposeActivity(
+                  title: title,
+                  location: location,
+                  startTime: days.last.add(const Duration(hours: 12)),
+                ),
+                onCreatePoll: (question, options) => viewModel
+                    .createActivityPoll(question: question, options: options),
+              ),
+            ),
+            icon: const Icon(Icons.add),
+            label: const Text('Add Activity'),
+          ),
+        ),
+        const SizedBox(height: 16),
+        if (activities.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 48, bottom: 48),
+            child: Center(
+              child: Text('No activities yet. Tap Add to create one.'),
+            ),
+          ),
+        ...activities.map(
+          (activity) => Card(
+            margin: const EdgeInsets.only(bottom: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: activity.isPinned
+                  ? BorderSide(color: Theme.of(context).colorScheme.primary)
+                  : BorderSide.none,
+            ),
+            child: Column(
+              children: [
+                ListTile(
+                  contentPadding: const EdgeInsets.all(14),
+                  leading: Icon(
+                    Icons.circle,
+                    size: 14,
+                    color: activity.startTime.isBefore(DateTime.now())
+                        ? Colors.green
+                        : Theme.of(context).colorScheme.primary,
+                  ),
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          activity.title,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      _ActivityStatusChip(
+                        label: activity.startTime.isBefore(DateTime.now())
+                            ? 'In progress'
+                            : 'Upcoming',
                       ),
                     ],
-                    child: Chip(label: Text(_currentRsvp(state, activity.id))),
                   ),
-                  IconButton(
-                    onPressed: () => viewModel.togglePin(activity),
-                    icon: Icon(
-                      activity.isPinned
-                          ? Icons.push_pin
-                          : Icons.push_pin_outlined,
-                    ),
-                    tooltip: 'Pin activity',
+                  subtitle: Text(
+                    '${_weekday(activity.startTime)}, ${_calendarDate(activity.startTime)} at ${_shortTime(activity.startTime)}${activity.location?.trim().isNotEmpty == true ? '\n${activity.location}' : ''}\n${state.comments.where((comment) => comment.activityId == activity.id).length} comment(s) · ${_rsvpSummary(state, activity.id)}',
                   ),
-                  IconButton(
-                    onPressed: activity.isLocked && !state.isCreator
-                        ? null
-                        : () => _showEditActivityDialog(
+                  isThreeLine: true,
+                  trailing: PopupMenuButton<String>(
+                    tooltip: 'RSVP',
+                    onSelected: (action) {
+                      switch (action) {
+                        case 'going':
+                        case 'maybe':
+                        case 'not_going':
+                          _runWorkspaceAction(
                             context,
-                            activity,
-                            viewModel,
-                          ),
-                    icon: const Icon(Icons.edit_outlined),
-                    tooltip: 'Edit activity',
-                  ),
-                  if (state.isCreator)
-                    IconButton(
-                      onPressed: () => viewModel.toggleLock(activity),
-                      icon: Icon(
-                        activity.isLocked
-                            ? Icons.lock
-                            : Icons.lock_open_outlined,
+                            () => viewModel.setActivityRsvp(
+                              activityId: activity.id,
+                              status: action,
+                            ),
+                          );
+                          break;
+                      }
+                    },
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(
+                        value: 'going',
+                        child: Text('RSVP: Going'),
                       ),
-                      tooltip: 'Lock activity',
-                    ),
-                ],
-              ),
+                      const PopupMenuItem(
+                        value: 'maybe',
+                        child: Text('RSVP: Maybe'),
+                      ),
+                      const PopupMenuItem(
+                        value: 'not_going',
+                        child: Text('RSVP: Not going'),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () =>
+                            _showComments(context, state, activity, viewModel),
+                        icon: const Icon(Icons.comment_outlined, size: 16),
+                        label: const Text('Comment'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: activity.isLocked && !state.isCreator
+                            ? null
+                            : () => _showEditActivityDialog(
+                                context,
+                                activity,
+                                viewModel,
+                              ),
+                        icon: const Icon(Icons.edit_outlined, size: 16),
+                        label: const Text('Edit'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => _runWorkspaceAction(
+                          context,
+                          () => viewModel.togglePin(activity),
+                        ),
+                        icon: Icon(
+                          activity.isPinned
+                              ? Icons.push_pin
+                              : Icons.push_pin_outlined,
+                          size: 16,
+                        ),
+                        label: Text(activity.isPinned ? 'Pinned' : 'Pin'),
+                      ),
+                      if (state.isCreator)
+                        OutlinedButton.icon(
+                          onPressed: () => _runWorkspaceAction(
+                            context,
+                            () => viewModel.toggleLock(activity),
+                          ),
+                          icon: Icon(
+                            activity.isLocked
+                                ? Icons.lock
+                                : Icons.lock_open_outlined,
+                            size: 16,
+                          ),
+                          label: Text(activity.isLocked ? 'Unlock' : 'Lock'),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -1000,6 +1942,25 @@ class _TimelineTab extends ConsumerWidget {
       ],
     );
   }
+}
+
+class _ActivityStatusChip extends StatelessWidget {
+  const _ActivityStatusChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.secondaryContainer,
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Text(
+      label,
+      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+    ),
+  );
 }
 
 void _showNotifications(
@@ -1401,24 +2362,20 @@ Future<void> _openInAppCall(
 String _shortDate(DateTime value) =>
     '${value.day}/${value.month}/${value.year} ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
 
+String _calendarDate(DateTime value) => '${value.day}/${value.month}';
+
+String _weekday(DateTime value) => const [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+][value.weekday - 1];
+
 String _shortTime(DateTime value) =>
     '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
-
-String _currentRsvp(GroupCollaborationState state, String activityId) {
-  final ownRsvp = state.rsvps
-      .where(
-        (rsvp) =>
-            rsvp.activityId == activityId && rsvp.userId == state.currentUserId,
-      )
-      .map((rsvp) => rsvp.status)
-      .firstOrNull;
-  return switch (ownRsvp) {
-    'going' => 'Going',
-    'maybe' => 'Maybe',
-    'not_going' => 'Not going',
-    _ => 'RSVP',
-  };
-}
 
 String _rsvpSummary(GroupCollaborationState state, String activityId) {
   final rsvps = state.rsvps.where((rsvp) => rsvp.activityId == activityId);

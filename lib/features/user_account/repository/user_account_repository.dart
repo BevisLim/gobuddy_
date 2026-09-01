@@ -9,6 +9,50 @@ import '../model/user_account_model.dart';
 class UserAccountRepository {
   const UserAccountRepository();
 
+  Future<void> completeProfileOnboarding({
+    required String displayName,
+    DateTime? dateOfBirth,
+    String? nationality,
+    String? gender,
+    String? bio,
+  }) async {
+    final authUser = supabase.auth.currentUser;
+    if (authUser == null) {
+      throw const UserAccountLoadException(
+        'Your session has expired. Please sign in again.',
+      );
+    }
+    final name = displayName.trim();
+    if (name.isEmpty) {
+      throw const UserAccountLoadException('Your display name is required.');
+    }
+
+    try {
+      await supabase
+          .from('user_accounts')
+          .update(<String, Object?>{
+            'display_name': name,
+            'date_of_birth': dateOfBirth == null
+                ? null
+                : '${dateOfBirth.year.toString().padLeft(4, '0')}-'
+                      '${dateOfBirth.month.toString().padLeft(2, '0')}-'
+                      '${dateOfBirth.day.toString().padLeft(2, '0')}',
+            'nationality': _nullableText(nationality),
+            'gender': _nullableText(gender),
+            'bio': _nullableText(bio),
+            'onboarding_completed': true,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', authUser.id);
+    } on PostgrestException catch (error) {
+      throw UserAccountLoadException(error.message);
+    } catch (_) {
+      throw const UserAccountLoadException(
+        'Unable to save your profile. Check your connection and try again.',
+      );
+    }
+  }
+
   Future<UserAccount> fetchCurrentAccount() async {
     final authUser = supabase.auth.currentUser;
     if (authUser == null) {
@@ -36,6 +80,8 @@ class UserAccountRepository {
         );
       }
 
+      final galleryPhotos = await _fetchGalleryPhotos(authUser.id);
+
       return UserAccount(
         uid: row['id'] as String,
         email: authUser.email ?? '',
@@ -49,6 +95,7 @@ class UserAccountRepository {
         backgroundPhoto: _publicStorageUrl(
           'background-images',
           row['background_photo_path'] as String?,
+          cacheBust: true,
         ),
         gender: row['gender'] as String?,
         nationality: (row['nationality'] as String?)?.trim(),
@@ -56,6 +103,7 @@ class UserAccountRepository {
         joinedAt: _parseDate(row['created_at']),
         bio: (row['bio'] as String?)?.trim() ?? '',
         isVerified: row['verification_status'] == 'verified',
+        galleryPhotos: galleryPhotos,
       );
     } on UserAccountLoadException {
       rethrow;
@@ -155,10 +203,7 @@ class UserAccountRepository {
           .uploadBinary(
             objectPath,
             await file.readAsBytes(),
-            fileOptions: FileOptions(
-              upsert: true,
-              contentType: _imageContentType(extension),
-            ),
+            fileOptions: FileOptions(contentType: _imageContentType(extension)),
           );
 
       await supabase
@@ -187,6 +232,285 @@ class UserAccountRepository {
     } catch (_) {
       throw const ProfilePhotoUpdateException(
         'Unable to update profile photo. Please try again.',
+      );
+    }
+  }
+
+  Future<UserAccount> fetchPublicAccount(String userId) async {
+    final id = userId.trim();
+    if (id.isEmpty) {
+      throw const UserAccountLoadException('This profile is not available.');
+    }
+    try {
+      final row = await supabase
+          .from('user_accounts')
+          .select(
+            'id, display_name, date_of_birth, gender, bio, '
+            'profile_photo_path, background_photo_path, verification_status, '
+            'nationality, created_at',
+          )
+          .eq('id', id)
+          .maybeSingle();
+      if (row == null) {
+        throw const UserAccountLoadException('This profile is not available.');
+      }
+      return UserAccount(
+        uid: row['id'] as String,
+        email: '',
+        phoneNumber: '',
+        username: (row['display_name'] as String?)?.trim() ?? '',
+        profilePhoto: _publicStorageUrl(
+          'profile-images',
+          row['profile_photo_path'] as String?,
+        ),
+        backgroundPhoto: _publicStorageUrl(
+          'background-images',
+          row['background_photo_path'] as String?,
+        ),
+        gender: row['gender'] as String?,
+        nationality: (row['nationality'] as String?)?.trim(),
+        dateOfBirth: _parseDate(row['date_of_birth']),
+        joinedAt: _parseDate(row['created_at']),
+        bio: (row['bio'] as String?)?.trim() ?? '',
+        isVerified: row['verification_status'] == 'verified',
+        galleryPhotos: await _fetchGalleryPhotos(id),
+      );
+    } on UserAccountLoadException {
+      rethrow;
+    } on PostgrestException {
+      throw const UserAccountLoadException(
+        'Unable to load this profile. Check your connection and try again.',
+      );
+    } catch (_) {
+      throw const UserAccountLoadException(
+        'Unable to load this profile. Please try again.',
+      );
+    }
+  }
+
+  Future<UserAccount> updateBackgroundPhoto(String localPath) async {
+    final authUser = supabase.auth.currentUser;
+    if (authUser == null) {
+      throw const ProfilePhotoUpdateException(
+        'Your session has expired. Please sign in again.',
+      );
+    }
+    try {
+      final file = File(localPath);
+      final fileSize = await file.length();
+      if (fileSize <= 0 || fileSize > 10 * 1024 * 1024) {
+        throw const ProfilePhotoUpdateException(
+          'Select a JPEG, PNG, or WebP image smaller than 10 MB.',
+        );
+      }
+      final extension = _validatedImageExtension(localPath);
+      final objectPath =
+          '${authUser.id}/background_${DateTime.now().microsecondsSinceEpoch}.$extension';
+      final bytes = await file.readAsBytes();
+      await supabase.storage
+          .from('background-images')
+          .uploadBinary(
+            objectPath,
+            bytes,
+            fileOptions: FileOptions(contentType: _imageContentType(extension)),
+          );
+      final oldValue = await supabase
+          .from('user_accounts')
+          .select('background_photo_path')
+          .eq('id', authUser.id)
+          .maybeSingle();
+      final oldPath = oldValue?['background_photo_path'] as String?;
+      await supabase
+          .from('user_accounts')
+          .update(<String, Object?>{
+            'background_photo_path': objectPath,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', authUser.id);
+      if (oldPath != null && oldPath.startsWith('${authUser.id}/')) {
+        try {
+          await supabase.storage.from('background-images').remove([oldPath]);
+        } catch (_) {}
+      }
+      return fetchCurrentAccount();
+    } on ProfilePhotoUpdateException {
+      rethrow;
+    } on FileSystemException {
+      throw const ProfilePhotoUpdateException(
+        'Unable to read the selected image. Please choose another image.',
+      );
+    } on StorageException catch (error) {
+      final message = error.message.toLowerCase();
+      if (message.contains('mime type') && message.contains('not supported')) {
+        throw const ProfilePhotoUpdateException(
+          'Background photo storage is not configured for JPEG images. '
+          'Apply the latest Supabase migrations and try again.',
+        );
+      }
+      throw ProfilePhotoUpdateException(
+        'Unable to upload background photo: ${error.message}',
+      );
+    } on PostgrestException catch (error) {
+      throw ProfilePhotoUpdateException(
+        'Unable to save background photo: ${error.message}',
+      );
+    } catch (_) {
+      throw const ProfilePhotoUpdateException(
+        'Unable to update background photo. Please try again.',
+      );
+    }
+  }
+
+  Future<UserAccount> deleteBackgroundPhoto() async {
+    final authUser = supabase.auth.currentUser;
+    if (authUser == null) {
+      throw const ProfilePhotoUpdateException(
+        'Your session has expired. Please sign in again.',
+      );
+    }
+    try {
+      final row = await supabase
+          .from('user_accounts')
+          .select('background_photo_path')
+          .eq('id', authUser.id)
+          .maybeSingle();
+      final oldPath = row?['background_photo_path'] as String?;
+      await supabase
+          .from('user_accounts')
+          .update(<String, Object?>{
+            'background_photo_path': null,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', authUser.id);
+      if (oldPath != null && oldPath.startsWith('${authUser.id}/')) {
+        try {
+          await supabase.storage.from('background-images').remove([oldPath]);
+        } catch (_) {}
+      }
+      return fetchCurrentAccount();
+    } catch (_) {
+      throw const ProfilePhotoUpdateException(
+        'Unable to delete background photo. Please try again.',
+      );
+    }
+  }
+
+  Future<List<String>> _fetchGalleryPhotos(String userId) async {
+    try {
+      final rows = await supabase
+          .from('user_gallery')
+          .select('image_path')
+          .eq('user_id', userId)
+          .order('created_at', ascending: false);
+      return rows
+          .map(
+            (row) => _publicStorageUrl(
+              'user-gallery',
+              row['image_path'] as String?,
+              cacheBust: true,
+            ),
+          )
+          .whereType<String>()
+          .toList(growable: false);
+    } on PostgrestException {
+      // Gallery photos are optional. A gallery-specific permission or network
+      // failure must not prevent the rest of the Account page from loading.
+      return const [];
+    }
+  }
+
+  Future<UserAccount> addGalleryPhoto(String localPath) async {
+    final authUser = supabase.auth.currentUser;
+    if (authUser == null) {
+      throw const ProfilePhotoUpdateException(
+        'Your session has expired. Please sign in again.',
+      );
+    }
+
+    try {
+      final file = File(localPath);
+      final fileSize = await file.length();
+      if (fileSize <= 0 || fileSize > 10 * 1024 * 1024) {
+        throw const ProfilePhotoUpdateException(
+          'Select a JPEG, PNG, or WebP image smaller than 10 MB.',
+        );
+      }
+
+      final extension = _validatedImageExtension(localPath);
+      final objectPath =
+          '${authUser.id}/${DateTime.now().microsecondsSinceEpoch}.$extension';
+      await supabase.storage
+          .from('user-gallery')
+          .uploadBinary(
+            objectPath,
+            await file.readAsBytes(),
+            fileOptions: FileOptions(contentType: _imageContentType(extension)),
+          );
+      await supabase.from('user_gallery').insert({
+        'user_id': authUser.id,
+        'image_path': objectPath,
+      });
+      return fetchCurrentAccount();
+    } on ProfilePhotoUpdateException {
+      rethrow;
+    } on StorageException catch (error) {
+      throw ProfilePhotoUpdateException(error.message);
+    } on PostgrestException catch (error) {
+      throw ProfilePhotoUpdateException(error.message);
+    } on FileSystemException {
+      throw const ProfilePhotoUpdateException(
+        'Unable to read the selected photo. Please choose another image.',
+      );
+    } catch (_) {
+      throw const ProfilePhotoUpdateException(
+        'Unable to add this gallery photo. Please try again.',
+      );
+    }
+  }
+
+  Future<UserAccount> deleteGalleryPhotos(List<String> photoUrls) async {
+    final authUser = supabase.auth.currentUser;
+    if (authUser == null) {
+      throw const ProfilePhotoUpdateException(
+        'Your session has expired. Please sign in again.',
+      );
+    }
+
+    final objectPaths = photoUrls
+        .map((url) => _extractStoragePath(url, 'user-gallery'))
+        .where((path) => path.startsWith('${authUser.id}/'))
+        .toSet()
+        .toList(growable: false);
+    if (objectPaths.isEmpty) {
+      throw const ProfilePhotoUpdateException(
+        'No valid gallery photos were selected.',
+      );
+    }
+
+    try {
+      await supabase
+          .from('user_gallery')
+          .delete()
+          .eq('user_id', authUser.id)
+          .inFilter('image_path', objectPaths);
+
+      // The database is the source of truth for the gallery. If storage
+      // cleanup fails, keep the photos deleted from the account rather than
+      // restoring rows that now point at partially removed files.
+      try {
+        await supabase.storage.from('user-gallery').remove(objectPaths);
+      } catch (_) {
+        // Orphaned objects can be cleaned up independently.
+      }
+
+      return fetchCurrentAccount();
+    } on ProfilePhotoUpdateException {
+      rethrow;
+    } on PostgrestException catch (error) {
+      throw ProfilePhotoUpdateException(error.message);
+    } catch (_) {
+      throw const ProfilePhotoUpdateException(
+        'Unable to delete the selected photos. Please try again.',
       );
     }
   }

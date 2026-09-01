@@ -13,9 +13,23 @@ class AppPermissionService {
     for (final permission in <Permission>[
       Permission.locationWhenInUse,
       Permission.microphone,
-      Permission.camera,
     ]) {
       if (!await permission.isGranted) await permission.request();
+    }
+  }
+
+  /// Requests camera access at the point where the user chooses to take a
+  /// profile photo instead of prompting unexpectedly during app startup.
+  Future<void> requireCameraPermission() async {
+    if (kIsWeb) return;
+
+    var status = await Permission.camera.status;
+    if (!status.isGranted) status = await Permission.camera.request();
+    if (!status.isGranted) {
+      throw const AppPermissionException(
+        'Camera permission is required to take a photo. Allow it in your '
+        'device settings, then try again.',
+      );
     }
   }
 
