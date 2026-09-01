@@ -3,15 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../common/ui/widgets/common_header.dart';
+import 'state/live_location_state.dart';
 import 'view_model/live_location_view_model.dart';
 
 class LiveLocationScreen extends ConsumerWidget {
   const LiveLocationScreen({super.key});
 
   static const _durations = [
-    Duration(minutes: 15),
     Duration(hours: 1),
     Duration(hours: 8),
+    untilTripEndsDuration,
   ];
 
   @override
@@ -135,6 +136,7 @@ class LiveLocationScreen extends ConsumerWidget {
   }
 
   static String _durationLabel(Duration duration) {
+    if (duration == untilTripEndsDuration) return 'Until trip ends';
     if (duration.inMinutes < 60) return '${duration.inMinutes} minutes';
     return '${duration.inHours} hour${duration.inHours == 1 ? '' : 's'}';
   }

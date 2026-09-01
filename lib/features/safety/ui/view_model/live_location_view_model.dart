@@ -64,7 +64,6 @@ class LiveLocationViewModel extends Notifier<LiveLocationState> {
       await service.requestPermission();
       final firstLocation = await service.watchLocation().first;
       final selectedTrip = state.trips.firstWhere((trip) => trip.id == tripId);
-      final durationExpiry = DateTime.now().add(state.duration);
       final tripExpiry = DateTime(
         selectedTrip.endDate.year,
         selectedTrip.endDate.month,
@@ -73,9 +72,9 @@ class LiveLocationViewModel extends Notifier<LiveLocationState> {
         59,
         59,
       );
-      final expiresAt = durationExpiry.isBefore(tripExpiry)
-          ? durationExpiry
-          : tripExpiry;
+      final expiresAt = state.duration == untilTripEndsDuration
+          ? tripExpiry
+          : _earlierOf(DateTime.now().add(state.duration), tripExpiry);
       if (!expiresAt.isAfter(DateTime.now())) {
         throw StateError('This trip has already ended.');
       }
@@ -143,6 +142,9 @@ class LiveLocationViewModel extends Notifier<LiveLocationState> {
   }
 
   void clearError() => state = state.copyWith(clearError: true);
+
+  DateTime _earlierOf(DateTime first, DateTime second) =>
+      first.isBefore(second) ? first : second;
 
   String _userId() => supabase.auth.currentUser?.id ??
       (throw StateError('Sign in to share your live location.'));
