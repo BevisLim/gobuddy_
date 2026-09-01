@@ -9,6 +9,7 @@ class Routes {
   static const resetPassword = '/reset-password';
   static const otp = '/otp';
   static const setPassword = '/set-password';
+  static const profileSetup = '/profile-setup';
   static const profileOnboarding = '/profile-onboarding';
   static const main = '/main';
   static const myTrips = '/my-trips';

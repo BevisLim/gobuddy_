@@ -10,8 +10,8 @@ import '../state/user_account_state.dart';
 // 1. Modern NotifierProvider definition matching your team template
 final userAccountViewModelProvider =
     NotifierProvider<UserAccountViewModel, UserAccountState>(
-  UserAccountViewModel.new,
-);
+      UserAccountViewModel.new,
+    );
 
 // 2. The modern Notifier class managing your module state lifecycle
 class UserAccountViewModel extends Notifier<UserAccountState> {
@@ -38,12 +38,10 @@ class UserAccountViewModel extends Notifier<UserAccountState> {
 
   Future<void> _loadProfile() async {
     final repository = ref.read(userAccountRepositoryProvider);
-    state = state.copyWith(
-      isLoading: true,
-      clearError: true,
-      clearUser: true,
-    );
+    state = state.copyWith(isLoading: true, clearError: true, clearUser: true);
     try {
+      // A missing row is represented by an authenticated empty draft so the
+      // first profile save can create it with an upsert.
       final initialUser = await repository.fetchCurrentAccount();
       state = state.copyWith(user: initialUser, isLoading: false);
     } catch (error) {
@@ -54,8 +52,8 @@ class UserAccountViewModel extends Notifier<UserAccountState> {
   /// Change the currently active sub-page within the user account module
   void goTo(UserAccountPage page) => state = state.copyWith(page: page);
 
-  Future<void> updateProfile(UserAccountProfileUpdate update) async {
-    if (state.user == null || update.username.trim().isEmpty) return;
+  Future<bool> updateProfile(UserAccountProfileUpdate update) async {
+    if (state.user == null || update.username.trim().isEmpty) return false;
 
     state = state.copyWith(isLoading: true, clearError: true);
     final repository = ref.read(userAccountRepositoryProvider);
@@ -70,8 +68,10 @@ class UserAccountViewModel extends Notifier<UserAccountState> {
         page: UserAccountPage.profile,
         isLoading: false,
       );
+      return true;
     } catch (e) {
       state = state.copyWith(error: e.toString(), isLoading: false);
+      return false;
     }
   }
 

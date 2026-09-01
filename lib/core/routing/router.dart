@@ -27,6 +27,7 @@ import '../../features/user_account/ui/settings/blocked_users_screen.dart';
 import '../../features/user_account/ui/settings/settings_screen.dart';
 import '../../features/user_account/ui/login_screen.dart';
 import '../../features/user_account/ui/register_account_screen.dart';
+import '../../features/user_account/ui/personal_information_setup_screen.dart';
 import '../../features/user_account/ui/set_password_screen.dart';
 import '../../features/user_account/ui/profile_onboarding_screen.dart';
 import '../../features/user_account/ui/legal/privacy_policy_screen.dart';
@@ -93,7 +94,7 @@ final rootNavigatorKey = GlobalKey<NavigatorState>();
 
 final GoRouter router = GoRouter(
   navigatorKey: rootNavigatorKey,
-  initialLocation: Routes.splash,
+  initialLocation: Routes.login,
   routes: [
     GoRoute(
       path: Routes.splash,
@@ -143,6 +144,11 @@ final GoRouter router = GoRouter(
       path: Routes.resetPassword,
       pageBuilder: (context, state) =>
           state.slidePage(const SetPasswordScreen(isRecovery: true)),
+    ),
+    GoRoute(
+      path: Routes.profileSetup,
+      pageBuilder: (context, state) =>
+          state.slidePage(const PersonalInformationSetupScreen()),
     ),
     GoRoute(
       path: Routes.main,

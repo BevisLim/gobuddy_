@@ -38,9 +38,11 @@ class _AppLaunchingScreenState extends State<AppLaunchingScreen>
     _controller = AnimationController(vsync: this, duration: _motionDuration)
       ..forward();
     _fade = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
-    _offset = Tween<Offset>(begin: const Offset(0, .04), end: Offset.zero)
-        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
-    _navigationTimer = Timer(_displayDuration, _continueFromSplash);
+    _offset = Tween<Offset>(
+      begin: const Offset(0, .04),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+    _navigationTimer = Timer(_displayDuration, _goToLogin);
   }
 
   Future<void> _continueFromSplash() async {
@@ -77,48 +79,48 @@ class _AppLaunchingScreenState extends State<AppLaunchingScreen>
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: _flyBackground,
-        body: SafeArea(
-          child: Center(
-            child: FadeTransition(
-              opacity: _fade,
-              child: SlideTransition(
-                position: _offset,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    _BrandMark(),
-                    SizedBox(height: 16),
-                    Text(
-                      'GoBuddy',
-                      style: TextStyle(
-                        color: _flyPrimary,
-                        fontFamily: 'Georgia',
-                        fontSize: 48,
-                        fontWeight: FontWeight.w600,
-                        height: 1.3,
-                        letterSpacing: -1.2,
-                      ),
-                    ),
-                    SizedBox(height: 12),
-                    Text(
-                      'Connecting people for meaningful journeys.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: _flyTextMuted,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w400,
-                        height: 1.66,
-                        letterSpacing: .3,
-                      ),
-                    ),
-                  ],
+    backgroundColor: _flyBackground,
+    body: SafeArea(
+      child: Center(
+        child: FadeTransition(
+          opacity: _fade,
+          child: SlideTransition(
+            position: _offset,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                _BrandMark(),
+                SizedBox(height: 16),
+                Text(
+                  'GoBuddy',
+                  style: TextStyle(
+                    color: _flyPrimary,
+                    fontFamily: 'Georgia',
+                    fontSize: 48,
+                    fontWeight: FontWeight.w600,
+                    height: 1.3,
+                    letterSpacing: -1.2,
+                  ),
                 ),
-              ),
+                SizedBox(height: 12),
+                Text(
+                  'Connecting people for meaningful journeys.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _flyTextMuted,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w400,
+                    height: 1.66,
+                    letterSpacing: .3,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class _BrandMark extends StatelessWidget {
@@ -126,13 +128,12 @@ class _BrandMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        width: 64,
-        height: 64,
-        decoration: BoxDecoration(
-          color: _flySurface,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child:
-            const Icon(Icons.explore_rounded, color: _flyOnPrimary, size: 34),
-      );
+    width: 64,
+    height: 64,
+    decoration: BoxDecoration(
+      color: _flySurface,
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: const Icon(Icons.explore_rounded, color: _flyOnPrimary, size: 34),
+  );
 }

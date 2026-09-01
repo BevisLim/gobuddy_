@@ -62,9 +62,10 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
     final result = ref.read(authenticationViewModelProvider);
     final message = switch (result) {
       AsyncError(:final error) => _readableError(error),
-      _ => widget.isRecovery
-          ? 'Unable to reset your password. Please try again.'
-          : 'Unable to save your password. Please try again.',
+      _ =>
+        widget.isRecovery
+            ? 'Unable to reset your password. Please try again.'
+            : 'Unable to save your password. Please try again.',
     };
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -119,9 +120,8 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
                       : 'Enter your password',
                   controller: _passwordController,
                   obscure: _obscurePassword,
-                  onToggle: () => setState(
-                    () => _obscurePassword = !_obscurePassword,
-                  ),
+                  onToggle: () =>
+                      setState(() => _obscurePassword = !_obscurePassword),
                   validator: _validatePassword,
                 ),
                 const SizedBox(height: 20),
@@ -184,43 +184,43 @@ class _InvalidRecoveryLinkView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.white,
-        body: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.link_off_rounded, color: _muted, size: 48),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Reset link unavailable',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: _ink,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'This password reset link is invalid or expired. Request '
-                    'a new link and try again.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: _muted, height: 1.5),
-                  ),
-                  const SizedBox(height: 22),
-                  FilledButton(
-                    onPressed: () => context.go(Routes.forgotPassword),
-                    child: const Text('Request New Link'),
-                  ),
-                ],
+    backgroundColor: Colors.white,
+    body: SafeArea(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.link_off_rounded, color: _muted, size: 48),
+              const SizedBox(height: 16),
+              const Text(
+                'Reset link unavailable',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _ink,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
+              const SizedBox(height: 10),
+              const Text(
+                'This password reset link is invalid or expired. Request '
+                'a new link and try again.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: _muted, height: 1.5),
+              ),
+              const SizedBox(height: 22),
+              FilledButton(
+                onPressed: () => context.go(Routes.forgotPassword),
+                child: const Text('Request New Link'),
+              ),
+            ],
           ),
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class _BrandHeader extends StatelessWidget {
@@ -228,26 +228,26 @@ class _BrandHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const Row(
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(color: _purple, shape: BoxShape.circle),
-            child: SizedBox(
-              width: 36,
-              height: 36,
-              child: Icon(Icons.explore_rounded, color: Colors.white, size: 21),
-            ),
-          ),
-          SizedBox(width: 10),
-          Text(
-            'GoBuddy',
-            style: TextStyle(
-              color: _ink,
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      );
+    children: [
+      DecoratedBox(
+        decoration: BoxDecoration(color: _purple, shape: BoxShape.circle),
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: Icon(Icons.explore_rounded, color: Colors.white, size: 21),
+        ),
+      ),
+      SizedBox(width: 10),
+      Text(
+        'GoBuddy',
+        style: TextStyle(
+          color: _ink,
+          fontSize: 20,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    ],
+  );
 }
 
 class _PasswordField extends StatelessWidget {
@@ -269,45 +269,47 @@ class _PasswordField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              color: _ink,
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        label,
+        style: const TextStyle(
+          color: _ink,
+          fontWeight: FontWeight.w700,
+          fontSize: 14,
+        ),
+      ),
+      const SizedBox(height: 8),
+      TextFormField(
+        controller: controller,
+        obscureText: obscure,
+        validator: validator,
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: const TextStyle(color: _muted),
+          suffixIcon: IconButton(
+            tooltip: obscure ? 'Show password' : 'Hide password',
+            onPressed: onToggle,
+            icon: Icon(
+              obscure
+                  ? Icons.visibility_outlined
+                  : Icons.visibility_off_outlined,
+              color: _muted,
             ),
           ),
-          const SizedBox(height: 8),
-          TextFormField(
-            controller: controller,
-            obscureText: obscure,
-            validator: validator,
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: const TextStyle(color: _muted),
-              suffixIcon: IconButton(
-                tooltip: obscure ? 'Show password' : 'Hide password',
-                onPressed: onToggle,
-                icon: Icon(
-                  obscure
-                      ? Icons.visibility_outlined
-                      : Icons.visibility_off_outlined,
-                  color: _muted,
-                ),
-              ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              border: _inputBorder,
-              enabledBorder: _inputBorder,
-              focusedBorder: _inputBorder.copyWith(
-                borderSide: const BorderSide(color: _purple, width: 1.5),
-              ),
-            ),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
           ),
-        ],
-      );
+          border: _inputBorder,
+          enabledBorder: _inputBorder,
+          focusedBorder: _inputBorder.copyWith(
+            borderSide: const BorderSide(color: _purple, width: 1.5),
+          ),
+        ),
+      ),
+    ],
+  );
 }
 
 String? _validatePassword(String? value) {

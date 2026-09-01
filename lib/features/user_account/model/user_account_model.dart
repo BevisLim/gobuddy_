@@ -67,6 +67,7 @@ class UserAccount {
     );
   }
 }
+
 class UserAccountProfileUpdate {
   const UserAccountProfileUpdate({
     required this.username,
@@ -75,6 +76,7 @@ class UserAccountProfileUpdate {
     this.profilePhoto,
     this.gender,
     this.nationality,
+    this.dateOfBirth,
   });
 
   final String? backgroundPhoto;
@@ -82,5 +84,6 @@ class UserAccountProfileUpdate {
   final String username;
   final String? gender;
   final String? nationality;
+  final DateTime? dateOfBirth;
   final String bio;
 }

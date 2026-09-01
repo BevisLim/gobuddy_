@@ -53,6 +53,8 @@ class AuthenticationRepository {
     try {
       await supabase.auth.updateUser(UserAttributes(password: password));
       await setRegistrationPending(false);
+      // Email-link verification creates a session. End it so registration
+      // always finishes at the normal login screen.
       // Email verification creates an authenticated session. End that
       // temporary session so registration finishes at the login screen and
       // the user explicitly signs in with the credentials they just created.
@@ -73,8 +75,9 @@ class AuthenticationRepository {
   Future<bool> isRegistrationPending() async {
     final prefs = await SharedPreferences.getInstance();
     final pending = prefs.getBool(Constants.registrationPendingKey) ?? false;
-    final pendingEmail =
-        prefs.getString(Constants.registrationPendingEmailKey)?.toLowerCase();
+    final pendingEmail = prefs
+        .getString(Constants.registrationPendingEmailKey)
+        ?.toLowerCase();
     final currentEmail = supabase.auth.currentUser?.email?.toLowerCase();
     return pending && pendingEmail != null && pendingEmail == currentEmail;
   }
@@ -171,10 +174,15 @@ class AuthenticationRepository {
     try {
       final profile = await supabase
           .from('user_accounts')
-          .select('id')
+          .select('display_name, date_of_birth')
           .eq('id', userId)
           .maybeSingle();
-      return profile != null;
+      if (profile == null) return false;
+      final displayName = (profile['display_name'] as String?)?.trim() ?? '';
+      final dateOfBirth = profile['date_of_birth'];
+      return displayName.isNotEmpty &&
+          dateOfBirth is String &&
+          dateOfBirth.trim().isNotEmpty;
     } on PostgrestException {
       throw Exception(
         'Unable to load your profile. Check your connection and try again.',
@@ -268,12 +276,6 @@ class AuthenticationRepository {
   }
 
   Future<bool> isLogin() async {
-    // TODO: fake data, remove this when integrating real auth
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(Constants.isLoginKey) ?? false;
-    // END TODO
-
-    // ignore: dead_code
     return supabase.auth.currentUser != null;
   }
 
