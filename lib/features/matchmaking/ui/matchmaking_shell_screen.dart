@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -17,9 +18,11 @@ import '../model/matchmaking_models.dart';
 import '../model/matchmaking_validation.dart';
 import '../model/matchmaking_notification.dart';
 import '../model/matchmaking_page.dart';
+import 'state/matchmaking_state.dart';
 import 'view_model/matchmaking_view_model.dart';
 import '../../safety/repository/safety_check_in_configuration_repository.dart';
 import '../../safety/ui/widgets/user_safety_actions.dart';
+import '../../user_account/ui/view_model/user_account_view_model.dart';
 
 const _ink = Color(0xFF281950);
 const _violet = Color(0xFF7C3AED);
@@ -40,10 +43,18 @@ class _MatchmakingShellScreenState
   RealtimeChannel? _tripsChannel;
   StreamSubscription<AuthState>? _authSubscription;
   String? _subscribedUserId;
+  Timer? _tripStartTimer;
+  bool _checkingTripStarts = false;
+  bool _tripStartSyncPending = false;
 
   @override
   void initState() {
     super.initState();
+    ref.listenManual<MatchmakingState>(
+      matchmakingViewModelProvider,
+      (_, next) => unawaited(_syncTripStartPrompts(next)),
+      fireImmediately: true,
+    );
     _subscribeToTrips(supabase.auth.currentUser?.id);
     _authSubscription = supabase.auth.onAuthStateChange.listen((authState) {
       _subscribeToTrips(authState.session?.user.id);
@@ -113,6 +124,73 @@ class _MatchmakingShellScreenState
     }
   }
 
+  Future<void> _syncTripStartPrompts(MatchmakingState state) async {
+    _tripStartTimer?.cancel();
+    _tripStartTimer = null;
+    if (_checkingTripStarts) {
+      _tripStartSyncPending = true;
+      return;
+    }
+    if (!mounted || !state.isAuthenticated) return;
+
+    _checkingTripStarts = true;
+    try {
+      final involvedTrips = state.trips.where(
+        (trip) =>
+            trip.status == TripStatus.active &&
+            (trip.isOwned || state.joinedTripIds.contains(trip.id)),
+      );
+      final now = DateTime.now();
+      final startedTrips = involvedTrips
+          .where(
+            (trip) =>
+                !trip.startsAt.isAfter(now) && now.isBefore(trip.endsAfter),
+          )
+          .toList()
+        ..sort((a, b) => a.startsAt.compareTo(b.startsAt));
+      final preferences = await SharedPreferences.getInstance();
+
+      for (final trip in startedTrips) {
+        final promptKey = _tripStartPromptKey(state.currentUserId, trip.id);
+        if (preferences.getBool(promptKey) == true) continue;
+
+        // Persist before opening the dialog so realtime refreshes and app
+        // rebuilds cannot enqueue a duplicate prompt for this user and trip.
+        await preferences.setBool(promptKey, true);
+        await _offerSafetyCheckIn();
+        if (!mounted || state.currentUserId != _subscribedUserId) return;
+      }
+
+      final nextStart = involvedTrips
+          .map((trip) => trip.startsAt)
+          .where((start) => start.isAfter(now))
+          .fold<DateTime?>(
+            null,
+            (earliest, start) =>
+                earliest == null || start.isBefore(earliest) ? start : earliest,
+          );
+      if (nextStart != null && mounted) {
+        _tripStartTimer = Timer(
+          nextStart.difference(DateTime.now()),
+          () => _syncTripStartPrompts(
+            ref.read(matchmakingViewModelProvider),
+          ),
+        );
+      }
+    } finally {
+      _checkingTripStarts = false;
+      if (_tripStartSyncPending && mounted) {
+        _tripStartSyncPending = false;
+        unawaited(
+          _syncTripStartPrompts(ref.read(matchmakingViewModelProvider)),
+        );
+      }
+    }
+  }
+
+  String _tripStartPromptKey(String userId, String tripId) =>
+      'safety_check_in_trip_start_prompt:$userId:$tripId';
+
   Future<void> _offerSafetyCheckIn() async {
     final configuration = await ref
         .read(safetyCheckInConfigurationRepositoryProvider)
@@ -159,6 +237,7 @@ class _MatchmakingShellScreenState
   @override
   void dispose() {
     _authSubscription?.cancel();
+    _tripStartTimer?.cancel();
     final channel = _tripsChannel;
     if (channel != null) supabase.removeChannel(channel);
     super.dispose();
@@ -182,6 +261,7 @@ class _MatchmakingShellScreenState
       },
     );
     final state = ref.watch(matchmakingViewModelProvider);
+    final accountState = ref.watch(userAccountViewModelProvider);
     final viewModel = ref.read(matchmakingViewModelProvider.notifier);
     final page = state.page;
     final content = switch (page) {
@@ -195,6 +275,7 @@ class _MatchmakingShellScreenState
         filters: state.availableFilters,
         notifications: state.notifications,
         unreadNotificationCount: state.unreadNotificationCount,
+        profilePhotoUrl: accountState.user?.profilePhoto,
         onNotificationsRead: viewModel.markNotificationsRead,
         onRetry: viewModel.refresh,
         onFilter: viewModel.selectFilter,
@@ -211,14 +292,20 @@ class _MatchmakingShellScreenState
       ),
       MatchmakingPage.details => TripDetailsPage(
         trip: state.selectedTrip!,
+        canOpenGroup:
+            state.selectedTrip!.isOwned ||
+            state.joinedTripIds.contains(state.selectedTrip!.id),
         onBack: () => viewModel.goTo(MatchmakingPage.discover),
         onRequest: () => viewModel.goTo(MatchmakingPage.request),
+        onOpenGroup: () => context.push(
+          '${Routes.groupCollaboration}?tripId='
+          '${Uri.encodeQueryComponent(state.selectedTrip!.id)}',
+        ),
       ),
       MatchmakingPage.create => InteractiveTripFormPage(
         hostedTrips: state.ownedTrips,
         onBack: () => viewModel.goTo(MatchmakingPage.discover),
         onPublish: viewModel.saveTrip,
-        onTripStarted: _offerSafetyCheckIn,
         onUploadImage: viewModel.uploadTripCover,
       ),
       MatchmakingPage.edit => InteractiveTripFormPage(
@@ -408,6 +495,7 @@ class DiscoverPage extends StatelessWidget {
   final List<String> filters;
   final List<MatchmakingNotification> notifications;
   final int unreadNotificationCount;
+  final String? profilePhotoUrl;
   final Future<void> Function() onNotificationsRead;
   final Future<void> Function() onRetry;
   final ValueChanged<String> onFilter;
@@ -424,6 +512,7 @@ class DiscoverPage extends StatelessWidget {
     required this.filters,
     required this.notifications,
     required this.unreadNotificationCount,
+    required this.profilePhotoUrl,
     required this.onNotificationsRead,
     required this.onRetry,
     required this.onFilter,
@@ -483,7 +572,11 @@ class DiscoverPage extends StatelessWidget {
               InkWell(
                 onTap: () => context.push(Routes.userAccount),
                 customBorder: const CircleBorder(),
-                child: const Avatar(letter: 'M', size: 34),
+                child: Avatar(
+                  letter: 'M',
+                  size: 34,
+                  imageUrl: profilePhotoUrl,
+                ),
               ),
             ],
           ),
@@ -699,6 +792,7 @@ class TripCard extends StatelessWidget {
                       letter: trip.hostInitials,
                       size: 40,
                       color: const Color(0xFFB59BF1),
+                      imageUrl: trip.hostProfilePhotoUrl,
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -1042,12 +1136,15 @@ class _InteractiveFilterPageState extends State<InteractiveFilterPage> {
 
 class TripDetailsPage extends StatelessWidget {
   final MatchmakingTrip trip;
-  final VoidCallback onBack, onRequest;
+  final bool canOpenGroup;
+  final VoidCallback onBack, onRequest, onOpenGroup;
   const TripDetailsPage({
     super.key,
     required this.trip,
+    required this.canOpenGroup,
     required this.onBack,
     required this.onRequest,
+    required this.onOpenGroup,
   });
   @override
   Widget build(BuildContext context) => Stack(
@@ -1102,6 +1199,7 @@ class TripDetailsPage extends StatelessWidget {
                         letter: trip.hostInitials,
                         size: 46,
                         color: const Color(0xFFB59BF1),
+                        imageUrl: trip.hostProfilePhotoUrl,
                       ),
                     ),
                     const SizedBox(width: 11),
@@ -1144,16 +1242,14 @@ class TripDetailsPage extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            OutlinedButton.icon(
-              onPressed: () => context.push(
-                '${Routes.groupCollaboration}?tripId='
-                '${Uri.encodeQueryComponent(trip.id)}',
+            if (canOpenGroup) ...[
+              OutlinedButton.icon(
+                onPressed: onOpenGroup,
+                icon: const Icon(Icons.groups_outlined),
+                label: const Text('Open group workspace'),
               ),
-              icon: const Icon(Icons.groups_outlined),
-              label: const Text('Open group workspace'),
-            ),
-            const SizedBox(height: 8),
-            PrimaryButton(label: 'Request to Join', onTap: onRequest),
+            ] else
+              PrimaryButton(label: 'Request to Join', onTap: onRequest),
           ],
         ),
       ),
@@ -1164,7 +1260,6 @@ class TripDetailsPage extends StatelessWidget {
 class InteractiveTripFormPage extends StatefulWidget {
   final VoidCallback onBack;
   final ValueChanged<MatchmakingTrip> onPublish;
-  final Future<void> Function()? onTripStarted;
   final Future<String> Function(String, Uint8List, String) onUploadImage;
   final VoidCallback? onDelete;
   final MatchmakingTrip? initialTrip;
@@ -1174,7 +1269,6 @@ class InteractiveTripFormPage extends StatefulWidget {
     super.key,
     required this.onBack,
     required this.onPublish,
-    this.onTripStarted,
     required this.onUploadImage,
     this.onDelete,
     this.initialTrip,
@@ -1286,6 +1380,9 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
     keyboardType: keyboard,
     inputFormatters: formatters,
     maxLines: lines,
+    readOnly: onTap != null,
+    showCursor: onTap == null,
+    enableInteractiveSelection: onTap == null,
     onTap: onTap,
     onChanged: onChanged,
     decoration: _decoration(hint, prefix: prefix, icon: icon),
@@ -1295,11 +1392,20 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
   );
 
   Future<void> _pickDate(TextEditingController controller) async {
-    final firstDate = DateTime.now();
+    final firstDate = DateUtils.dateOnly(DateTime.now());
     final lastDate = firstDate.add(const Duration(days: 3650));
-    var initialDate = _parseDate(controller.text) ?? firstDate;
+    var initialDate = DateUtils.dateOnly(
+      _parseDate(controller.text) ?? firstDate,
+    );
     if (initialDate.isBefore(firstDate) || _isOccupiedDate(initialDate)) {
-      initialDate = _firstAvailableDate(firstDate, lastDate);
+      final availableDate = _firstAvailableDate(firstDate, lastDate);
+      if (availableDate == null) {
+        setState(
+          () => _dateError = 'No available dates were found in this period.',
+        );
+        return;
+      }
+      initialDate = availableDate;
     }
     final date = await showDatePicker(
       context: context,
@@ -1331,28 +1437,25 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
     }
   }
 
-  bool _isOccupiedDate(DateTime date) => widget.hostedTrips.any(
-    (trip) =>
-        trip.id != widget.initialTrip?.id &&
-        trip.status != TripStatus.closed &&
-        !date.isBefore(
-          DateTime(
-            trip.startDate.year,
-            trip.startDate.month,
-            trip.startDate.day,
-          ),
-        ) &&
-        !date.isAfter(
-          DateTime(trip.endDate.year, trip.endDate.month, trip.endDate.day),
-        ),
-  );
+  bool _isOccupiedDate(DateTime value) {
+    final date = DateUtils.dateOnly(value);
+    return widget.hostedTrips.any(
+      (trip) =>
+          trip.id != widget.initialTrip?.id &&
+          trip.status != TripStatus.closed &&
+          !date.isBefore(DateUtils.dateOnly(trip.startDate)) &&
+          !date.isAfter(DateUtils.dateOnly(trip.endDate)),
+    );
+  }
 
-  DateTime _firstAvailableDate(DateTime firstDate, DateTime lastDate) {
-    var candidate = firstDate;
-    while (_isOccupiedDate(candidate) && candidate.isBefore(lastDate)) {
+  DateTime? _firstAvailableDate(DateTime firstDate, DateTime lastDate) {
+    var candidate = DateUtils.dateOnly(firstDate);
+    final finalDate = DateUtils.dateOnly(lastDate);
+    while (!candidate.isAfter(finalDate)) {
+      if (!_isOccupiedDate(candidate)) return candidate;
       candidate = candidate.add(const Duration(days: 1));
     }
-    return candidate;
+    return null;
   }
 
   Future<void> _pickStartTime() async {
@@ -1414,6 +1517,7 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
       hostId: widget.initialTrip?.hostId ?? 'current-user',
       hostName: widget.initialTrip?.hostName ?? '',
       hostInitials: widget.initialTrip?.hostInitials ?? '',
+      hostProfilePhotoUrl: widget.initialTrip?.hostProfilePhotoUrl,
       imageUrl: _imageUrl,
       gender: _gender,
       minAge: _ages.start.round(),
@@ -1470,6 +1574,7 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
         hostId: widget.initialTrip?.hostId ?? 'current-user',
         hostName: widget.initialTrip?.hostName ?? 'Morgan Lee',
         hostInitials: widget.initialTrip?.hostInitials ?? 'ML',
+        hostProfilePhotoUrl: widget.initialTrip?.hostProfilePhotoUrl,
         imageUrl: coverUrl.isEmpty ? _tokyo : coverUrl,
         gender: _gender,
         minAge: _ages.start.round(),
@@ -1482,9 +1587,6 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
         isOwned: true,
       ),
     );
-    if (!widget.edit) {
-      await widget.onTripStarted?.call();
-    }
   }
 
   DateTime? _parseDate(String value) {
@@ -2219,6 +2321,7 @@ class ApplicantPage extends StatelessWidget {
                       letter: applicant.initials,
                       size: 80,
                       color: _violet,
+                      imageUrl: applicant.profilePhotoUrl,
                     ),
                   ),
                 ),
@@ -2389,27 +2492,33 @@ class Avatar extends StatelessWidget {
   final String letter;
   final double size;
   final Color color;
+  final String? imageUrl;
   const Avatar({
     super.key,
     required this.letter,
     required this.size,
     this.color = _violet,
+    this.imageUrl,
   });
   @override
-  Widget build(BuildContext context) => Container(
-    width: size,
-    height: size,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-    child: Text(
-      letter,
-      style: TextStyle(
-        color: Colors.white,
-        fontSize: size * .38,
-        fontWeight: FontWeight.w700,
+  Widget build(BuildContext context) {
+    final resolvedImageUrl = imageUrl?.trim();
+    return CircleAvatar(
+      radius: size / 2,
+      backgroundColor: color,
+      foregroundImage: resolvedImageUrl == null || resolvedImageUrl.isEmpty
+          ? null
+          : NetworkImage(resolvedImageUrl),
+      child: Text(
+        letter,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: size * .38,
+          fontWeight: FontWeight.w700,
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _OtherUserAvatar extends ConsumerWidget {
@@ -2942,6 +3051,7 @@ class ApplicantCard extends StatelessWidget {
                 letter: applicant.initials,
                 size: 46,
                 color: const Color(0xFFBB9AF2),
+                imageUrl: applicant.profilePhotoUrl,
               ),
             ),
             const SizedBox(width: 10),

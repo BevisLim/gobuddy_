@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../common/remote/supabase_client.dart';
 import '../model/location_data.dart';
+import '../model/shared_live_location.dart';
 
 final liveLocationRepositoryProvider = Provider<LiveLocationRepository>(
   (ref) => SupabaseLiveLocationRepository(supabase),
@@ -18,6 +19,7 @@ abstract interface class LiveLocationRepository {
   });
   Future<void> updateLocation(String shareId, LocationData location);
   Future<void> stopShare(String shareId);
+  Stream<List<SharedLiveLocation>> watchTripShares(String tripId);
 }
 
 class SupabaseLiveLocationRepository implements LiveLocationRepository {
@@ -99,6 +101,22 @@ class SupabaseLiveLocationRepository implements LiveLocationRepository {
       params: {'p_share_id': shareId},
     );
   }
+
+  @override
+  Stream<List<SharedLiveLocation>> watchTripShares(String tripId) => _client
+      .from('live_location_shares')
+      .stream(primaryKey: ['id'])
+      .eq('trip_id', tripId)
+      .eq('is_active', true)
+      .map((rows) {
+        final now = DateTime.now();
+        final shares = rows
+            .map(SharedLiveLocation.fromMap)
+            .where((share) => share.isActiveAt(now))
+            .toList(growable: false)
+          ..sort((a, b) => b.recordedAt.compareTo(a.recordedAt));
+        return shares;
+      });
 
   void _requireUser(String userId) {
     if (_currentUserId() != userId) {

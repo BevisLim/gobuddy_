@@ -12,15 +12,17 @@ import 'package:flutter_mvvm_riverpod/core/environment/env.dart';
 import 'package:flutter_mvvm_riverpod/core/permissions/app_permission_service.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration_models.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/repository/collaboration_repository.dart';
-import 'package:flutter_mvvm_riverpod/features/collaboration/ui/jitsi_call_screen.dart';
+import 'package:flutter_mvvm_riverpod/features/collaboration/ui/call_screen.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/view_model/group_collaboration_view_model.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/activity_proposal_dialog.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_recorder.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_message_player.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_recording_preview.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/view_model/matchmaking_view_model.dart';
+import 'package:flutter_mvvm_riverpod/features/safety/repository/user_safety_repository.dart';
 import 'package:flutter_mvvm_riverpod/features/safety/ui/widgets/block_user_action.dart';
 import 'package:flutter_mvvm_riverpod/features/safety/ui/widgets/report_user_action.dart';
+import 'package:flutter_mvvm_riverpod/features/safety/ui/trip_live_locations_screen.dart';
 
 class GroupCollaborationScreen extends ConsumerWidget {
   const GroupCollaborationScreen({
@@ -135,6 +137,8 @@ class _Workspace extends ConsumerStatefulWidget {
 
 class _WorkspaceState extends ConsumerState<_Workspace> {
   final Set<String> _seenNotificationIds = {};
+  final Set<String> _handledIncomingCallIds = {};
+  bool _incomingCallDialogVisible = false;
 
   @override
   Widget build(BuildContext context) {
@@ -145,6 +149,7 @@ class _WorkspaceState extends ConsumerState<_Workspace> {
     final viewModel = ref.read(
       groupCollaborationViewModelProvider(state.tripId).notifier,
     );
+    _scheduleIncomingCall(state, viewModel);
     return Scaffold(
       appBar: AppBar(
         title: InkWell(
@@ -164,6 +169,47 @@ class _WorkspaceState extends ConsumerState<_Workspace> {
           ),
         ),
         actions: [
+          IconButton(
+            onPressed: () => _openLiveLocations(context, state),
+            icon: const Icon(Icons.location_on_outlined),
+            tooltip: 'Trip members live locations',
+          ),
+          IconButton(
+            onPressed: () {
+              final activeCall = _activeCall(state);
+              _openInAppCall(
+                context,
+                state,
+                activeCall?.callType ?? 'voice',
+                activeCall == null
+                    ? () => viewModel.startCall('voice')
+                    : () => viewModel.joinCall(activeCall),
+                viewModel,
+              );
+            },
+            icon: const Icon(Icons.call_outlined),
+            tooltip: _activeCall(state) == null
+                ? 'Start voice call'
+                : 'Join active call',
+          ),
+          IconButton(
+            onPressed: () {
+              final activeCall = _activeCall(state);
+              _openInAppCall(
+                context,
+                state,
+                activeCall?.callType ?? 'video',
+                activeCall == null
+                    ? () => viewModel.startCall('video')
+                    : () => viewModel.joinCall(activeCall),
+                viewModel,
+              );
+            },
+            icon: const Icon(Icons.videocam_outlined),
+            tooltip: _activeCall(state) == null
+                ? 'Start video call'
+                : 'Join active call',
+          ),
           IconButton(
             onPressed: () async {
               final newlySeenIds = state.unreadNotifications
@@ -196,6 +242,79 @@ class _WorkspaceState extends ConsumerState<_Workspace> {
       ),
       body: _ChatTab(state: state),
     );
+  }
+
+  void _scheduleIncomingCall(
+    GroupCollaborationState state,
+    GroupCollaborationViewModel viewModel,
+  ) {
+    if (_incomingCallDialogVisible) return;
+    final cutoff = DateTime.now().subtract(const Duration(minutes: 5));
+    final incomingCalls =
+        state.calls
+            .where(
+              (call) =>
+                  call.status != 'ended' &&
+                  call.initiatedBy != state.currentUserId &&
+                  call.createdAt.isAfter(cutoff) &&
+                  !_handledIncomingCallIds.contains(call.id),
+            )
+            .toList()
+          ..sort(
+            (first, second) => second.createdAt.compareTo(first.createdAt),
+          );
+    final call = incomingCalls.firstOrNull;
+    if (call == null) return;
+
+    _handledIncomingCallIds.add(call.id);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || _incomingCallDialogVisible) return;
+      _incomingCallDialogVisible = true;
+      final isVideo = call.callType == 'video';
+      final accepted = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          icon: CircleAvatar(
+            radius: 30,
+            backgroundColor: Theme.of(
+              dialogContext,
+            ).colorScheme.primaryContainer,
+            child: Icon(
+              isVideo ? Icons.videocam : Icons.call,
+              size: 30,
+              color: Theme.of(dialogContext).colorScheme.onPrimaryContainer,
+            ),
+          ),
+          title: Text('Incoming group ${isVideo ? 'video' : 'voice'} call'),
+          content: Text(
+            '${call.initiatedByName} started a call with the Trip workspace.',
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              icon: const Icon(Icons.call_end),
+              label: const Text('Decline'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              icon: const Icon(Icons.call),
+              label: const Text('Accept'),
+            ),
+          ],
+        ),
+      );
+      _incomingCallDialogVisible = false;
+      if (accepted != true || !mounted) return;
+      await _openInAppCall(
+        context,
+        state,
+        call.callType,
+        () => viewModel.joinCall(call),
+        viewModel,
+      );
+    });
   }
 }
 
@@ -239,9 +358,12 @@ class GroupInfoScreen extends ConsumerWidget {
                 label: 'Voice',
                 onTap: () => _openInAppCall(
                   context,
-                  state.tripId,
-                  'voice',
-                  () => viewModel.startCall('voice'),
+                  state,
+                  _activeCall(state)?.callType ?? 'voice',
+                  _activeCall(state) == null
+                      ? () => viewModel.startCall('voice')
+                      : () => viewModel.joinCall(_activeCall(state)!),
+                  viewModel,
                 ),
               ),
               _GroupInfoAction(
@@ -249,9 +371,12 @@ class GroupInfoScreen extends ConsumerWidget {
                 label: 'Video',
                 onTap: () => _openInAppCall(
                   context,
-                  state.tripId,
-                  'video',
-                  () => viewModel.startCall('video'),
+                  state,
+                  _activeCall(state)?.callType ?? 'video',
+                  _activeCall(state) == null
+                      ? () => viewModel.startCall('video')
+                      : () => viewModel.joinCall(_activeCall(state)!),
+                  viewModel,
                 ),
               ),
               _GroupInfoAction(
@@ -281,6 +406,19 @@ class GroupInfoScreen extends ConsumerWidget {
                 builder: (_) => _TripTimelineScreen(state: state),
               ),
             ),
+          ),
+          _GroupInfoTile(
+            icon: Icons.sos_rounded,
+            iconColor: Theme.of(context).colorScheme.error,
+            title: 'Emergency SOS',
+            subtitle: 'Open emergency help, location and contact alerts',
+            onTap: () => context.push(Routes.sos),
+          ),
+          _GroupInfoTile(
+            icon: Icons.location_on_outlined,
+            title: 'Live locations',
+            subtitle: 'See where sharing trip members are now',
+            onTap: () => _openLiveLocations(context, state),
           ),
           _GroupInfoTile(
             icon: Icons.folder_outlined,
@@ -359,12 +497,14 @@ class _GroupInfoAction extends StatelessWidget {
 class _GroupInfoTile extends StatelessWidget {
   const _GroupInfoTile({
     required this.icon,
+    this.iconColor,
     required this.title,
     required this.subtitle,
     required this.onTap,
   });
 
   final IconData icon;
+  final Color? iconColor;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
@@ -372,7 +512,7 @@ class _GroupInfoTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListTile(
     contentPadding: EdgeInsets.zero,
-    leading: Icon(icon),
+    leading: Icon(icon, color: iconColor),
     title: Text(title),
     subtitle: Text(subtitle),
     trailing: const Icon(Icons.chevron_right),
@@ -386,6 +526,21 @@ void _openGroupSection(BuildContext context, String title, Widget child) {
       builder: (_) => Scaffold(
         appBar: AppBar(title: Text(title)),
         body: child,
+      ),
+    ),
+  );
+}
+
+void _openLiveLocations(
+  BuildContext context,
+  GroupCollaborationState state,
+) {
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => TripLiveLocationsScreen(
+        tripId: state.tripId,
+        members: state.members,
+        currentUserId: state.currentUserId,
       ),
     ),
   );
@@ -551,6 +706,10 @@ Future<void> _showMemberSafetyActions({
   required WidgetRef ref,
   required CollaborationMember member,
 }) async {
+  final isBlocked = await ref
+      .read(userSafetyRepositoryProvider)
+      .isUserBlocked(member.userId);
+  if (!context.mounted) return;
   final action = await showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
@@ -564,8 +723,11 @@ Future<void> _showMemberSafetyActions({
             onTap: () => Navigator.pop(sheetContext, 'profile'),
           ),
           ListTile(
-            leading: const Icon(Icons.block, color: Colors.red),
-            title: const Text('Block user'),
+            leading: Icon(
+              isBlocked ? Icons.check_circle_outline : Icons.block,
+              color: isBlocked ? null : Colors.red,
+            ),
+            title: Text(isBlocked ? 'Unblock user' : 'Block user'),
             onTap: () => Navigator.pop(sheetContext, 'block'),
           ),
           ListTile(
@@ -590,6 +752,7 @@ Future<void> _showMemberSafetyActions({
       ref: ref,
       targetUserId: member.userId,
       targetDisplayName: displayName,
+      isBlocked: isBlocked,
     );
   } else if (action == 'report') {
     await ReportUserAction.show(
@@ -1035,9 +1198,13 @@ class _MessageBubble extends StatelessWidget {
     final photoUrl = _messageAttachmentUrl(message.body, '[photo]');
     final voiceUrl = _messageAttachmentUrl(message.body, '[voice]');
     final sharedActivity = _sharedActivityParts(message.body);
+    final callHistory = _callHistoryParts(message.body);
     final systemMessage = message.body.startsWith('[system]')
         ? message.body.substring('[system]'.length)
         : null;
+    if (callHistory != null) {
+      return _CallHistoryMessage(parts: callHistory, sentAt: message.sentAt);
+    }
     final colorScheme = Theme.of(context).colorScheme;
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -1115,6 +1282,83 @@ class _MessageBubble extends StatelessWidget {
   }
 }
 
+List<String>? _callHistoryParts(String body) {
+  if (!body.startsWith('[call_history]|')) return null;
+  final parts = body.substring('[call_history]|'.length).split('|');
+  if (parts.length != 3 ||
+      !const {'completed', 'cancelled', 'missed'}.contains(parts[0]) ||
+      !const {'voice', 'video'}.contains(parts[1])) {
+    return null;
+  }
+  return parts;
+}
+
+class _CallHistoryMessage extends StatelessWidget {
+  const _CallHistoryMessage({required this.parts, required this.sentAt});
+
+  final List<String> parts;
+  final DateTime sentAt;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = parts[0];
+    final isVideo = parts[1] == 'video';
+    final duration = Duration(seconds: int.tryParse(parts[2]) ?? 0);
+    final label = switch (status) {
+      'completed' =>
+        '${isVideo ? 'Video' : 'Voice'} call • ${_formatCallHistoryDuration(duration)}',
+      'missed' => 'Missed ${isVideo ? 'video' : 'voice'} call',
+      _ => '${isVideo ? 'Video' : 'Voice'} call cancelled',
+    };
+    final iconColor = status == 'missed'
+        ? Theme.of(context).colorScheme.error
+        : status == 'completed'
+        ? Theme.of(context).colorScheme.primary
+        : Theme.of(context).colorScheme.onSurfaceVariant;
+
+    return Align(
+      alignment: Alignment.center,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isVideo ? Icons.videocam_rounded : Icons.call_rounded,
+              size: 18,
+              color: iconColor,
+            ),
+            const SizedBox(width: 8),
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(width: 8),
+            Text(
+              _shortTime(sentAt),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _formatCallHistoryDuration(Duration duration) {
+  final hours = duration.inHours;
+  final minutes = duration.inMinutes.remainder(60);
+  final seconds = duration.inSeconds.remainder(60);
+  if (hours > 0) return '${hours}h ${minutes}m ${seconds}s';
+  if (minutes > 0) return '${minutes}m ${seconds}s';
+  return '${seconds}s';
+}
+
 String? _messageAttachmentUrl(String body, String prefix) {
   if (!body.startsWith(prefix)) return null;
   final url = body.substring(prefix.length).trim();
@@ -1179,23 +1423,29 @@ class _TripTimelineScreen extends ConsumerStatefulWidget {
 }
 
 class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
-  int _selectedDay = 0;
+  DateTime? _selectedDate;
+  DateTime? _pendingDay;
+  final List<DateTime> _locallyDeletedDays = [];
+  bool _deletingDay = false;
 
   List<DateTime> _days(GroupCollaborationState state) {
-    final values = <DateTime>[...state.timelineDays];
+    final values = <DateTime>[];
+    void addUnique(DateTime value) {
+      final day = DateTime(value.year, value.month, value.day);
+      if (!values.any((existing) => _sameDay(existing, day))) values.add(day);
+    }
+
+    for (final day in state.timelineDays) {
+      addUnique(day);
+    }
     for (final activity in state.activities) {
-      final day = DateTime(
-        activity.startTime.year,
-        activity.startTime.month,
-        activity.startTime.day,
-      );
-      if (!values.contains(day)) values.add(day);
+      addUnique(activity.startTime);
     }
+    if (_pendingDay != null) addUnique(_pendingDay!);
+    values.removeWhere(
+      (day) => _locallyDeletedDays.any((deleted) => _sameDay(day, deleted)),
+    );
     values.sort();
-    if (values.isEmpty) {
-      final now = DateTime.now();
-      values.add(DateTime(now.year, now.month, now.day));
-    }
     return values;
   }
 
@@ -1213,13 +1463,23 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
       _ => widget.state,
     };
     final days = _days(state);
-    final selectedIndex = _selectedDay.clamp(0, days.length - 1);
-    final selectedDate = days[selectedIndex];
+    final requestedDate = _selectedDate;
+    final requestedIndex = requestedDate == null
+        ? -1
+        : days.indexWhere((day) => _sameDay(day, requestedDate));
+    final selectedIndex = days.isEmpty
+        ? -1
+        : requestedIndex < 0
+        ? 0
+        : requestedIndex;
+    final selectedDate = selectedIndex < 0 ? null : days[selectedIndex];
     final activities = [...state.activities]
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
-    final selectedActivities = activities
-        .where((activity) => _sameDay(activity.startTime, selectedDate))
-        .toList();
+    final selectedActivities = selectedDate == null
+        ? <TripActivity>[]
+        : activities
+              .where((activity) => _sameDay(activity.startTime, selectedDate))
+              .toList();
     const purple = Color(0xFF7C3AED);
 
     return Scaffold(
@@ -1230,6 +1490,19 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
           'Bali Summer Trip - ${days.length} ${days.length == 1 ? 'day' : 'days'}',
           style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: TextButton.icon(
+              onPressed: () => context.push(Routes.sos),
+              icon: const Icon(Icons.sos_rounded),
+              label: const Text('SOS'),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+              ),
+            ),
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -1242,19 +1515,7 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
               itemBuilder: (context, index) {
                 if (index == days.length) {
                   return InkWell(
-                    onTap: () async {
-                      final nextDay = days.last.add(const Duration(days: 1));
-                      try {
-                        await _viewModel.addTimelineDay(nextDay);
-                        if (mounted) setState(() => _selectedDay = days.length);
-                      } catch (error) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(
-                            context,
-                          ).showSnackBar(SnackBar(content: Text('$error')));
-                        }
-                      }
-                    },
+                    onTap: () => _pickAndAddDay(days),
                     child: const SizedBox(
                       width: 88,
                       child: Column(
@@ -1273,10 +1534,14 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
                 }
                 final selected = index == selectedIndex;
                 return InkWell(
-                  onTap: () => setState(() => _selectedDay = index),
+                  onTap: () => setState(() => _selectedDate = days[index]),
+                  onLongPress: _deletingDay
+                      ? null
+                      : () =>
+                            _confirmDeleteDay(days: days, selectedIndex: index),
                   child: Container(
-                    width: 76,
-                    padding: const EdgeInsets.only(top: 10),
+                    width: 92,
+                    padding: const EdgeInsets.only(top: 4),
                     decoration: BoxDecoration(
                       border: Border(
                         bottom: BorderSide(
@@ -1287,12 +1552,35 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
                     ),
                     child: Column(
                       children: [
-                        Text(
-                          'Day ${index + 1}',
-                          style: TextStyle(
-                            color: selected ? purple : null,
-                            fontWeight: FontWeight.w700,
-                          ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Day ${index + 1}',
+                              style: TextStyle(
+                                color: selected ? purple : null,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            SizedBox(
+                              width: 30,
+                              height: 30,
+                              child: IconButton(
+                                padding: EdgeInsets.zero,
+                                tooltip: 'Delete Day ${index + 1}',
+                                onPressed: _deletingDay
+                                    ? null
+                                    : () => _confirmDeleteDay(
+                                        days: days,
+                                        selectedIndex: index,
+                                      ),
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  size: 17,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         Text(
                           _monthDay(days[index]),
@@ -1307,7 +1595,17 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
           ),
           const Divider(height: 1),
           Expanded(
-            child: selectedActivities.isEmpty && state.polls.isEmpty
+            child: selectedDate == null
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text(
+                        'No itinerary days yet. Use Add Day to create one.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  )
+                : selectedActivities.isEmpty && state.polls.isEmpty
                 ? const Center(child: Text('No activities for this day yet.'))
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(20, 16, 16, 96),
@@ -1346,13 +1644,15 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: const Color(0xFF281950),
-        foregroundColor: Colors.white,
-        onPressed: () => _showAddActivity(selectedDate),
-        icon: const Icon(Icons.add),
-        label: const Text('Add Activity'),
-      ),
+      floatingActionButton: selectedDate == null
+          ? null
+          : FloatingActionButton.extended(
+              backgroundColor: const Color(0xFF281950),
+              foregroundColor: Colors.white,
+              onPressed: () => _showAddActivity(selectedDate),
+              icon: const Icon(Icons.add),
+              label: const Text('Add Activity'),
+            ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: 3,
         onDestinationSelected: (index) {
@@ -1400,6 +1700,132 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
           _viewModel.createActivityPoll(question: question, options: options),
     ),
   );
+
+  Future<void> _pickAndAddDay(List<DateTime> existingDays) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final lastDate = DateTime(today.year + 10, 12, 31);
+    var initialDate = today;
+    while (existingDays.any((day) => _sameDay(day, initialDate)) &&
+        initialDate.isBefore(lastDate)) {
+      initialDate = initialDate.add(const Duration(days: 1));
+    }
+    if (existingDays.any((day) => _sameDay(day, initialDate))) {
+      _showDayError('No additional itinerary dates are available.');
+      return;
+    }
+
+    final selected = await showDatePicker(
+      context: context,
+      helpText: 'Select itinerary date',
+      cancelText: 'Cancel',
+      confirmText: 'Add day',
+      initialDate: initialDate,
+      firstDate: today,
+      lastDate: lastDate,
+      selectableDayPredicate: (date) =>
+          !existingDays.any((day) => _sameDay(day, date)),
+    );
+    if (selected == null || !mounted) return;
+
+    final selectedDay = DateTime(selected.year, selected.month, selected.day);
+    if (selectedDay.isBefore(today)) {
+      _showDayError('Past dates cannot be added to the trip schedule.');
+      return;
+    }
+    if (existingDays.any((day) => _sameDay(day, selectedDay))) {
+      _showDayError('${_monthDay(selectedDay)} is already in the itinerary.');
+      return;
+    }
+
+    try {
+      await _viewModel.addTimelineDay(selectedDay);
+      if (!mounted) return;
+      setState(() {
+        _locallyDeletedDays.removeWhere(
+          (deleted) => _sameDay(deleted, selectedDay),
+        );
+        _pendingDay = selectedDay;
+        _selectedDate = selectedDay;
+      });
+    } catch (error) {
+      if (mounted) _showDayError('$error');
+    }
+  }
+
+  Future<void> _confirmDeleteDay({
+    required List<DateTime> days,
+    required int selectedIndex,
+  }) async {
+    final day = days[selectedIndex];
+    final dayNumber = selectedIndex + 1;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Day?'),
+        content: Text(
+          'Are you sure you want to delete Day $dayNumber '
+          '(${_monthDay(day)})? All activities scheduled for this day will be removed.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deletingDay = true);
+    try {
+      final deletedActivities = await _viewModel.deleteTimelineDay(day);
+      if (!mounted) return;
+      final remainingDays = days
+          .where((candidate) => !_sameDay(candidate, day))
+          .toList(growable: false);
+      final adjacentDay = remainingDays.isEmpty
+          ? null
+          : selectedIndex > 0
+          ? remainingDays[selectedIndex - 1]
+          : remainingDays.first;
+      setState(() {
+        if (!_locallyDeletedDays.any((deleted) => _sameDay(deleted, day))) {
+          _locallyDeletedDays.add(day);
+        }
+        if (_pendingDay != null && _sameDay(_pendingDay!, day)) {
+          _pendingDay = null;
+        }
+        _selectedDate = adjacentDay;
+        _deletingDay = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            deletedActivities == 0
+                ? 'Day $dayNumber was deleted.'
+                : 'Day $dayNumber and $deletedActivities '
+                      '${deletedActivities == 1 ? 'activity' : 'activities'} were deleted.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _deletingDay = false);
+      _showDayError('Could not delete the day: $error');
+    }
+  }
+
+  void _showDayError(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
 }
 
 class _TimelinePollCard extends ConsumerWidget {
@@ -2445,7 +2871,7 @@ class _CallsTab extends ConsumerWidget {
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 4),
-        const Text('Join any group call in the shared Jitsi room.'),
+        const Text('Join active in-app voice and video calls.'),
         const SizedBox(height: 12),
         if (state.calls.isEmpty)
           const Card(
@@ -2470,9 +2896,10 @@ class _CallsTab extends ConsumerWidget {
                         ? null
                         : () => _openInAppCall(
                             context,
-                            state.tripId,
+                            state,
                             call.callType,
                             () => viewModel.joinCall(call),
+                            viewModel,
                           ),
                     child: Text(call.status == 'ended' ? 'Ended' : 'Join'),
                   ),
@@ -2571,9 +2998,10 @@ Future<void> _runWorkspaceAction(
 
 Future<void> _openInAppCall(
   BuildContext context,
-  String tripId,
+  GroupCollaborationState state,
   String callType,
   Future<TripCall?> Function() action,
+  GroupCollaborationViewModel viewModel,
 ) async {
   try {
     await const AppPermissionService().requireCallPermissions(
@@ -2583,8 +3011,20 @@ Future<void> _openInAppCall(
     if (call == null || !context.mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            JitsiCallScreen(tripId: tripId, callType: call.callType),
+        fullscreenDialog: true,
+        builder: (_) => CallScreen(
+          tripId: state.tripId,
+          call: call,
+          currentUserId: state.currentUserId,
+          displayName: _currentMemberName(state),
+          onVideoEnabled: () => viewModel.markCallVideoUsed(call),
+          onCallEnded: (details) => viewModel.leaveCall(
+            call,
+            reason: details.reason.name,
+            hadVideo: details.hadVideo,
+            duration: details.duration,
+          ),
+        ),
       ),
     );
   } catch (error) {
@@ -2595,6 +3035,22 @@ Future<void> _openInAppCall(
     }
   }
 }
+
+TripCall? _activeCall(GroupCollaborationState state) {
+  final activeCalls =
+      state.calls.where((call) => call.status != 'ended').toList()
+        ..sort((first, second) => second.createdAt.compareTo(first.createdAt));
+  return activeCalls.firstOrNull;
+}
+
+String _currentMemberName(GroupCollaborationState state) =>
+    state.members
+        .where((member) => member.userId == state.currentUserId)
+        .map((member) => member.displayName?.trim())
+        .whereType<String>()
+        .where((name) => name.isNotEmpty)
+        .firstOrNull ??
+    'GoBuddy member';
 
 String _shortDate(DateTime value) =>
     '${value.day}/${value.month}/${value.year} ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';

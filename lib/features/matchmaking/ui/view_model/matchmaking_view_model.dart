@@ -449,6 +449,7 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
       (trip) => trip.id == current.tripId,
     );
     final trips = [...state.trips];
+    var tripBecomesFull = false;
     if (tripIndex >= 0) {
       final trip = trips[tripIndex];
       final accepting =
@@ -458,6 +459,7 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
           current.decision == ApplicantDecision.accepted &&
           decision != ApplicantDecision.accepted;
       if (accepting && trip.spotsLeft == 0) return;
+      tripBecomesFull = accepting && trip.spotsLeft == 1;
       trips[tripIndex] = trip.copyWith(
         joined:
             trip.joined +
@@ -468,16 +470,24 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
                 : 0),
       );
     }
-    state = state.copyWith(
-      trips: trips,
-      requests: [
-        for (final request in state.requests)
-          if (request.id == requestId)
-            request.copyWith(decision: decision)
-          else
-            request,
-      ],
-    );
+    final requests = <JoinRequest>[];
+    for (final request in state.requests) {
+      final isOtherOpenRequestForFullTrip =
+          tripBecomesFull &&
+          request.id != requestId &&
+          request.tripId == current.tripId &&
+          {
+            ApplicantDecision.pending,
+            ApplicantDecision.held,
+          }.contains(request.decision);
+      if (isOtherOpenRequestForFullTrip) continue;
+      requests.add(
+        request.id == requestId
+            ? request.copyWith(decision: decision)
+            : request,
+      );
+    }
+    state = state.copyWith(trips: trips, requests: requests);
     if (_repository.hasAuthenticatedUser) {
       unawaited(_persistRequestDecision(requestId, decision));
     } else {

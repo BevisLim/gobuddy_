@@ -44,6 +44,10 @@ import 'routes.dart';
 enum SlideDirection { right, left, up, down }
 
 extension GoRouterStateExtension on GoRouterState {
+  NoTransitionPage<void> navigationPage(Widget child) {
+    return NoTransitionPage<void>(key: pageKey, child: child);
+  }
+
   SlideRouteTransition slidePage(
     Widget child, {
     SlideDirection direction = SlideDirection.left,
@@ -153,7 +157,7 @@ final GoRouter router = GoRouter(
     ),
     GoRoute(
       path: Routes.main,
-      pageBuilder: (context, state) => state.slidePage(
+      pageBuilder: (context, state) => state.navigationPage(
         ProviderScope(
           overrides: [
             matchmakingInitialPageProvider.overrideWithValue(
@@ -167,7 +171,7 @@ final GoRouter router = GoRouter(
     ),
     GoRoute(
       path: Routes.myTrips,
-      pageBuilder: (context, state) => state.slidePage(
+      pageBuilder: (context, state) => state.navigationPage(
         ProviderScope(
           overrides: [
             matchmakingInitialPageProvider.overrideWithValue(
@@ -181,12 +185,13 @@ final GoRouter router = GoRouter(
     ),
     GoRoute(
       path: Routes.messages,
-      pageBuilder: (context, state) => state.slidePage(const MessagesScreen()),
+      pageBuilder: (context, state) =>
+          state.navigationPage(const MessagesScreen()),
     ),
     GoRoute(
       path: Routes.expenseDashboard,
       pageBuilder: (context, state) =>
-          state.slidePage(const ExpenseDashboardScreen()),
+          state.navigationPage(const ExpenseDashboardScreen()),
     ),
     GoRoute(
       path: '${Routes.createBudget}/:tripId',
@@ -266,7 +271,7 @@ final GoRouter router = GoRouter(
     GoRoute(
       path: Routes.userAccount,
       pageBuilder: (context, state) =>
-          state.slidePage(const UserAccountScreen()),
+          state.navigationPage(const UserAccountScreen()),
     ),
     GoRoute(
       path: '${Routes.publicProfile}/:userId',

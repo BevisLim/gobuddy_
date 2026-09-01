@@ -460,13 +460,33 @@ class CollaborationRepository {
     'location': location,
   });
 
-  Future<void> addTimelineDay(String tripId, DateTime day) => _client
-      .from('trip_timeline_days')
-      .insert({
-        'trip_id': tripId,
-        'day_date':
-            '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}',
-      });
+  Future<void> addTimelineDay(
+    String tripId,
+    DateTime day,
+  ) => _client.from('trip_timeline_days').insert({
+    'trip_id': tripId,
+    'day_date':
+        '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}',
+  });
+
+  Future<int> deleteTimelineDay(String tripId, DateTime day) async {
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = DateTime(day.year, day.month, day.day + 1);
+    final dayDate =
+        '${day.year.toString().padLeft(4, '0')}-'
+        '${day.month.toString().padLeft(2, '0')}-'
+        '${day.day.toString().padLeft(2, '0')}';
+    final result = await _client.rpc(
+      'delete_trip_timeline_day',
+      params: {
+        'p_trip_id': tripId,
+        'p_day_date': dayDate,
+        'p_day_start': dayStart.toUtc().toIso8601String(),
+        'p_day_end': dayEnd.toUtc().toIso8601String(),
+      },
+    );
+    return result as int? ?? 0;
+  }
 
   Future<void> updateActivity(String activityId, Map<String, dynamic> values) =>
       _client.from('trip_activities').update(values).eq('id', activityId);
@@ -550,16 +570,48 @@ class CollaborationRepository {
   }) async {
     final call = await _client
         .from('trip_calls')
-        .insert({'trip_id': tripId, 'call_type': type, 'status': 'ringing'})
+        .insert({
+          'trip_id': tripId,
+          'call_type': type,
+          'status': 'ringing',
+          'had_video': type == 'video',
+        })
         .select()
         .single();
     return TripCall.fromMap(call);
   }
 
-  Future<void> updateCallStatus({
+  Future<void> joinCall(String callId) =>
+      _client.rpc('join_trip_call', params: {'p_call_id': callId});
+
+  Future<void> markCallVideoUsed(String callId) =>
+      _client.rpc('mark_trip_call_video_used', params: {'p_call_id': callId});
+
+  Future<int> leaveCall(String callId) async {
+    final result = await _client.rpc(
+      'leave_trip_call',
+      params: {'p_call_id': callId},
+    );
+    return result as int? ?? 0;
+  }
+
+  Future<bool> finishCall({
     required String callId,
-    required String status,
-  }) => _client.from('trip_calls').update({'status': status}).eq('id', callId);
+    required String reason,
+    required bool hadVideo,
+    required Duration duration,
+  }) async {
+    final result = await _client.rpc(
+      'finish_trip_call',
+      params: {
+        'p_call_id': callId,
+        'p_reason': reason,
+        'p_had_video': hadVideo,
+        'p_duration_seconds': duration.inSeconds,
+      },
+    );
+    return result as bool? ?? false;
+  }
 
   Future<void> setActivityRsvp({
     required String tripId,
