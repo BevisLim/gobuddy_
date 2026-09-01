@@ -402,6 +402,13 @@ class GroupInfoScreen extends ConsumerWidget {
             ),
           ),
           _GroupInfoTile(
+            icon: Icons.sos_rounded,
+            iconColor: Theme.of(context).colorScheme.error,
+            title: 'Emergency SOS',
+            subtitle: 'Open emergency help, location and contact alerts',
+            onTap: () => context.push(Routes.sos),
+          ),
+          _GroupInfoTile(
             icon: Icons.folder_outlined,
             title: 'Files & media',
             subtitle: '${state.files.length} shared file(s)',
@@ -478,12 +485,14 @@ class _GroupInfoAction extends StatelessWidget {
 class _GroupInfoTile extends StatelessWidget {
   const _GroupInfoTile({
     required this.icon,
+    this.iconColor,
     required this.title,
     required this.subtitle,
     required this.onTap,
   });
 
   final IconData icon;
+  final Color? iconColor;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
@@ -491,7 +500,7 @@ class _GroupInfoTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListTile(
     contentPadding: EdgeInsets.zero,
-    leading: Icon(icon),
+    leading: Icon(icon, color: iconColor),
     title: Text(title),
     subtitle: Text(subtitle),
     trailing: const Icon(Icons.chevron_right),
@@ -1454,6 +1463,19 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
           'Bali Summer Trip - ${days.length} ${days.length == 1 ? 'day' : 'days'}',
           style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: TextButton.icon(
+              onPressed: () => context.push(Routes.sos),
+              icon: const Icon(Icons.sos_rounded),
+              label: const Text('SOS'),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+              ),
+            ),
+          ),
+        ],
       ),
       body: Column(
         children: [
