@@ -14,6 +14,7 @@ import '../../common/ui/widgets/app_module_navigation.dart';
 import '../../common/remote/supabase_client.dart';
 import '../../../core/routing/routes.dart';
 import '../model/matchmaking_models.dart';
+import '../model/matchmaking_validation.dart';
 import '../model/matchmaking_notification.dart';
 import '../model/matchmaking_page.dart';
 import 'view_model/matchmaking_view_model.dart';
@@ -84,6 +85,12 @@ class _MatchmakingShellScreenState
             column: 'user_id',
             value: userId,
           ),
+          callback: (_) => _refreshTrips(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'matchmaking_trip_members',
           callback: (_) => _refreshTrips(),
         )
         .onPostgresChanges(
@@ -208,6 +215,7 @@ class _MatchmakingShellScreenState
         onRequest: () => viewModel.goTo(MatchmakingPage.request),
       ),
       MatchmakingPage.create => InteractiveTripFormPage(
+        hostedTrips: state.ownedTrips,
         onBack: () => viewModel.goTo(MatchmakingPage.discover),
         onPublish: viewModel.saveTrip,
         onTripStarted: _offerSafetyCheckIn,
@@ -215,6 +223,7 @@ class _MatchmakingShellScreenState
       ),
       MatchmakingPage.edit => InteractiveTripFormPage(
         edit: true,
+        hostedTrips: state.ownedTrips,
         initialTrip: state.selectedTrip,
         onBack: () => viewModel.goTo(MatchmakingPage.myTrips),
         onPublish: viewModel.saveTrip,
@@ -232,10 +241,13 @@ class _MatchmakingShellScreenState
         onManage: viewModel.openRequests,
         onEdit: (id) => viewModel.openTrip(id, MatchmakingPage.edit),
         onFinish: viewModel.finishTrip,
+        onRemoveHosted: viewModel.deleteTrip,
+        onLeaveTrip: viewModel.leaveTrip,
+        onDismissRemovedTrip: viewModel.dismissRemovedTrip,
         onOpenGroup: (id) => context.push(
           '${Routes.groupCollaboration}?tripId=${Uri.encodeQueryComponent(id)}',
         ),
-        onCancelRequest: viewModel.cancelRequest,
+        onRemoveRequest: viewModel.removeRequest,
       ),
       MatchmakingPage.request => RequestPage(
         trip: state.selectedTrip!,
@@ -1156,6 +1168,7 @@ class InteractiveTripFormPage extends StatefulWidget {
   final Future<String> Function(String, Uint8List, String) onUploadImage;
   final VoidCallback? onDelete;
   final MatchmakingTrip? initialTrip;
+  final List<MatchmakingTrip> hostedTrips;
   final bool edit;
   const InteractiveTripFormPage({
     super.key,
@@ -1165,6 +1178,7 @@ class InteractiveTripFormPage extends StatefulWidget {
     required this.onUploadImage,
     this.onDelete,
     this.initialTrip,
+    required this.hostedTrips,
     this.edit = false,
   });
 
@@ -1183,11 +1197,13 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
       _description;
   final _styles = <String>{};
   String _gender = 'Any';
+  late TimeOfDay _startTime;
   RangeValues _ages = const RangeValues(22, 40);
   late String _imageUrl;
   Uint8List? _pendingImageBytes;
   String? _pendingImageName;
   bool _isUploadingImage = false;
+  String? _dateError;
   static const _styleOptions = [
     'Adventure',
     'Foodie',
@@ -1212,6 +1228,9 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
     _budget = TextEditingController(text: trip?.budget.toString() ?? '');
     _vacancies = TextEditingController(text: trip?.vacancies.toString() ?? '');
     _description = TextEditingController(text: trip?.description ?? '');
+    _startTime = TimeOfDay.fromDateTime(
+      trip?.startTime ?? DateTime(2000, 1, 1, 9),
+    );
     if (trip != null) {
       _styles.addAll(trip.styles);
       _gender = trip.gender;
@@ -1261,12 +1280,14 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
     int lines = 1,
     bool required = true,
     VoidCallback? onTap,
+    ValueChanged<String>? onChanged,
   }) => TextFormField(
     controller: controller,
     keyboardType: keyboard,
     inputFormatters: formatters,
     maxLines: lines,
     onTap: onTap,
+    onChanged: onChanged,
     decoration: _decoration(hint, prefix: prefix, icon: icon),
     validator: required
         ? (value) => value == null || value.trim().isEmpty ? 'Required' : null
@@ -1274,17 +1295,72 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
   );
 
   Future<void> _pickDate(TextEditingController controller) async {
+    final firstDate = DateTime.now();
+    final lastDate = firstDate.add(const Duration(days: 3650));
+    var initialDate = _parseDate(controller.text) ?? firstDate;
+    if (initialDate.isBefore(firstDate) || _isOccupiedDate(initialDate)) {
+      initialDate = _firstAvailableDate(firstDate, lastDate);
+    }
     final date = await showDatePicker(
       context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 3650)),
+      initialDate: initialDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
+      selectableDayPredicate: (date) => !_isOccupiedDate(date),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          datePickerTheme: DatePickerThemeData(
+            dayForegroundColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.disabled)) {
+                return const Color(0xFFDC2626);
+              }
+              return null;
+            }),
+          ),
+        ),
+        child: child!,
+      ),
     );
     if (date != null) {
-      controller.text =
-          '${date.day.toString().padLeft(2, '0')}/'
-          '${date.month.toString().padLeft(2, '0')}/${date.year}';
+      setState(() {
+        controller.text =
+            '${date.day.toString().padLeft(2, '0')}/'
+            '${date.month.toString().padLeft(2, '0')}/${date.year}';
+        _dateError = null;
+      });
     }
+  }
+
+  bool _isOccupiedDate(DateTime date) => widget.hostedTrips.any(
+    (trip) =>
+        trip.id != widget.initialTrip?.id &&
+        trip.status != TripStatus.closed &&
+        !date.isBefore(
+          DateTime(
+            trip.startDate.year,
+            trip.startDate.month,
+            trip.startDate.day,
+          ),
+        ) &&
+        !date.isAfter(
+          DateTime(trip.endDate.year, trip.endDate.month, trip.endDate.day),
+        ),
+  );
+
+  DateTime _firstAvailableDate(DateTime firstDate, DateTime lastDate) {
+    var candidate = firstDate;
+    while (_isOccupiedDate(candidate) && candidate.isBefore(lastDate)) {
+      candidate = candidate.add(const Duration(days: 1));
+    }
+    return candidate;
+  }
+
+  Future<void> _pickStartTime() async {
+    final value = await showTimePicker(
+      context: context,
+      initialTime: _startTime,
+    );
+    if (value != null) setState(() => _startTime = value);
   }
 
   Future<void> _pickCoverImage() async {
@@ -1316,11 +1392,43 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
     final start = _parseDate(_start.text);
     final end = _parseDate(_end.text);
     if (start == null || end == null || end.isBefore(start)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('End date cannot be earlier than start date.'),
-        ),
+      setState(
+        () => _dateError = 'End date cannot be earlier than start date.',
       );
+      return;
+    }
+    final validationTrip = MatchmakingTrip(
+      id: widget.initialTrip?.id ?? 'new-trip',
+      destination: _destination.text.trim(),
+      startDate: start,
+      endDate: end,
+      startTime: DateTime(
+        start.year,
+        start.month,
+        start.day,
+        _startTime.hour,
+        _startTime.minute,
+      ),
+      budget: int.tryParse(_budget.text) ?? 0,
+      styles: {..._styles},
+      hostId: widget.initialTrip?.hostId ?? 'current-user',
+      hostName: widget.initialTrip?.hostName ?? '',
+      hostInitials: widget.initialTrip?.hostInitials ?? '',
+      imageUrl: _imageUrl,
+      gender: _gender,
+      minAge: _ages.start.round(),
+      maxAge: _ages.end.round(),
+      vacancies: int.tryParse(_vacancies.text) ?? 0,
+      description: _description.text.trim(),
+      isOwned: true,
+    );
+    try {
+      MatchmakingValidation.validateHostAvailability(
+        validationTrip,
+        widget.hostedTrips,
+      );
+    } on MatchmakingValidationException catch (error) {
+      setState(() => _dateError = error.message);
       return;
     }
     final tripId = widget.initialTrip?.id ?? const Uuid().v4();
@@ -1350,6 +1458,13 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
         destination: _destination.text.trim(),
         startDate: start,
         endDate: end,
+        startTime: DateTime(
+          start.year,
+          start.month,
+          start.day,
+          _startTime.hour,
+          _startTime.minute,
+        ),
         budget: int.parse(_budget.text),
         styles: {..._styles},
         hostId: widget.initialTrip?.hostId ?? 'current-user',
@@ -1465,6 +1580,7 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
                         formatters: const [_DateInputFormatter()],
                         icon: Icons.calendar_today_outlined,
                         onTap: () => _pickDate(_start),
+                        onChanged: (_) => setState(() => _dateError = null),
                       ),
                     ],
                   ),
@@ -1483,11 +1599,47 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
                         formatters: const [_DateInputFormatter()],
                         icon: Icons.calendar_today_outlined,
                         onTap: () => _pickDate(_end),
+                        onChanged: (_) => setState(() => _dateError = null),
                       ),
                     ],
                   ),
                 ),
               ],
+            ),
+            if (_dateError != null) ...[
+              const SizedBox(height: 7),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    size: 17,
+                    color: Color(0xFFDC2626),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      _dateError!,
+                      style: const TextStyle(
+                        color: Color(0xFFDC2626),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 18),
+            const FieldLabel('START TIME'),
+            InkWell(
+              onTap: _pickStartTime,
+              child: InputDecorator(
+                decoration: _decoration(
+                  'Select start time',
+                  icon: Icons.schedule_outlined,
+                ),
+                child: Text(_startTime.format(context)),
+              ),
             ),
             const SizedBox(height: 18),
             const FieldLabel('BUDGET'),
@@ -1610,9 +1762,10 @@ class MyTripsPage extends StatelessWidget {
   final VoidCallback onBack, onCreate;
   final List<MatchmakingTrip> trips, joinedTrips, removedTrips, allTrips;
   final List<JoinRequest> requests;
-  final ValueChanged<String> onManage, onEdit, onFinish;
+  final ValueChanged<String> onManage, onEdit, onFinish, onRemoveHosted;
   final ValueChanged<String> onOpenGroup;
-  final Future<void> Function(String) onCancelRequest;
+  final Future<void> Function(String) onLeaveTrip, onRemoveRequest;
+  final Future<void> Function(String) onDismissRemovedTrip;
   const MyTripsPage({
     super.key,
     required this.trips,
@@ -1624,10 +1777,37 @@ class MyTripsPage extends StatelessWidget {
     required this.onCreate,
     required this.onManage,
     required this.onFinish,
+    required this.onRemoveHosted,
     required this.onEdit,
     required this.onOpenGroup,
-    required this.onCancelRequest,
+    required this.onLeaveTrip,
+    required this.onDismissRemovedTrip,
+    required this.onRemoveRequest,
   });
+  Future<bool> _confirm(
+    BuildContext context, {
+    required String title,
+    required String message,
+    required String action,
+  }) async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(action),
+            ),
+          ],
+        ),
+      ) ??
+      false;
   @override
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.fromLTRB(20, 18, 20, 100),
@@ -1662,12 +1842,25 @@ class MyTripsPage extends StatelessWidget {
           dates: _dateRange(trip.startDate, trip.endDate),
           members: '${trip.groupMemberCount} joined',
           image: trip.imageUrl,
-          status: _statusLabel(trip.status),
+          status: _lifecycleLabel(trip),
           onEdit: () => onEdit(trip.id),
           onManage: () => onManage(trip.id),
-          onFinish: trip.status == TripStatus.closed
+          onFinish: trip.lifecycle == TripLifecycle.finished
               ? null
               : () => onFinish(trip.id),
+          onRemove: trip.lifecycle == TripLifecycle.finished
+              ? () async {
+                  if (await _confirm(
+                    context,
+                    title: 'Remove hosted trip?',
+                    message:
+                        'Permanently remove ${trip.destination} and its trip data?',
+                    action: 'Remove',
+                  )) {
+                    onRemoveHosted(trip.id);
+                  }
+                }
+              : null,
         ),
         const SizedBox(height: 14),
       ],
@@ -1681,10 +1874,30 @@ class MyTripsPage extends StatelessWidget {
               leading: const Icon(Icons.group_outlined, color: _violet),
               title: Text(trip.destination),
               subtitle: Text(_dateRange(trip.startDate, trip.endDate)),
-              trailing: FilledButton.tonalIcon(
-                onPressed: () => onOpenGroup(trip.id),
-                icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
-                label: const Text('Group'),
+              trailing: Wrap(
+                spacing: 4,
+                children: [
+                  IconButton(
+                    tooltip: 'Open group',
+                    onPressed: () => onOpenGroup(trip.id),
+                    icon: const Icon(Icons.chat_bubble_outline_rounded),
+                  ),
+                  IconButton(
+                    tooltip: 'Remove joined trip',
+                    onPressed: () async {
+                      if (await _confirm(
+                        context,
+                        title: 'Remove joined trip?',
+                        message:
+                            'Leave ${trip.destination} and remove it from My Trips?',
+                        action: 'Leave and remove',
+                      )) {
+                        await onLeaveTrip(trip.id);
+                      }
+                    },
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  ),
+                ],
               ),
               onTap: () => onOpenGroup(trip.id),
             ),
@@ -1694,10 +1907,26 @@ class MyTripsPage extends StatelessWidget {
             child: ListTile(
               leading: const Icon(Icons.group_off_outlined, color: _muted),
               title: Text(trip.destination),
-              subtitle: Text(_dateRange(trip.startDate, trip.endDate)),
-              trailing: const Chip(
-                avatar: Icon(Icons.person_remove_outlined, size: 18),
-                label: Text('Removed from group'),
+              subtitle: Text(
+                '${_dateRange(trip.startDate, trip.endDate)}\nRemoved from group',
+              ),
+              isThreeLine: true,
+              trailing: TextButton(
+                onPressed: () async {
+                  if (await _confirm(
+                    context,
+                    title: 'Remove trip from list?',
+                    message:
+                        'Permanently remove ${trip.destination} from My Trips?',
+                    action: 'Remove',
+                  )) {
+                    await onDismissRemovedTrip(trip.id);
+                  }
+                },
+                child: const Text(
+                  'Remove',
+                  style: TextStyle(color: Color(0xFFDC2626)),
+                ),
               ),
             ),
           ),
@@ -1713,16 +1942,32 @@ class MyTripsPage extends StatelessWidget {
               child: ListTile(
                 title: Text(trip.destination),
                 subtitle: Text(_decisionLabel(request.decision)),
-                trailing:
-                    const {
+                trailing: TextButton(
+                  onPressed: () async {
+                    final active = const {
                       ApplicantDecision.pending,
                       ApplicantDecision.held,
-                    }.contains(request.decision)
-                    ? TextButton(
-                        onPressed: () => onCancelRequest(request.id),
-                        child: const Text('Cancel'),
-                      )
-                    : null,
+                    }.contains(request.decision);
+                    if (await _confirm(
+                      context,
+                      title: active ? 'Cancel request?' : 'Remove request?',
+                      message: active
+                          ? 'Cancel your request to join ${trip.destination}?'
+                          : 'Remove this request from your list?',
+                      action: active ? 'Cancel request' : 'Remove',
+                    )) {
+                      await onRemoveRequest(request.id);
+                    }
+                  },
+                  child: Text(
+                    const {
+                          ApplicantDecision.pending,
+                          ApplicantDecision.held,
+                        }.contains(request.decision)
+                        ? 'Cancel'
+                        : 'Remove',
+                  ),
+                ),
               ),
             ),
       ],
@@ -2540,6 +2785,7 @@ class CompactTrip extends StatelessWidget {
   final VoidCallback? onManage;
   final VoidCallback? onEdit;
   final VoidCallback? onFinish;
+  final VoidCallback? onRemove;
   const CompactTrip({
     super.key,
     required this.destination,
@@ -2550,6 +2796,7 @@ class CompactTrip extends StatelessWidget {
     this.onManage,
     this.onEdit,
     this.onFinish,
+    this.onRemove,
   });
 
   Future<void> _confirmFinish(BuildContext context) async {
@@ -2642,10 +2889,19 @@ class CompactTrip extends StatelessWidget {
               ),
               Expanded(
                 child: TextButton(
-                  onPressed: onFinish == null
-                      ? null
-                      : () => _confirmFinish(context),
-                  child: Text(onFinish == null ? 'Finished' : 'Finish trip'),
+                  onPressed:
+                      onRemove ??
+                      (onFinish == null ? null : () => _confirmFinish(context)),
+                  child: Text(
+                    onRemove != null
+                        ? 'Remove'
+                        : onFinish == null
+                        ? 'Finished'
+                        : 'Finish trip',
+                    style: onRemove != null
+                        ? const TextStyle(color: Color(0xFFDC2626))
+                        : null,
+                  ),
                 ),
               ),
             ],
@@ -2954,10 +3210,10 @@ String _dateInput(DateTime date) =>
 String _dateRange(DateTime start, DateTime end) =>
     '${_dateInput(start)} — ${_dateInput(end)}';
 
-String _statusLabel(TripStatus status) => switch (status) {
-  TripStatus.active => 'Active',
-  TripStatus.closed => 'Closed',
-  TripStatus.draft => 'Draft',
+String _lifecycleLabel(MatchmakingTrip trip) => switch (trip.lifecycle) {
+  TripLifecycle.upcoming => 'Upcoming',
+  TripLifecycle.ongoing => 'Ongoing',
+  TripLifecycle.finished => 'Finished',
 };
 const _tokyo =
     'https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=1200&q=85';

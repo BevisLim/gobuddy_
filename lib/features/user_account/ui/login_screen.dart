@@ -104,7 +104,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           .read(authenticationViewModelProvider.notifier)
           .hasCompletedProfileOnboarding();
       if (mounted) {
-        context.go(hasProfile ? Routes.main : Routes.profileSetup);
+        context.go(hasCompletedOnboarding ? Routes.main : Routes.profileSetup);
       }
     } catch (_) {
       _isRoutingAfterGoogleSignIn = false;
