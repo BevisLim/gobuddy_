@@ -8,8 +8,15 @@ final userSafetyRepositoryProvider = Provider<UserSafetyRepository>(
   (ref) => SupabaseUserSafetyRepository(supabase),
 );
 
+final isUserBlockedProvider = FutureProvider.family<bool, String>(
+  (ref, targetUserId) => ref
+      .read(userSafetyRepositoryProvider)
+      .isUserBlocked(targetUserId),
+);
+
 abstract interface class UserSafetyRepository {
   Future<List<BlockedUser>> getBlockedUsers();
+  Future<bool> isUserBlocked(String targetUserId);
   Future<void> blockUser(String targetUserId);
   Future<void> unblockUser(String targetUserId);
   Future<UserReport> reportUser({
@@ -36,6 +43,17 @@ class SupabaseUserSafetyRepository implements UserSafetyRepository {
       throw const UserSafetyException('Sign in to use this safety feature.');
     }
     return id;
+  }
+
+  @override
+  Future<bool> isUserBlocked(String targetUserId) async {
+    final rows = await _client
+        .from('user_blocks')
+        .select('blocked_id')
+        .eq('blocker_id', _currentUserId)
+        .eq('blocked_id', targetUserId)
+        .limit(1);
+    return rows.isNotEmpty;
   }
 
   @override
