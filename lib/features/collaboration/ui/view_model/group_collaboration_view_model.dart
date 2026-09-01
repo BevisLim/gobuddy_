@@ -41,10 +41,7 @@ class GroupCollaborationViewModel
             'The trip workspace took too long to load. Check your Supabase connection and trip membership.',
           ),
         );
-    final channel = _repository.subscribe(
-      _tripId,
-      () => ref.invalidateSelf(),
-    );
+    final channel = _repository.subscribe(_tripId, () => ref.invalidateSelf());
     _channel = channel;
     ref.onDispose(() {
       supabase.removeChannel(channel);
@@ -430,7 +427,10 @@ class GroupCollaborationViewModel
     ref.invalidateSelf();
   }
 
-  Future<void> shareVoiceMessage(Uint8List bytes) async {
+  Future<void> shareVoiceMessage(
+    Uint8List bytes, {
+    String fileExtension = 'm4a',
+  }) async {
     final current = _current;
     if (current == null || bytes.isEmpty) return;
     if (current.isMuted) {
@@ -441,7 +441,7 @@ class GroupCollaborationViewModel
     final url = await _repository.uploadFile(
       tripId: current.tripId,
       userId: current.currentUserId,
-      fileName: 'voice_${DateTime.now().millisecondsSinceEpoch}.webm',
+      fileName: 'voice_${DateTime.now().millisecondsSinceEpoch}.$fileExtension',
       bytes: bytes,
     );
     await _repository.sendMessage(
