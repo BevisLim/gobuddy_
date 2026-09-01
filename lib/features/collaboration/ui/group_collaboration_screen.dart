@@ -22,6 +22,7 @@ import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/view_model/matchma
 import 'package:flutter_mvvm_riverpod/features/safety/repository/user_safety_repository.dart';
 import 'package:flutter_mvvm_riverpod/features/safety/ui/widgets/block_user_action.dart';
 import 'package:flutter_mvvm_riverpod/features/safety/ui/widgets/report_user_action.dart';
+import 'package:flutter_mvvm_riverpod/features/safety/ui/trip_live_locations_screen.dart';
 
 class GroupCollaborationScreen extends ConsumerWidget {
   const GroupCollaborationScreen({
@@ -168,6 +169,11 @@ class _WorkspaceState extends ConsumerState<_Workspace> {
           ),
         ),
         actions: [
+          IconButton(
+            onPressed: () => _openLiveLocations(context, state),
+            icon: const Icon(Icons.location_on_outlined),
+            tooltip: 'Trip members live locations',
+          ),
           IconButton(
             onPressed: () {
               final activeCall = _activeCall(state);
@@ -409,6 +415,12 @@ class GroupInfoScreen extends ConsumerWidget {
             onTap: () => context.push(Routes.sos),
           ),
           _GroupInfoTile(
+            icon: Icons.location_on_outlined,
+            title: 'Live locations',
+            subtitle: 'See where sharing trip members are now',
+            onTap: () => _openLiveLocations(context, state),
+          ),
+          _GroupInfoTile(
             icon: Icons.folder_outlined,
             title: 'Files & media',
             subtitle: '${state.files.length} shared file(s)',
@@ -514,6 +526,21 @@ void _openGroupSection(BuildContext context, String title, Widget child) {
       builder: (_) => Scaffold(
         appBar: AppBar(title: Text(title)),
         body: child,
+      ),
+    ),
+  );
+}
+
+void _openLiveLocations(
+  BuildContext context,
+  GroupCollaborationState state,
+) {
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => TripLiveLocationsScreen(
+        tripId: state.tripId,
+        members: state.members,
+        currentUserId: state.currentUserId,
       ),
     ),
   );
