@@ -20,6 +20,7 @@ import '../model/matchmaking_page.dart';
 import 'view_model/matchmaking_view_model.dart';
 import '../../safety/repository/safety_check_in_configuration_repository.dart';
 import '../../safety/ui/widgets/user_safety_actions.dart';
+import '../../user_account/ui/view_model/user_account_view_model.dart';
 
 const _ink = Color(0xFF281950);
 const _violet = Color(0xFF7C3AED);
@@ -182,6 +183,7 @@ class _MatchmakingShellScreenState
       },
     );
     final state = ref.watch(matchmakingViewModelProvider);
+    final accountState = ref.watch(userAccountViewModelProvider);
     final viewModel = ref.read(matchmakingViewModelProvider.notifier);
     final page = state.page;
     final content = switch (page) {
@@ -195,6 +197,7 @@ class _MatchmakingShellScreenState
         filters: state.availableFilters,
         notifications: state.notifications,
         unreadNotificationCount: state.unreadNotificationCount,
+        profilePhotoUrl: accountState.user?.profilePhoto,
         onNotificationsRead: viewModel.markNotificationsRead,
         onRetry: viewModel.refresh,
         onFilter: viewModel.selectFilter,
@@ -415,6 +418,7 @@ class DiscoverPage extends StatelessWidget {
   final List<String> filters;
   final List<MatchmakingNotification> notifications;
   final int unreadNotificationCount;
+  final String? profilePhotoUrl;
   final Future<void> Function() onNotificationsRead;
   final Future<void> Function() onRetry;
   final ValueChanged<String> onFilter;
@@ -431,6 +435,7 @@ class DiscoverPage extends StatelessWidget {
     required this.filters,
     required this.notifications,
     required this.unreadNotificationCount,
+    required this.profilePhotoUrl,
     required this.onNotificationsRead,
     required this.onRetry,
     required this.onFilter,
@@ -490,7 +495,11 @@ class DiscoverPage extends StatelessWidget {
               InkWell(
                 onTap: () => context.push(Routes.userAccount),
                 customBorder: const CircleBorder(),
-                child: const Avatar(letter: 'M', size: 34),
+                child: Avatar(
+                  letter: 'M',
+                  size: 34,
+                  imageUrl: profilePhotoUrl,
+                ),
               ),
             ],
           ),
@@ -706,6 +715,7 @@ class TripCard extends StatelessWidget {
                       letter: trip.hostInitials,
                       size: 40,
                       color: const Color(0xFFB59BF1),
+                      imageUrl: trip.hostProfilePhotoUrl,
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -1112,6 +1122,7 @@ class TripDetailsPage extends StatelessWidget {
                         letter: trip.hostInitials,
                         size: 46,
                         color: const Color(0xFFB59BF1),
+                        imageUrl: trip.hostProfilePhotoUrl,
                       ),
                     ),
                     const SizedBox(width: 11),
@@ -1431,6 +1442,7 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
       hostId: widget.initialTrip?.hostId ?? 'current-user',
       hostName: widget.initialTrip?.hostName ?? '',
       hostInitials: widget.initialTrip?.hostInitials ?? '',
+      hostProfilePhotoUrl: widget.initialTrip?.hostProfilePhotoUrl,
       imageUrl: _imageUrl,
       gender: _gender,
       minAge: _ages.start.round(),
@@ -1487,6 +1499,7 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
         hostId: widget.initialTrip?.hostId ?? 'current-user',
         hostName: widget.initialTrip?.hostName ?? 'Morgan Lee',
         hostInitials: widget.initialTrip?.hostInitials ?? 'ML',
+        hostProfilePhotoUrl: widget.initialTrip?.hostProfilePhotoUrl,
         imageUrl: coverUrl.isEmpty ? _tokyo : coverUrl,
         gender: _gender,
         minAge: _ages.start.round(),
@@ -2236,6 +2249,7 @@ class ApplicantPage extends StatelessWidget {
                       letter: applicant.initials,
                       size: 80,
                       color: _violet,
+                      imageUrl: applicant.profilePhotoUrl,
                     ),
                   ),
                 ),
@@ -2406,27 +2420,33 @@ class Avatar extends StatelessWidget {
   final String letter;
   final double size;
   final Color color;
+  final String? imageUrl;
   const Avatar({
     super.key,
     required this.letter,
     required this.size,
     this.color = _violet,
+    this.imageUrl,
   });
   @override
-  Widget build(BuildContext context) => Container(
-    width: size,
-    height: size,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-    child: Text(
-      letter,
-      style: TextStyle(
-        color: Colors.white,
-        fontSize: size * .38,
-        fontWeight: FontWeight.w700,
+  Widget build(BuildContext context) {
+    final resolvedImageUrl = imageUrl?.trim();
+    return CircleAvatar(
+      radius: size / 2,
+      backgroundColor: color,
+      foregroundImage: resolvedImageUrl == null || resolvedImageUrl.isEmpty
+          ? null
+          : NetworkImage(resolvedImageUrl),
+      child: Text(
+        letter,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: size * .38,
+          fontWeight: FontWeight.w700,
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _OtherUserAvatar extends ConsumerWidget {
@@ -2959,6 +2979,7 @@ class ApplicantCard extends StatelessWidget {
                 letter: applicant.initials,
                 size: 46,
                 color: const Color(0xFFBB9AF2),
+                imageUrl: applicant.profilePhotoUrl,
               ),
             ),
             const SizedBox(width: 10),

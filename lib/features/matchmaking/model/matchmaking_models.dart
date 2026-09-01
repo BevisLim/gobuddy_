@@ -16,6 +16,7 @@ class MatchmakingTrip {
     required this.hostId,
     required this.hostName,
     required this.hostInitials,
+    this.hostProfilePhotoUrl,
     required this.imageUrl,
     required this.gender,
     required this.minAge,
@@ -30,6 +31,7 @@ class MatchmakingTrip {
   });
 
   final String id, destination, hostId, hostName, hostInitials, imageUrl;
+  final String? hostProfilePhotoUrl;
   final DateTime startDate, endDate;
   final DateTime? startTime;
   final int budget, minAge, maxAge, vacancies, joined, groupMemberCount;
@@ -85,6 +87,7 @@ class MatchmakingTrip {
     hostId: hostId,
     hostName: hostName,
     hostInitials: hostInitials,
+    hostProfilePhotoUrl: hostProfilePhotoUrl,
     imageUrl: imageUrl,
     gender: gender ?? this.gender,
     minAge: minAge ?? this.minAge,
@@ -112,9 +115,11 @@ class MatchmakingApplicant {
     required this.introduction,
     required this.trips,
     required this.rating,
+    this.profilePhotoUrl,
     this.verified = true,
   });
   final String id, name, initials, gender, bio, introduction;
+  final String? profilePhotoUrl;
   final int age, trips;
   final double rating;
   final Set<String> languages, styles;
