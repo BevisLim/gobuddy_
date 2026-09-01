@@ -63,7 +63,7 @@ class AuthenticationRepository {
       final message = error.message.toLowerCase();
       if (message.contains('password')) {
         throw Exception(
-          'Please choose a stronger password with at least 6 characters.',
+          'Use at least 8 characters, including uppercase, lowercase, a number, and a special character.',
         );
       }
       throw Exception('Unable to save your password. Please try again.');
@@ -126,7 +126,7 @@ class AuthenticationRepository {
       final message = error.message.toLowerCase();
       if (message.contains('password') || message.contains('weak')) {
         throw Exception(
-          'Choose a stronger password with at least 6 characters.',
+          'Use at least 8 characters, including uppercase, lowercase, a number, and a special character.',
         );
       }
       if (message.contains('expired') ||
@@ -139,6 +139,51 @@ class AuthenticationRepository {
       throw Exception('Unable to reset your password. Please try again.');
     } catch (_) {
       throw Exception('Unable to reset your password. Please try again.');
+    }
+  }
+
+  Future<void> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    final email = supabase.auth.currentUser?.email;
+    if (email == null || supabase.auth.currentSession == null) {
+      throw Exception('Your session has expired. Please sign in again.');
+    }
+    if (oldPassword == newPassword) {
+      throw Exception('Your new password must be different from your old password.');
+    }
+
+    try {
+      // Supabase requires a fresh password sign-in to prove the current
+      // password is valid before this sensitive account change.
+      await supabase.auth.signInWithPassword(
+        email: email,
+        password: oldPassword,
+      );
+      await supabase.auth.updateUser(UserAttributes(password: newPassword));
+    } on AuthException catch (error) {
+      final message = error.message.toLowerCase();
+      if (message.contains('invalid login') ||
+          message.contains('invalid credentials') ||
+          message.contains('email or password')) {
+        throw Exception('Your old password is incorrect.');
+      }
+      if (message.contains('same password') ||
+          message.contains('different from the old')) {
+        throw Exception(
+          'Your new password must be different from your old password.',
+        );
+      }
+      if (message.contains('password') || message.contains('weak')) {
+        throw Exception(
+          'Use at least 8 characters, including uppercase, lowercase, a number, and a special character.',
+        );
+      }
+      throw Exception('Unable to change your password. Please try again.');
+    } catch (error) {
+      if (error is Exception) rethrow;
+      throw Exception('Unable to change your password. Please try again.');
     }
   }
 
@@ -315,7 +360,7 @@ String _friendlyRegistrationError(AuthException error) {
     return 'An account with this email already exists. Please log in instead.';
   }
   if (message.contains('password')) {
-    return 'Please choose a stronger password with at least 6 characters.';
+    return 'Use at least 8 characters, including uppercase, lowercase, a number, and a special character.';
   }
   if (message.contains('email')) {
     return 'Please enter a valid email address.';

@@ -24,6 +24,7 @@ import '../../features/user_account/ui/app_launching_screen.dart';
 import '../../features/user_account/ui/forgot_password_screen.dart';
 import '../../features/user_account/ui/identity_verification_screen.dart';
 import '../../features/user_account/ui/settings/blocked_users_screen.dart';
+import '../../features/user_account/ui/settings/change_password_screen.dart';
 import '../../features/user_account/ui/settings/settings_screen.dart';
 import '../../features/user_account/ui/login_screen.dart';
 import '../../features/user_account/ui/register_account_screen.dart';
@@ -284,6 +285,11 @@ final GoRouter router = GoRouter(
     GoRoute(
       path: Routes.settings,
       pageBuilder: (context, state) => state.slidePage(const SettingsScreen()),
+    ),
+    GoRoute(
+      path: Routes.changePassword,
+      pageBuilder: (context, state) =>
+          state.slidePage(const ChangePasswordScreen()),
     ),
     GoRoute(
       path: Routes.safetyCheckInSettings,

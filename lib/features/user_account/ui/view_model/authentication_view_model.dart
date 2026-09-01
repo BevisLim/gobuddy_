@@ -77,6 +77,25 @@ class AuthenticationViewModel extends _$AuthenticationViewModel {
     return true;
   }
 
+  Future<bool> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    state = const AsyncValue.loading();
+    final result = await AsyncValue.guard(
+      () => _repository.changePassword(
+        oldPassword: oldPassword,
+        newPassword: newPassword,
+      ),
+    );
+    if (result case AsyncError(:final error, :final stackTrace)) {
+      state = AsyncError(error, stackTrace);
+      return false;
+    }
+    state = const AsyncData(AuthenticationState());
+    return true;
+  }
+
   Future<bool> signInWithGoogle() async {
     state = const AsyncValue.loading();
     final result = await AsyncValue.guard(_repository.signInWithGoogle);
