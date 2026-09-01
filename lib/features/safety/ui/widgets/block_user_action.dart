@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../repository/user_safety_repository.dart';
+import 'report_user_action.dart';
 
 class BlockUserAction {
   const BlockUserAction._();
@@ -68,6 +69,19 @@ class BlockUserAction {
       if (isBlocked) {
         onUnblocked?.call();
       } else {
+        final shouldReport = await _askToReport(
+          context: context,
+          targetDisplayName: targetDisplayName,
+        );
+        if (shouldReport && context.mounted) {
+          await ReportUserAction.show(
+            context: context,
+            ref: ref,
+            targetUserId: targetUserId,
+            targetDisplayName: targetDisplayName,
+          );
+        }
+        if (!context.mounted) return;
         onBlocked?.call();
       }
     } catch (error) {
@@ -77,6 +91,33 @@ class BlockUserAction {
         SnackBar(content: Text('$error')),
       );
     }
+  }
+
+  static Future<bool> _askToReport({
+    required BuildContext context,
+    required String targetDisplayName,
+  }) async {
+    final shouldReport = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Report $targetDisplayName too?'),
+        content: const Text(
+          'If this user broke GoBuddy rules, you can also send a report for '
+          'review.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('No, thanks'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Report user'),
+          ),
+        ],
+      ),
+    );
+    return shouldReport ?? false;
   }
 
   static void _showLoading(BuildContext context) {
