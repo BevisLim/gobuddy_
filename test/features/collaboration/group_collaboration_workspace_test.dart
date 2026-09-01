@@ -53,7 +53,7 @@ void main() {
     expect(member.isMuted, isTrue);
   });
 
-  test('maps a Supabase call-history row for the shared Jitsi room', () {
+  test('maps a Supabase call-history row for the shared RTC call', () {
     final call = TripCall.fromMap({
       'id': 'call-1',
       'initiated_by': 'owner',
