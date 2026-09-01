@@ -77,5 +77,5 @@ grant select, insert, update, delete on public.matchmaking_trips to authenticate
 grant select, insert, delete on public.matchmaking_trip_styles to authenticated;
 grant select, insert, update, delete on public.matchmaking_join_requests to authenticated;
 grant select on public.matchmaking_trip_members to authenticated;
-grant select, insert, delete on public.matchmaking_saved_trips to authenticated;
+grant select, insert, update, delete on public.matchmaking_saved_trips to authenticated;
 
