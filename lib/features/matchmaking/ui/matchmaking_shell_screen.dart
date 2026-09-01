@@ -211,8 +211,15 @@ class _MatchmakingShellScreenState
       ),
       MatchmakingPage.details => TripDetailsPage(
         trip: state.selectedTrip!,
+        canOpenGroup:
+            state.selectedTrip!.isOwned ||
+            state.joinedTripIds.contains(state.selectedTrip!.id),
         onBack: () => viewModel.goTo(MatchmakingPage.discover),
         onRequest: () => viewModel.goTo(MatchmakingPage.request),
+        onOpenGroup: () => context.push(
+          '${Routes.groupCollaboration}?tripId='
+          '${Uri.encodeQueryComponent(state.selectedTrip!.id)}',
+        ),
       ),
       MatchmakingPage.create => InteractiveTripFormPage(
         hostedTrips: state.ownedTrips,
@@ -1042,12 +1049,15 @@ class _InteractiveFilterPageState extends State<InteractiveFilterPage> {
 
 class TripDetailsPage extends StatelessWidget {
   final MatchmakingTrip trip;
-  final VoidCallback onBack, onRequest;
+  final bool canOpenGroup;
+  final VoidCallback onBack, onRequest, onOpenGroup;
   const TripDetailsPage({
     super.key,
     required this.trip,
+    required this.canOpenGroup,
     required this.onBack,
     required this.onRequest,
+    required this.onOpenGroup,
   });
   @override
   Widget build(BuildContext context) => Stack(
@@ -1144,16 +1154,14 @@ class TripDetailsPage extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            OutlinedButton.icon(
-              onPressed: () => context.push(
-                '${Routes.groupCollaboration}?tripId='
-                '${Uri.encodeQueryComponent(trip.id)}',
+            if (canOpenGroup) ...[
+              OutlinedButton.icon(
+                onPressed: onOpenGroup,
+                icon: const Icon(Icons.groups_outlined),
+                label: const Text('Open group workspace'),
               ),
-              icon: const Icon(Icons.groups_outlined),
-              label: const Text('Open group workspace'),
-            ),
-            const SizedBox(height: 8),
-            PrimaryButton(label: 'Request to Join', onTap: onRequest),
+            ] else
+              PrimaryButton(label: 'Request to Join', onTap: onRequest),
           ],
         ),
       ),
@@ -1286,6 +1294,9 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
     keyboardType: keyboard,
     inputFormatters: formatters,
     maxLines: lines,
+    readOnly: onTap != null,
+    showCursor: onTap == null,
+    enableInteractiveSelection: onTap == null,
     onTap: onTap,
     onChanged: onChanged,
     decoration: _decoration(hint, prefix: prefix, icon: icon),
@@ -1295,11 +1306,20 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
   );
 
   Future<void> _pickDate(TextEditingController controller) async {
-    final firstDate = DateTime.now();
+    final firstDate = DateUtils.dateOnly(DateTime.now());
     final lastDate = firstDate.add(const Duration(days: 3650));
-    var initialDate = _parseDate(controller.text) ?? firstDate;
+    var initialDate = DateUtils.dateOnly(
+      _parseDate(controller.text) ?? firstDate,
+    );
     if (initialDate.isBefore(firstDate) || _isOccupiedDate(initialDate)) {
-      initialDate = _firstAvailableDate(firstDate, lastDate);
+      final availableDate = _firstAvailableDate(firstDate, lastDate);
+      if (availableDate == null) {
+        setState(
+          () => _dateError = 'No available dates were found in this period.',
+        );
+        return;
+      }
+      initialDate = availableDate;
     }
     final date = await showDatePicker(
       context: context,
@@ -1331,28 +1351,25 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
     }
   }
 
-  bool _isOccupiedDate(DateTime date) => widget.hostedTrips.any(
-    (trip) =>
-        trip.id != widget.initialTrip?.id &&
-        trip.status != TripStatus.closed &&
-        !date.isBefore(
-          DateTime(
-            trip.startDate.year,
-            trip.startDate.month,
-            trip.startDate.day,
-          ),
-        ) &&
-        !date.isAfter(
-          DateTime(trip.endDate.year, trip.endDate.month, trip.endDate.day),
-        ),
-  );
+  bool _isOccupiedDate(DateTime value) {
+    final date = DateUtils.dateOnly(value);
+    return widget.hostedTrips.any(
+      (trip) =>
+          trip.id != widget.initialTrip?.id &&
+          trip.status != TripStatus.closed &&
+          !date.isBefore(DateUtils.dateOnly(trip.startDate)) &&
+          !date.isAfter(DateUtils.dateOnly(trip.endDate)),
+    );
+  }
 
-  DateTime _firstAvailableDate(DateTime firstDate, DateTime lastDate) {
-    var candidate = firstDate;
-    while (_isOccupiedDate(candidate) && candidate.isBefore(lastDate)) {
+  DateTime? _firstAvailableDate(DateTime firstDate, DateTime lastDate) {
+    var candidate = DateUtils.dateOnly(firstDate);
+    final finalDate = DateUtils.dateOnly(lastDate);
+    while (!candidate.isAfter(finalDate)) {
+      if (!_isOccupiedDate(candidate)) return candidate;
       candidate = candidate.add(const Duration(days: 1));
     }
-    return candidate;
+    return null;
   }
 
   Future<void> _pickStartTime() async {
