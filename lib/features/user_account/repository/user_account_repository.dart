@@ -28,8 +28,11 @@ class UserAccountRepository {
           .eq('id', authUser.id)
           .maybeSingle();
       if (row == null) {
-        throw const UserAccountLoadException(
-          'Your profile is not set up yet.',
+        return UserAccount(
+          uid: authUser.id,
+          email: authUser.email ?? '',
+          phoneNumber: authUser.phone ?? '',
+          username: '',
         );
       }
 
@@ -71,7 +74,7 @@ class UserAccountRepository {
     String uid,
     UserAccountProfileUpdate update,
   ) async {
-    final authUser = supabase.auth.currentUser;
+    final authUser = Supabase.instance.client.auth.currentUser;
     if (authUser == null || authUser.id != uid) {
       throw const UserAccountLoadException(
         'Your session has expired. Please sign in again.',
@@ -79,20 +82,22 @@ class UserAccountRepository {
     }
 
     try {
+      final userId = authUser.id;
       final profilePhotoPath = await _storagePathForUpdate(
-        uid: uid,
+        uid: userId,
         value: update.profilePhoto,
         bucket: 'profile-images',
         fileName: 'profile',
       );
       final backgroundPhotoPath = await _storagePathForUpdate(
-        uid: uid,
+        uid: userId,
         value: update.backgroundPhoto,
         bucket: 'background-images',
         fileName: 'background',
       );
 
       final values = <String, Object?>{
+        'id': userId,
         'display_name': update.username.trim(),
         'bio': _nullableText(update.bio),
         'gender': _nullableText(update.gender),
@@ -100,16 +105,21 @@ class UserAccountRepository {
         'profile_photo_path': _nullableText(profilePhotoPath),
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       };
+      if (update.dateOfBirth != null) {
+        values['date_of_birth'] = _dateOnly(update.dateOfBirth!);
+      }
       // The current compact editor does not expose background-photo editing.
       // Preserve the stored path unless a caller explicitly supplies a value.
       if (update.backgroundPhoto != null) {
         values['background_photo_path'] = _nullableText(backgroundPhotoPath);
       }
-      await supabase.from('user_accounts').update(values).eq('id', uid);
+      await supabase.from('user_accounts').upsert(values, onConflict: 'id');
 
-      return fetchCurrentAccount();
+      return await fetchCurrentAccount();
     } on UserAccountLoadException {
       rethrow;
+    } on ProfilePhotoUpdateException catch (error) {
+      throw UserAccountLoadException(error.message);
     } on StorageException catch (error) {
       throw UserAccountLoadException(error.message);
     } on PostgrestException catch (error) {
@@ -140,7 +150,9 @@ class UserAccountRepository {
 
       final extension = _validatedImageExtension(localPath);
       final objectPath = '${authUser.id}/profile.$extension';
-      await supabase.storage.from('profile-images').uploadBinary(
+      await supabase.storage
+          .from('profile-images')
+          .uploadBinary(
             objectPath,
             await file.readAsBytes(),
             fileOptions: FileOptions(
@@ -149,12 +161,15 @@ class UserAccountRepository {
             ),
           );
 
-      await supabase.from('user_accounts').update(<String, Object?>{
-        'profile_photo_path': objectPath,
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      }).eq('id', authUser.id);
+      await supabase
+          .from('user_accounts')
+          .update(<String, Object?>{
+            'profile_photo_path': objectPath,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', authUser.id);
 
-      return fetchCurrentAccount();
+      return await fetchCurrentAccount();
     } on ProfilePhotoUpdateException {
       rethrow;
     } on StorageException {
@@ -185,11 +200,20 @@ class UserAccountRepository {
     if (value == null || value.trim().isEmpty) return null;
     if (!_isLocalPath(value)) return _extractStoragePath(value, bucket);
 
-    final extension = _imageExtension(value);
+    final file = File(value);
+    final fileSize = await file.length();
+    if (fileSize <= 0 || fileSize > 5 * 1024 * 1024) {
+      throw const ProfilePhotoUpdateException(
+        'Select a JPEG, PNG, or WebP image smaller than 5 MB.',
+      );
+    }
+    final extension = _validatedImageExtension(value);
     final objectPath = '$uid/$fileName.$extension';
-    await supabase.storage.from(bucket).uploadBinary(
+    await supabase.storage
+        .from(bucket)
+        .uploadBinary(
           objectPath,
-          await File(value).readAsBytes(),
+          await file.readAsBytes(),
           fileOptions: FileOptions(
             upsert: true,
             contentType: _imageContentType(extension),
@@ -256,9 +280,7 @@ String? _publicStorageUrl(
   if (value == null || value.isEmpty) return null;
   if (!_isLocalPath(value)) return value;
   final url = supabase.storage.from(bucket).getPublicUrl(value);
-  return cacheBust
-      ? '$url?v=${DateTime.now().millisecondsSinceEpoch}'
-      : url;
+  return cacheBust ? '$url?v=${DateTime.now().millisecondsSinceEpoch}' : url;
 }
 
 String _extractStoragePath(String value, String bucket) {
@@ -282,32 +304,29 @@ String? _nullableText(String? value) {
   return trimmed == null || trimmed.isEmpty ? null : trimmed;
 }
 
-String _imageExtension(String path) {
-  final cleanPath = path.split('?').first.toLowerCase();
-  if (cleanPath.endsWith('.png')) return 'png';
-  if (cleanPath.endsWith('.webp')) return 'webp';
-  return 'jpg';
-}
-
 String _validatedImageExtension(String path) {
   final cleanPath = path.split('?').first.toLowerCase();
   if (cleanPath.endsWith('.jpg') || cleanPath.endsWith('.jpeg')) return 'jpg';
   if (cleanPath.endsWith('.png')) return 'png';
   if (cleanPath.endsWith('.webp')) return 'webp';
-  throw const ProfilePhotoUpdateException(
-    'Select a JPEG, PNG, or WebP image.',
-  );
+  throw const ProfilePhotoUpdateException('Select a JPEG, PNG, or WebP image.');
 }
 
 String _imageContentType(String extension) => switch (extension) {
-      'png' => 'image/png',
-      'webp' => 'image/webp',
-      _ => 'image/jpeg',
-    };
+  'png' => 'image/png',
+  'webp' => 'image/webp',
+  _ => 'image/jpeg',
+};
 
 DateTime? _parseDate(Object? value) {
   if (value is! String || value.isEmpty) return null;
   return DateTime.tryParse(value);
+}
+
+String _dateOnly(DateTime value) {
+  final month = value.month.toString().padLeft(2, '0');
+  final day = value.day.toString().padLeft(2, '0');
+  return '${value.year}-$month-$day';
 }
 
 class UserAccountLoadException implements Exception {

@@ -6,29 +6,26 @@ import 'package:flutter_mvvm_riverpod/features/collaboration/ui/view_model/group
 import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/view_model/matchmaking_view_model.dart';
 import '../../repository/authentication_repository.dart';
 import '../state/settings_state.dart';
+import 'user_account_view_model.dart';
 
 final settingsViewModelProvider =
     AsyncNotifierProvider<SettingsViewModel, SettingsState>(
-  SettingsViewModel.new,
-);
+      SettingsViewModel.new,
+    );
 
 class SettingsViewModel extends AsyncNotifier<SettingsState> {
   @override
   Future<SettingsState> build() async {
     final preferences = await SharedPreferences.getInstance();
     return SettingsState(
-      tripMatchNotificationsEnabled: preferences.getBool(
-            Constants.tripMatchNotificationsKey,
-          ) ??
-          true,
+      tripMatchNotificationsEnabled:
+          preferences.getBool(Constants.tripMatchNotificationsKey) ?? true,
     );
   }
 
   Future<void> setTripMatchNotificationsEnabled(bool enabled) async {
     final current = state.value ?? const SettingsState();
-    state = AsyncData(
-      current.copyWith(tripMatchNotificationsEnabled: enabled),
-    );
+    state = AsyncData(current.copyWith(tripMatchNotificationsEnabled: enabled));
     final preferences = await SharedPreferences.getInstance();
     await preferences.setBool(Constants.tripMatchNotificationsKey, enabled);
   }
@@ -42,6 +39,7 @@ class SettingsViewModel extends AsyncNotifier<SettingsState> {
       // survive into the next user's session.
       ref.invalidate(matchmakingViewModelProvider);
       ref.invalidate(groupCollaborationViewModelProvider);
+      ref.invalidate(userAccountViewModelProvider);
       state = AsyncData(current.copyWith(isSigningOut: false));
       return true;
     } catch (error) {
