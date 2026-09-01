@@ -58,10 +58,11 @@ class SupabaseUserSafetyRepository implements UserSafetyRepository {
     if (targetUserId.isEmpty || targetUserId == currentUserId) {
       throw const UserSafetyException('You cannot block this user.');
     }
-    await _client.from('user_blocks').upsert({
-      'blocker_id': currentUserId,
-      'blocked_id': targetUserId,
-    });
+    await _client.from('user_blocks').upsert(
+      {'blocker_id': currentUserId, 'blocked_id': targetUserId},
+      onConflict: 'blocker_id,blocked_id',
+      ignoreDuplicates: true,
+    );
   }
 
   @override
