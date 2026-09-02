@@ -24,8 +24,11 @@ class SettlementViewModel extends _$SettlementViewModel {
   late ReceiptFileService _receiptFileService;
 
   @override
-  Future<SettlementState> build(int tripId) async {
-    final session = ref.watch(appSessionProvider);
+  Future<SettlementState> build(String tripId) async {
+    final currentUserId = ref.watch(authenticatedUserIdProvider);
+    if (currentUserId == null) {
+      throw StateError('Authentication is required for settlements');
+    }
     final settlementRepositoryFuture =
         ref.watch(settlementRepositoryProvider.future);
     final expenseRepositoryFuture = ref.watch(expenseRepositoryProvider.future);
@@ -43,7 +46,7 @@ class SettlementViewModel extends _$SettlementViewModel {
     return SettlementState(
       tripId: tripId,
       currency: budget?.baseCurrency ?? 'MYR',
-      currentUserId: session.currentUserId,
+      currentUserId: currentUserId,
       travellers: travellers,
       settlements: await _repository.getSettlementsForTrip(tripId),
       receipts: await _repository.getReceiptsForTrip(tripId),
@@ -62,8 +65,8 @@ class SettlementViewModel extends _$SettlementViewModel {
   }
 
   Future<bool> createSettlement({
-    required int? payerId,
-    required int? payeeId,
+    required String? payerId,
+    required String? payeeId,
     required String amount,
     required String paymentMethod,
     required DateTime? settlementDate,
@@ -119,7 +122,7 @@ class SettlementViewModel extends _$SettlementViewModel {
         receipt: persistedPath == null
             ? null
             : SettlementReceipt(
-                settlementId: 0,
+                settlementId: '',
                 imagePath: persistedPath,
                 uploadedAt: now,
               ),
@@ -137,7 +140,7 @@ class SettlementViewModel extends _$SettlementViewModel {
     }
   }
 
-  Future<bool> confirmPaymentReceived(int settlementId) async {
+  Future<bool> confirmPaymentReceived(String settlementId) async {
     final current = state.value;
     if (current == null) return false;
     final settlement = _findSettlement(current, settlementId);
@@ -159,7 +162,7 @@ class SettlementViewModel extends _$SettlementViewModel {
     }
   }
 
-  Future<bool> rejectPayment(int settlementId) async {
+  Future<bool> rejectPayment(String settlementId) async {
     final current = state.value;
     if (current == null) return false;
     final settlement = _findSettlement(current, settlementId);
@@ -181,7 +184,7 @@ class SettlementViewModel extends _$SettlementViewModel {
     }
   }
 
-  Future<bool> replaceReceipt(int settlementId, String sourcePath) async {
+  Future<bool> replaceReceipt(String settlementId, String sourcePath) async {
     final current = state.value;
     if (current == null) return false;
     final settlement = _findSettlement(current, settlementId);
@@ -213,7 +216,7 @@ class SettlementViewModel extends _$SettlementViewModel {
     }
   }
 
-  Future<bool> removeReceipt(int settlementId) async {
+  Future<bool> removeReceipt(String settlementId) async {
     final current = state.value;
     if (current == null) return false;
     final settlement = _findSettlement(current, settlementId);
@@ -235,7 +238,7 @@ class SettlementViewModel extends _$SettlementViewModel {
     }
   }
 
-  Future<bool> deleteSettlement(int settlementId) async {
+  Future<bool> deleteSettlement(String settlementId) async {
     final current = state.value;
     if (current == null) return false;
     final settlement = _findSettlement(current, settlementId);
@@ -247,7 +250,7 @@ class SettlementViewModel extends _$SettlementViewModel {
       );
     }
     try {
-      await _repository.deleteSettlement(settlementId);
+      await _repository.deleteSettlement(current.tripId, settlementId);
       final receipt = current.receipts[settlementId];
       if (receipt != null) {
         await _deleteReceiptBestEffort(receipt.imagePath);
@@ -262,8 +265,8 @@ class SettlementViewModel extends _$SettlementViewModel {
   Future<void> refresh() => _reload();
 
   Future<List<SettlementSuggestion>> _derived(
-    int tripId,
-    Iterable<int> travellerIds,
+    String tripId,
+    Iterable<String> travellerIds,
   ) async {
     final expenses =
         await _expenseRepository.calculateNetExpenseBalances(tripId);
@@ -292,7 +295,7 @@ class SettlementViewModel extends _$SettlementViewModel {
       clearError: true,
     ));
     ref.invalidate(balanceViewModelProvider(current.tripId));
-    ref.invalidate(expenseDashboardViewModelProvider);
+    ref.invalidate(expenseDashboardViewModelProvider(current.tripId));
   }
 
   bool _fail(SettlementState current, String message) {
@@ -309,7 +312,7 @@ class SettlementViewModel extends _$SettlementViewModel {
     return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 
-  Settlement? _findSettlement(SettlementState current, int settlementId) {
+  Settlement? _findSettlement(SettlementState current, String settlementId) {
     for (final settlement in current.settlements) {
       if (settlement.settlementId == settlementId) return settlement;
     }

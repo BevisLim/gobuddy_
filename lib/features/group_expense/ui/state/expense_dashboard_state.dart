@@ -16,7 +16,7 @@ class ExpenseDashboardState {
     this.expenses = const [],
   });
 
-  final int tripId;
+  final String tripId;
   final Trip? trip;
   final int travellerCount;
   final TripBudget? budget;

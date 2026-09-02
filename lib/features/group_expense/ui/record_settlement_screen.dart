@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../common/ui/widgets/primary_button.dart';
+import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import '../model/expense_constants.dart';
 import '../model/expense_date_utils.dart';
 import '../model/expense_form_validation.dart';
@@ -25,9 +26,9 @@ class RecordSettlementScreen extends ConsumerStatefulWidget {
     this.initialPayeeId,
   });
 
-  final int tripId;
-  final int? initialPayerId;
-  final int? initialPayeeId;
+  final String tripId;
+  final String? initialPayerId;
+  final String? initialPayeeId;
 
   @override
   ConsumerState<RecordSettlementScreen> createState() =>
@@ -39,8 +40,8 @@ class _RecordSettlementScreenState
   final _formKey = GlobalKey<FormState>();
   final _amount = TextEditingController();
   final _notes = TextEditingController();
-  int? _payerId;
-  int? _payeeId;
+  String? _payerId;
+  String? _payeeId;
   String _paymentMethod = 'DuitNow';
   DateTime _date = DateTime.now();
   String? _receiptPath;
@@ -58,7 +59,10 @@ class _RecordSettlementScreenState
     final provider = settlementViewModelProvider(widget.tripId);
     final settlementState = ref.watch(provider);
     return Scaffold(
-      appBar: const GroupExpenseAppBar(title: 'Record Settlement'),
+      appBar: GroupExpenseAppBar(
+        title: 'Record Settlement',
+        fallbackRoute: '${Routes.groupExpense}/${widget.tripId}',
+      ),
       body: SafeArea(
         child: settlementState.when(
           loading: () => const Center(child: CircularProgressIndicator()),
@@ -100,7 +104,7 @@ class _RecordSettlementScreenState
                     ),
                     const SizedBox(height: 14),
                   ],
-                  DropdownButtonFormField<int>(
+                  DropdownButtonFormField<String>(
                     initialValue: _payerId,
                     isExpanded: true,
                     decoration: const InputDecoration(
@@ -111,7 +115,7 @@ class _RecordSettlementScreenState
                         .map((item) => DropdownMenuItem(
                               value: item.userId,
                               child: Text(
-                                item.name,
+                                item.displayName,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ))
@@ -119,7 +123,7 @@ class _RecordSettlementScreenState
                     onChanged: null,
                   ),
                   const SizedBox(height: 14),
-                  DropdownButtonFormField<int>(
+                  DropdownButtonFormField<String>(
                     key: ValueKey(_payeeId),
                     initialValue: _payeeId,
                     isExpanded: true,
@@ -129,7 +133,7 @@ class _RecordSettlementScreenState
                         .map((item) => DropdownMenuItem(
                               value: item.userId,
                               child: Text(
-                                item.name,
+                                item.displayName,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ))

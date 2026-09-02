@@ -9,7 +9,7 @@ part 'analytics_view_model.g.dart';
 @riverpod
 class AnalyticsViewModel extends _$AnalyticsViewModel {
   @override
-  Future<AnalyticsState> build(int tripId) async {
+  Future<AnalyticsState> build(String tripId) async {
     final budgetRepositoryFuture = ref.watch(budgetRepositoryProvider.future);
     final analyticsRepositoryFuture =
         ref.watch(analyticsRepositoryProvider.future);

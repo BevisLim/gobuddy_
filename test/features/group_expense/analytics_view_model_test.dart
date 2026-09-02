@@ -31,7 +31,7 @@ void main() {
   });
 
   test('RM3000 budget and RM2055 expenses produce required summary', () async {
-    final state = await container.read(analyticsViewModelProvider(1).future);
+    final state = await container.read(analyticsViewModelProvider('1').future);
 
     expect(state.totalBudget, 3000);
     expect(state.totalExpenses, 2055);
@@ -40,7 +40,7 @@ void main() {
   });
 
   test('category totals and percentages reconcile', () async {
-    final state = await container.read(analyticsViewModelProvider(1).future);
+    final state = await container.read(analyticsViewModelProvider('1').future);
 
     final categoryTotal = state.categories.fold<double>(
       0,
@@ -55,7 +55,7 @@ void main() {
   });
 
   test('highest spending category is identified correctly', () async {
-    final state = await container.read(analyticsViewModelProvider(1).future);
+    final state = await container.read(analyticsViewModelProvider('1').future);
 
     expect(state.highestSpendingCategory?.categoryName, 'Flight');
     expect(state.highestSpendingCategory?.amount, 760);
@@ -78,7 +78,7 @@ void main() {
     });
 
     final categories =
-        await SqliteAnalyticsRepository(database).getCategorySpending(1);
+        await SqliteAnalyticsRepository(database).getCategorySpending('1');
 
     expect(
       categories
@@ -89,7 +89,7 @@ void main() {
   });
 
   test('spending trend is ordered by expense date', () async {
-    final state = await container.read(analyticsViewModelProvider(1).future);
+    final state = await container.read(analyticsViewModelProvider('1').future);
 
     for (var index = 1; index < state.trend.length; index++) {
       expect(
@@ -111,7 +111,7 @@ void main() {
       ),
     ]);
 
-    final state = await container.read(analyticsViewModelProvider(1).future);
+    final state = await container.read(analyticsViewModelProvider('1').future);
 
     expect(state.isEmpty, isTrue);
     expect(state.totalExpenses, 0);

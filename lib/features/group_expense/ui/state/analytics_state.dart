@@ -12,7 +12,7 @@ class AnalyticsState {
     this.trend = const [],
   });
 
-  final int tripId;
+  final String tripId;
   final String currency;
   final double totalBudget;
   final double totalExpenses;

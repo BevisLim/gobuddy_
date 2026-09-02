@@ -13,7 +13,7 @@ class BudgetState {
     this.errorMessage,
   });
 
-  final int tripId;
+  final String tripId;
   final Trip? trip;
   final TripBudget? budget;
   final double totalSpent;

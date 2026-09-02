@@ -26,9 +26,9 @@ class ExpenseForm extends ConsumerStatefulWidget {
     required this.onSaved,
   });
 
-  final int tripId;
-  final int? expenseId;
-  final ValueChanged<int> onSaved;
+  final String tripId;
+  final String? expenseId;
+  final ValueChanged<String> onSaved;
 
   @override
   ConsumerState<ExpenseForm> createState() => _ExpenseFormState();
@@ -39,11 +39,11 @@ class _ExpenseFormState extends ConsumerState<ExpenseForm> {
   final _title = TextEditingController();
   final _amount = TextEditingController();
   final _notes = TextEditingController();
-  final _selectedParticipants = <int>{};
-  final _customShares = <int, String>{};
-  final _percentages = <int, String>{};
+  final _selectedParticipants = <String>{};
+  final _customShares = <String, String>{};
+  final _percentages = <String, String>{};
   int? _categoryId;
-  int? _payerId;
+  String? _payerId;
   String _currency = 'MYR';
   DateTime _expenseDate = DateTime.now();
   ExpenseSplitMethod _splitMethod = ExpenseSplitMethod.equal;
@@ -132,13 +132,13 @@ class _ExpenseFormState extends ConsumerState<ExpenseForm> {
                     .toList(growable: false),
               ),
               const SizedBox(height: 18),
-              DropdownButtonFormField<int>(
+              DropdownButtonFormField<String>(
                 initialValue: _payerId,
                 decoration: const InputDecoration(labelText: 'Paid By *'),
                 items: state.travellers
                     .map((traveller) => DropdownMenuItem(
                           value: traveller.userId,
-                          child: Text(traveller.name),
+                          child: Text(traveller.displayName),
                         ))
                     .toList(growable: false),
                 onChanged: (value) => setState(() => _payerId = value),
@@ -188,7 +188,7 @@ class _ExpenseFormState extends ConsumerState<ExpenseForm> {
                       child: CheckboxListTile(
                         contentPadding: EdgeInsets.zero,
                         value: selected,
-                        title: Text(traveller.name),
+                        title: Text(traveller.displayName),
                         controlAffinity: ListTileControlAffinity.leading,
                         onChanged: (value) => setState(() {
                           if (value ?? false) {

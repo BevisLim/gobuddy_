@@ -1,5 +1,5 @@
 import '../model/trip.dart';
 
 abstract interface class TripRepository {
-  Future<Trip?> getTripById(int tripId);
+  Future<Trip?> getTripById(String tripId);
 }

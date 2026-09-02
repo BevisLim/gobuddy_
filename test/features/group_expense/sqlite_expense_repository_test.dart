@@ -29,17 +29,17 @@ void main() {
   test('creates expense, participants, and receipt atomically', () async {
     final expenseId = await repository.createExpense(
       expense: _expense(),
-      participants: _participants(0),
+      participants: _participants('0'),
       receipt: ExpenseReceipt(
-        expenseId: 0,
+        expenseId: '0',
         imagePath: '/receipts/hotel.jpg',
         uploadedAt: DateTime(2025, 7, 20),
       ),
     );
 
-    expect(await repository.getExpenseById(expenseId), isNotNull);
-    expect(await repository.getParticipants(expenseId), hasLength(2));
-    expect((await repository.getReceipt(expenseId))?.imagePath,
+    expect(await repository.getExpenseById('1', expenseId), isNotNull);
+    expect(await repository.getParticipants('1', expenseId), hasLength(2));
+    expect((await repository.getReceipt('1', expenseId))?.imagePath,
         '/receipts/hotel.jpg');
   });
 
@@ -49,8 +49,8 @@ void main() {
         expense: _expense(title: 'Must rollback'),
         participants: const [
           ExpenseParticipant(
-            expenseId: 0,
-            userId: 999,
+            expenseId: '0',
+            userId: '999',
             shareAmount: 100,
           ),
         ],
@@ -69,9 +69,9 @@ void main() {
       () async {
     final expenseId = await repository.createExpense(
       expense: _expense(),
-      participants: _participants(0),
+      participants: _participants('0'),
       receipt: ExpenseReceipt(
-        expenseId: 0,
+        expenseId: '0',
         imagePath: '/receipts/old.jpg',
         uploadedAt: DateTime(2025),
       ),
@@ -81,34 +81,54 @@ void main() {
       participants: [
         ExpenseParticipant(
           expenseId: expenseId,
-          userId: 1,
+          userId: '1',
           shareAmount: 120,
         ),
       ],
       removeReceipt: true,
     );
 
-    expect(await repository.getParticipants(expenseId), hasLength(1));
-    expect(await repository.getReceipt(expenseId), isNull);
+    expect(await repository.getParticipants('1', expenseId), hasLength(1));
+    expect(await repository.getReceipt('1', expenseId), isNull);
   });
 
   test('delete cascades and changes future budget totals', () async {
     final expenseId = await repository.createExpense(
       expense: _expense(),
-      participants: _participants(0),
+      participants: _participants('0'),
       receipt: ExpenseReceipt(
-        expenseId: 0,
+        expenseId: '0',
         imagePath: '/receipts/hotel.jpg',
         uploadedAt: DateTime(2025),
       ),
     );
     expect(await spent(database), 100);
 
-    await repository.deleteExpense(expenseId);
+    await repository.deleteExpense('1', expenseId);
 
-    expect(await repository.getParticipants(expenseId), isEmpty);
-    expect(await repository.getReceipt(expenseId), isNull);
+    expect(await repository.getParticipants('1', expenseId), isEmpty);
+    expect(await repository.getReceipt('1', expenseId), isNull);
     expect(await spent(database), 0);
+  });
+
+  test('expense reads are scoped by both trip and expense UUID strings',
+      () async {
+    final expenseId = await repository.createExpense(
+      expense: _expense(),
+      participants: _participants('0'),
+    );
+
+    expect(await repository.getExpenseById('1', expenseId), isNotNull);
+    expect(
+        await repository.getExpenseById('different-trip', expenseId), isNull);
+    expect(
+      await repository.getParticipants('different-trip', expenseId),
+      isEmpty,
+    );
+    expect(
+      await repository.getReceipt('different-trip', expenseId),
+      isNull,
+    );
   });
 
   test('calculates net balances across multiple expenses dynamically',
@@ -118,33 +138,33 @@ void main() {
       participants: [
         for (var userId = 1; userId <= 4; userId++)
           ExpenseParticipant(
-            expenseId: 0,
-            userId: userId,
+            expenseId: '0',
+            userId: userId.toString(),
             shareAmount: 145,
           ),
       ],
     );
-    expect(firstId, greaterThan(0));
+    expect(firstId, isNotEmpty);
     await repository.createExpense(
       expense: _expense(title: 'Dinner', amount: 100).copyWith(
-        paidByUserId: 2,
+        paidByUserId: '2',
         categoryId: 4,
       ),
       participants: [
         for (var userId = 1; userId <= 4; userId++)
           ExpenseParticipant(
-            expenseId: 0,
-            userId: userId,
+            expenseId: '0',
+            userId: userId.toString(),
             shareAmount: 25,
           ),
       ],
     );
 
-    expect(await repository.calculateNetExpenseBalances(1), {
-      1: 410,
-      2: -70,
-      3: -170,
-      4: -170,
+    expect(await repository.calculateNetExpenseBalances('1'), {
+      '1': 410,
+      '2': -70,
+      '3': -170,
+      '4': -170,
     });
   });
 }
@@ -156,12 +176,12 @@ Future<double> spent(Database database) async {
   return (rows.first['total']! as num).toDouble();
 }
 
-Expense _expense({int? id, String title = 'Hotel', double amount = 100}) {
+Expense _expense({String? id, String title = 'Hotel', double amount = 100}) {
   final date = DateTime(2025, 7, 20);
   return Expense(
     expenseId: id,
-    tripId: 1,
-    paidByUserId: 1,
+    tripId: '1',
+    paidByUserId: '1',
     categoryId: 1,
     title: title,
     originalAmount: amount,
@@ -174,15 +194,15 @@ Expense _expense({int? id, String title = 'Hotel', double amount = 100}) {
   );
 }
 
-List<ExpenseParticipant> _participants(int expenseId) => [
+List<ExpenseParticipant> _participants(String expenseId) => [
       ExpenseParticipant(
         expenseId: expenseId,
-        userId: 1,
+        userId: '1',
         shareAmount: 50,
       ),
       ExpenseParticipant(
         expenseId: expenseId,
-        userId: 2,
+        userId: '2',
         shareAmount: 50,
       ),
     ];

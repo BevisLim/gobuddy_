@@ -7,6 +7,7 @@ import '../model/expense_receipt.dart';
 import '../model/expense_split.dart';
 import 'expense_repository.dart';
 
+/// Legacy local/test adapter. Production wiring uses SupabaseExpenseRepository.
 class SqliteExpenseRepository implements ExpenseRepository {
   const SqliteExpenseRepository(this.database);
   final Database database;
@@ -19,7 +20,7 @@ class SqliteExpenseRepository implements ExpenseRepository {
   }
 
   @override
-  Future<List<Expense>> getExpensesForTrip(int tripId) async {
+  Future<List<Expense>> getExpensesForTrip(String tripId) async {
     final rows = await database.query(
       'expenses',
       where: 'trip_id = ?',
@@ -30,40 +31,45 @@ class SqliteExpenseRepository implements ExpenseRepository {
   }
 
   @override
-  Future<Expense?> getExpenseById(int expenseId) async {
+  Future<Expense?> getExpenseById(String tripId, String expenseId) async {
     final rows = await database.query(
       'expenses',
-      where: 'expense_id = ?',
-      whereArgs: [expenseId],
+      where: 'trip_id = ? AND expense_id = ?',
+      whereArgs: [tripId, expenseId],
       limit: 1,
     );
     return rows.isEmpty ? null : Expense.fromMap(rows.first);
   }
 
   @override
-  Future<List<ExpenseParticipant>> getParticipants(int expenseId) async {
-    final rows = await database.query(
-      'expense_participants',
-      where: 'expense_id = ?',
-      whereArgs: [expenseId],
-      orderBy: 'user_id',
-    );
+  Future<List<ExpenseParticipant>> getParticipants(
+    String tripId,
+    String expenseId,
+  ) async {
+    final rows = await database.rawQuery('''
+      SELECT participant.* FROM expense_participants participant
+      INNER JOIN expenses expense ON expense.expense_id = participant.expense_id
+      WHERE expense.trip_id = ? AND expense.expense_id = ?
+      ORDER BY participant.user_id
+    ''', [tripId, expenseId]);
     return rows.map(ExpenseParticipant.fromMap).toList(growable: false);
   }
 
   @override
-  Future<ExpenseReceipt?> getReceipt(int expenseId) async {
-    final rows = await database.query(
-      'expense_receipts',
-      where: 'expense_id = ?',
-      whereArgs: [expenseId],
-      limit: 1,
-    );
+  Future<ExpenseReceipt?> getReceipt(
+    String tripId,
+    String expenseId,
+  ) async {
+    final rows = await database.rawQuery('''
+      SELECT receipt.* FROM expense_receipts receipt
+      INNER JOIN expenses expense ON expense.expense_id = receipt.expense_id
+      WHERE expense.trip_id = ? AND expense.expense_id = ? LIMIT 1
+    ''', [tripId, expenseId]);
     return rows.isEmpty ? null : ExpenseReceipt.fromMap(rows.first);
   }
 
   @override
-  Future<int> createExpense({
+  Future<String> createExpense({
     required Expense expense,
     required List<ExpenseParticipant> participants,
     ExpenseReceipt? receipt,
@@ -78,7 +84,7 @@ class SqliteExpenseRepository implements ExpenseRepository {
           _receiptMap(receipt, expenseId),
         );
       }
-      return expenseId;
+      return expenseId.toString();
     });
   }
 
@@ -96,8 +102,8 @@ class SqliteExpenseRepository implements ExpenseRepository {
       final updated = await transaction.update(
         'expenses',
         expense.toMap()..remove('expense_id'),
-        where: 'expense_id = ?',
-        whereArgs: [expenseId],
+        where: 'trip_id = ? AND expense_id = ?',
+        whereArgs: [expense.tripId, expenseId],
       );
       if (updated == 0) throw StateError('Expense not found');
       await _replaceParticipants(transaction, expenseId, participants);
@@ -118,16 +124,16 @@ class SqliteExpenseRepository implements ExpenseRepository {
   }
 
   @override
-  Future<void> deleteExpense(int expenseId) async {
+  Future<void> deleteExpense(String tripId, String expenseId) async {
     await database.delete(
       'expenses',
-      where: 'expense_id = ?',
-      whereArgs: [expenseId],
+      where: 'trip_id = ? AND expense_id = ?',
+      whereArgs: [tripId, expenseId],
     );
   }
 
   @override
-  Future<Map<int, double>> calculateNetExpenseBalances(int tripId) async {
+  Future<Map<String, double>> calculateNetExpenseBalances(String tripId) async {
     final paidRows = await database.rawQuery('''
       SELECT paid_by_user_id AS user_id, SUM(base_amount) AS total
       FROM expenses WHERE trip_id = ? GROUP BY paid_by_user_id
@@ -138,14 +144,14 @@ class SqliteExpenseRepository implements ExpenseRepository {
       INNER JOIN expenses expense ON expense.expense_id = participant.expense_id
       WHERE expense.trip_id = ? GROUP BY participant.user_id
     ''', [tripId]);
-    final cents = <int, int>{};
+    final cents = <String, int>{};
     for (final row in paidRows) {
-      final userId = row['user_id']! as int;
+      final userId = row['user_id']!.toString();
       cents[userId] = (cents[userId] ?? 0) +
           ((row['total']! as num).toDouble() * 100).round();
     }
     for (final row in owedRows) {
-      final userId = row['user_id']! as int;
+      final userId = row['user_id']!.toString();
       cents[userId] = (cents[userId] ?? 0) -
           ((row['total']! as num).toDouble() * 100).round();
     }
@@ -169,7 +175,7 @@ class SqliteExpenseRepository implements ExpenseRepository {
 
   Future<void> _replaceParticipants(
     Transaction transaction,
-    int expenseId,
+    Object expenseId,
     List<ExpenseParticipant> participants,
   ) async {
     await transaction.delete(
@@ -185,7 +191,8 @@ class SqliteExpenseRepository implements ExpenseRepository {
     }
   }
 
-  Map<String, Object?> _receiptMap(ExpenseReceipt receipt, int expenseId) => {
+  Map<String, Object?> _receiptMap(ExpenseReceipt receipt, Object expenseId) =>
+      {
         'expense_id': expenseId,
         'image_path': receipt.imagePath,
         'uploaded_at': receipt.uploadedAt.toIso8601String(),

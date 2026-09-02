@@ -4,8 +4,8 @@ class SettlementValidation {
   SettlementValidation._();
 
   static String? validate({
-    required int? payerId,
-    required int? payeeId,
+    required String? payerId,
+    required String? payeeId,
     required String amount,
     required double outstandingAmount,
     required String paymentMethod,
@@ -15,7 +15,9 @@ class SettlementValidation {
     if (payeeId == null) return 'Payee is required';
     if (payerId == payeeId) return 'Payer and payee must be different';
     final parsedAmount = double.tryParse(amount.trim());
-    if (parsedAmount == null || MoneyUtils.toCents(parsedAmount) <= 0) {
+    if (parsedAmount == null ||
+        !parsedAmount.isFinite ||
+        MoneyUtils.toCents(parsedAmount) <= 0) {
       return 'Settlement amount must be greater than zero';
     }
     if (MoneyUtils.toCents(parsedAmount) >
