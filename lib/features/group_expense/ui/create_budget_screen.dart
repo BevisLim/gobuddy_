@@ -6,6 +6,7 @@ import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import '../../common/ui/widgets/primary_button.dart';
 import '../model/budget_validation.dart';
 import '../model/expense_date_utils.dart';
+import '../model/expense_constants.dart';
 import 'view_model/budget_view_model.dart';
 import 'widgets/app_text_field.dart';
 import 'widgets/budget_feedback_panel.dart';
@@ -50,9 +51,8 @@ class _CreateBudgetScreenState extends ConsumerState<CreateBudgetScreen> {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (_, __) => LoadErrorState(
             message: 'Unable to load budget information.',
-            onRetry: () => ref.invalidate(
-              budgetViewModelProvider(widget.tripId),
-            ),
+            onRetry: () =>
+                ref.invalidate(budgetViewModelProvider(widget.tripId)),
           ),
           data: (state) => Form(
             key: _formKey,
@@ -62,16 +62,18 @@ class _CreateBudgetScreenState extends ConsumerState<CreateBudgetScreen> {
                 Text(
                   state.trip?.destination ?? 'Current Trip',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        color: const Color(0xFF281958),
-                        fontWeight: FontWeight.w800,
-                      ),
+                    color: const Color(0xFF281958),
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 if (state.trip != null) ...[
                   const SizedBox(height: 6),
-                  Text(ExpenseDateUtils.formatRange(
-                    state.trip!.startDate,
-                    state.trip!.endDate,
-                  )),
+                  Text(
+                    ExpenseDateUtils.formatRange(
+                      state.trip!.startDate,
+                      state.trip!.endDate,
+                    ),
+                  ),
                 ],
                 const SizedBox(height: 22),
                 if (state.errorMessage != null) ...[
@@ -105,23 +107,28 @@ class _CreateBudgetScreenState extends ConsumerState<CreateBudgetScreen> {
                   AppTextField(
                     label: 'Budget Amount *',
                     controller: _amountController,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     validator: (value) => BudgetValidation.amount(value ?? ''),
                   ),
                   const SizedBox(height: 20),
-                  Text('Base Currency',
-                      style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    'Base Currency',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 10,
-                    children: ['MYR', 'USD', 'SGD']
-                        .map((currency) => CurrencyChip(
-                              currency: currency,
-                              selected: _currency == currency,
-                              onSelected: (_) =>
-                                  setState(() => _currency = currency),
-                            ))
+                    children: ExpenseConstants.supportedCurrencies
+                        .map(
+                          (currency) => CurrencyChip(
+                            currency: currency,
+                            selected: _currency == currency,
+                            onSelected: (_) =>
+                                setState(() => _currency = currency),
+                          ),
+                        )
                         .toList(growable: false),
                   ),
                   const SizedBox(height: 16),

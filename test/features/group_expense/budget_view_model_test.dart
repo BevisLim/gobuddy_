@@ -1,5 +1,6 @@
 import 'package:flutter_mvvm_riverpod/features/group_expense/model/trip.dart';
 import 'package:flutter_mvvm_riverpod/features/group_expense/model/trip_budget.dart';
+import 'package:flutter_mvvm_riverpod/features/group_expense/model/expense_constants.dart';
 import 'package:flutter_mvvm_riverpod/features/group_expense/repository/budget_repository.dart';
 import 'package:flutter_mvvm_riverpod/features/group_expense/repository/group_expense_providers.dart';
 import 'package:flutter_mvvm_riverpod/features/group_expense/repository/trip_repository.dart';
@@ -14,12 +15,16 @@ void main() {
 
     setUp(() {
       budgetRepository = _FakeBudgetRepository();
-      container = ProviderContainer(overrides: [
-        budgetRepositoryProvider.overrideWith((ref) async => budgetRepository),
-        tripRepositoryProvider.overrideWith(
-          (ref) async => const _FakeTripRepository(),
-        ),
-      ]);
+      container = ProviderContainer(
+        overrides: [
+          budgetRepositoryProvider.overrideWith(
+            (ref) async => budgetRepository,
+          ),
+          tripRepositoryProvider.overrideWith(
+            (ref) async => const _FakeTripRepository(),
+          ),
+        ],
+      );
     });
 
     tearDown(() => container.dispose());
@@ -49,16 +54,45 @@ void main() {
 
       final created = await container
           .read(budgetViewModelProvider('7').notifier)
-          .createBudget(
-            name: '',
-            amount: '0',
-            currency: '',
-          );
+          .createBudget(name: '', amount: '0', currency: '');
 
       final state = container.read(budgetViewModelProvider('7')).value!;
       expect(created, isFalse);
       expect(budgetRepository.createCalls, 0);
       expect(state.errorMessage, 'Budget name is required');
+    });
+
+    test('creates budgets in every shared supported currency', () async {
+      for (final currency in ExpenseConstants.supportedCurrencies) {
+        final repository = _FakeBudgetRepository();
+        final currencyContainer = ProviderContainer(
+          overrides: [
+            budgetRepositoryProvider.overrideWith((ref) async => repository),
+            tripRepositoryProvider.overrideWith(
+              (ref) async => const _FakeTripRepository(),
+            ),
+          ],
+        );
+        addTearDown(currencyContainer.dispose);
+        await currencyContainer.read(budgetViewModelProvider(currency).future);
+
+        final created = await currencyContainer
+            .read(budgetViewModelProvider(currency).notifier)
+            .createBudget(
+              name: '$currency Trip',
+              amount: '1000',
+              currency: currency,
+            );
+
+        expect(created, isTrue, reason: currency);
+        expect(repository.budget?.baseCurrency, currency);
+
+        final updated = await currencyContainer
+            .read(budgetViewModelProvider(currency).notifier)
+            .updateBudget(amount: '1200');
+        expect(updated, isTrue, reason: '$currency edit');
+        expect(repository.budget?.baseCurrency, currency);
+      }
     });
 
     test('updates amount and removes blank notes', () async {
@@ -79,15 +113,15 @@ void main() {
 }
 
 TripBudget _budget({required double amount, String? notes}) => TripBudget(
-      budgetId: '1',
-      tripId: '7',
-      budgetName: 'Penang Trip',
-      budgetAmount: amount,
-      baseCurrency: 'MYR',
-      notes: notes,
-      createdAt: DateTime(2025),
-      updatedAt: DateTime(2025),
-    );
+  budgetId: '1',
+  tripId: '7',
+  budgetName: 'Penang Trip',
+  budgetAmount: amount,
+  baseCurrency: 'MYR',
+  notes: notes,
+  createdAt: DateTime(2025),
+  updatedAt: DateTime(2025),
+);
 
 class _FakeBudgetRepository implements BudgetRepository {
   TripBudget? budget;
@@ -117,9 +151,9 @@ class _FakeTripRepository implements TripRepository {
 
   @override
   Future<Trip?> getTripById(String tripId) async => Trip(
-        tripId: tripId,
-        destination: 'Penang, Malaysia',
-        startDate: DateTime(2025, 8, 1),
-        endDate: DateTime(2025, 8, 3),
-      );
+    tripId: tripId,
+    destination: 'Penang, Malaysia',
+    startDate: DateTime(2025, 8, 1),
+    endDate: DateTime(2025, 8, 3),
+  );
 }

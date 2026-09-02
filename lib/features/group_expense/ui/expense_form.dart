@@ -10,8 +10,11 @@ import '../model/expense_constants.dart';
 import '../model/expense_date_utils.dart';
 import '../model/expense_form_validation.dart';
 import '../model/expense_split.dart';
+import '../model/money_utils.dart';
+import '../repository/currency_service.dart';
 import 'state/expense_form_state.dart';
 import 'view_model/expense_view_model.dart';
+import 'view_model/exchange_rate_controller.dart';
 import 'widgets/app_text_field.dart';
 import 'widgets/budget_feedback_panel.dart';
 import 'widgets/category_chip.dart';
@@ -50,6 +53,7 @@ class _ExpenseFormState extends ConsumerState<ExpenseForm> {
   String? _selectedReceiptPath;
   bool _removeReceipt = false;
   bool _initialized = false;
+  bool _useStoredRate = false;
 
   @override
   void dispose() {
@@ -74,6 +78,30 @@ class _ExpenseFormState extends ConsumerState<ExpenseForm> {
       ),
       data: (state) {
         _initialize(state);
+        final rateProvider = exchangeRateControllerProvider(
+          fromCurrency: _currency,
+          toCurrency: state.baseCurrency,
+        );
+        final rateState = ref.watch(rateProvider);
+        final savedExpense = state.expense;
+        final storedQuote = _useStoredRate &&
+                savedExpense != null &&
+                savedExpense.currencyCode == _currency
+            ? ExchangeRateQuote(
+                fromCurrency: _currency,
+                toCurrency: state.baseCurrency,
+                rate: savedExpense.exchangeRate,
+                source: 'Saved expense rate',
+              )
+            : null;
+        final quote = _currency == state.baseCurrency
+            ? ExchangeRateQuote(
+                fromCurrency: _currency,
+                toCurrency: state.baseCurrency,
+                rate: 1,
+                source: 'Same currency',
+              )
+            : storedQuote ?? rateState.value;
         return Form(
           key: _formKey,
           child: ListView(
@@ -115,6 +143,7 @@ class _ExpenseFormState extends ConsumerState<ExpenseForm> {
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 validator: (value) => ExpenseFormValidation.amount(value ?? ''),
+                onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 16),
               _label(context, 'Currency'),
@@ -126,10 +155,19 @@ class _ExpenseFormState extends ConsumerState<ExpenseForm> {
                     .map((currency) => CurrencyChip(
                           currency: currency,
                           selected: _currency == currency,
-                          onSelected: (_) =>
-                              setState(() => _currency = currency),
+                          onSelected: (_) => _selectCurrency(
+                            currency,
+                            state.baseCurrency,
+                          ),
                         ))
                     .toList(growable: false),
+              ),
+              const SizedBox(height: 12),
+              _exchangeRatePanel(
+                baseCurrency: state.baseCurrency,
+                quote: quote,
+                rateState: rateState,
+                onRetry: () => ref.read(rateProvider.notifier).fetch(),
               ),
               const SizedBox(height: 18),
               DropdownButtonFormField<String>(
@@ -310,6 +348,7 @@ class _ExpenseFormState extends ConsumerState<ExpenseForm> {
     _initialized = true;
     final expense = state.expense;
     if (expense == null) {
+      _currency = state.baseCurrency;
       _payerId =
           state.travellers.isEmpty ? null : state.travellers.first.userId;
       _selectedParticipants.addAll(state.travellers.map((item) => item.userId));
@@ -321,6 +360,7 @@ class _ExpenseFormState extends ConsumerState<ExpenseForm> {
     _categoryId = expense.categoryId;
     _payerId = expense.paidByUserId;
     _currency = expense.currencyCode;
+    _useStoredRate = true;
     _expenseDate = expense.expenseDate;
     _selectedParticipants.addAll(state.participants.map((item) => item.userId));
     final equal = state.participants.isNotEmpty &&
@@ -352,6 +392,32 @@ class _ExpenseFormState extends ConsumerState<ExpenseForm> {
       expenseId: widget.expenseId,
     );
     double parse(String? value) => double.tryParse(value ?? '') ?? 0;
+    final formState = ref.read(provider).value!;
+    ExchangeRateQuote? quote;
+    if (_currency != formState.baseCurrency) {
+      if (_useStoredRate &&
+          formState.expense?.currencyCode == _currency) {
+        quote = ExchangeRateQuote(
+          fromCurrency: _currency,
+          toCurrency: formState.baseCurrency,
+          rate: formState.expense!.exchangeRate,
+          source: 'Saved expense rate',
+        );
+      } else {
+        quote = ref.read(exchangeRateControllerProvider(
+          fromCurrency: _currency,
+          toCurrency: formState.baseCurrency,
+        )).value;
+      }
+      if (quote == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+            'Fetch the latest exchange rate before saving this expense.',
+          ),
+        ));
+        return;
+      }
+    }
     final saved = await ref.read(provider.notifier).save(
           title: _title.text,
           categoryId: _categoryId,
@@ -370,11 +436,101 @@ class _ExpenseFormState extends ConsumerState<ExpenseForm> {
           notes: _notes.text,
           selectedReceiptPath: _selectedReceiptPath,
           removeReceipt: _removeReceipt,
+          exchangeRate: quote,
         );
     if (!mounted || !saved) return;
     final id = ref.read(provider).value?.savedExpenseId;
     if (id != null) widget.onSaved(id);
   }
+
+  Future<void> _selectCurrency(String currency, String baseCurrency) async {
+    if (_currency == currency) return;
+    setState(() {
+      _currency = currency;
+      _useStoredRate = false;
+    });
+    if (currency != baseCurrency) {
+      await ref.read(exchangeRateControllerProvider(
+        fromCurrency: currency,
+        toCurrency: baseCurrency,
+      ).notifier).fetch();
+    }
+  }
+
+  Widget _exchangeRatePanel({
+    required String baseCurrency,
+    required ExchangeRateQuote? quote,
+    required AsyncValue<ExchangeRateQuote?> rateState,
+    required VoidCallback onRetry,
+  }) {
+    if (_currency == baseCurrency) {
+      return Text('No conversion required ($_currency).');
+    }
+    if (rateState.isLoading && !_useStoredRate) {
+      return const Row(children: [
+        SizedBox.square(
+          dimension: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+        SizedBox(width: 10),
+        Text('Fetching latest reference rate...'),
+      ]);
+    }
+    if (rateState.hasError && !_useStoredRate) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const BudgetFeedbackPanel(
+            message:
+                'Unable to fetch the latest exchange rate. Please try again.',
+            isError: true,
+          ),
+          TextButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
+          ),
+        ],
+      );
+    }
+    if (quote == null) {
+      return OutlinedButton.icon(
+        onPressed: onRetry,
+        icon: const Icon(Icons.refresh),
+        label: const Text('Fetch latest reference rate'),
+      );
+    }
+    final amount = double.tryParse(_amount.text.trim());
+    final baseAmount = amount == null
+        ? null
+        : MoneyUtils.roundMoney(amount * quote.rate);
+    final rateDate = quote.rateDate?.toIso8601String().substring(0, 10);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F3FF),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(
+          'Latest reference rate: 1 $_currency = '
+          '${_currencyLabel(baseCurrency)} ${quote.rate.toStringAsFixed(6)}',
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        if (baseAmount != null)
+          Text(
+            'Base amount: '
+            '${MoneyUtils.formatCurrency(baseAmount, currency: baseCurrency)}',
+          ),
+        Text('Rate source: ${quote.source}'),
+        if (rateDate != null) Text('Rate date: $rateDate'),
+        if (_useStoredRate)
+          const Text('Stored historical rate; not automatically refreshed.'),
+      ]),
+    );
+  }
+
+  String _currencyLabel(String currency) => currency == 'MYR' ? 'RM' : currency;
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(

@@ -22,7 +22,6 @@ part 'expense_view_model.g.dart';
 @riverpod
 class ExpenseViewModel extends _$ExpenseViewModel {
   late ExpenseRepository _repository;
-  late CurrencyService _currencyService;
   late ReceiptFileService _receiptFileService;
 
   @override
@@ -34,7 +33,6 @@ class ExpenseViewModel extends _$ExpenseViewModel {
     final travellerRepositoryFuture =
         ref.watch(travellerRepositoryProvider.future);
     final budgetRepositoryFuture = ref.watch(budgetRepositoryProvider.future);
-    _currencyService = ref.watch(currencyServiceProvider);
     _receiptFileService = ref.watch(receiptFileServiceProvider);
     _repository = await repositoryFuture;
     final travellerRepository = await travellerRepositoryFuture;
@@ -76,6 +74,7 @@ class ExpenseViewModel extends _$ExpenseViewModel {
     String? notes,
     String? selectedReceiptPath,
     bool removeReceipt = false,
+    ExchangeRateQuote? exchangeRate,
   }) async {
     final current = state.value;
     if (current == null) return false;
@@ -95,10 +94,12 @@ class ExpenseViewModel extends _$ExpenseViewModel {
     String? persistedReceiptPath;
     try {
       final originalAmount = double.parse(amount.trim());
-      final rate = await _currencyService.getExchangeRate(
-        fromCurrency: currency,
-        toCurrency: current.baseCurrency,
-      );
+      final rate = currency == current.baseCurrency
+          ? 1.0
+          : exchangeRate?.fromCurrency == currency &&
+                  exchangeRate?.toCurrency == current.baseCurrency
+              ? exchangeRate!.rate
+              : throw const FormatException('Exchange rate is required');
       final baseAmount = MoneyUtils.roundMoney(originalAmount * rate);
       final participants = _participants(
         method: splitMethod,
