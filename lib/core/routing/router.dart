@@ -24,6 +24,7 @@ import '../../features/user_account/ui/app_launching_screen.dart';
 import '../../features/user_account/ui/forgot_password_screen.dart';
 import '../../features/user_account/ui/identity_verification_screen.dart';
 import '../../features/user_account/ui/settings/blocked_users_screen.dart';
+import '../../features/user_account/ui/settings/change_password_screen.dart';
 import '../../features/user_account/ui/settings/settings_screen.dart';
 import '../../features/user_account/ui/login_screen.dart';
 import '../../features/user_account/ui/register_account_screen.dart';
@@ -43,6 +44,10 @@ import 'routes.dart';
 enum SlideDirection { right, left, up, down }
 
 extension GoRouterStateExtension on GoRouterState {
+  NoTransitionPage<void> navigationPage(Widget child) {
+    return NoTransitionPage<void>(key: pageKey, child: child);
+  }
+
   SlideRouteTransition slidePage(
     Widget child, {
     SlideDirection direction = SlideDirection.left,
@@ -152,7 +157,7 @@ final GoRouter router = GoRouter(
     ),
     GoRoute(
       path: Routes.main,
-      pageBuilder: (context, state) => state.slidePage(
+      pageBuilder: (context, state) => state.navigationPage(
         ProviderScope(
           overrides: [
             matchmakingInitialPageProvider.overrideWithValue(
@@ -166,7 +171,7 @@ final GoRouter router = GoRouter(
     ),
     GoRoute(
       path: Routes.myTrips,
-      pageBuilder: (context, state) => state.slidePage(
+      pageBuilder: (context, state) => state.navigationPage(
         ProviderScope(
           overrides: [
             matchmakingInitialPageProvider.overrideWithValue(
@@ -180,7 +185,8 @@ final GoRouter router = GoRouter(
     ),
     GoRoute(
       path: Routes.messages,
-      pageBuilder: (context, state) => state.slidePage(const MessagesScreen()),
+      pageBuilder: (context, state) =>
+          state.navigationPage(const MessagesScreen()),
     ),
     GoRoute(
       path: '${Routes.trip}/:tripId/messages',
@@ -212,89 +218,82 @@ final GoRouter router = GoRouter(
           Routes.tripTimeline(state.pathParameters['tripId']!),
     ),
     GoRoute(
-      path: Routes.expenseDashboard,
-      pageBuilder: (context, state) =>
-          state.slidePage(const ExpenseDashboardScreen()),
-    ),
-    GoRoute(
-      path: '${Routes.createBudget}/:tripId',
-      pageBuilder: (context, state) => state.slidePage(
-        CreateBudgetScreen(tripId: int.parse(state.pathParameters['tripId']!)),
+      path: '${Routes.groupExpense}/:tripId',
+      pageBuilder: (context, state) => state.navigationPage(
+        ExpenseDashboardScreen(tripId: state.pathParameters['tripId']!),
       ),
     ),
     GoRoute(
-      path: '${Routes.editBudget}/:tripId',
+      path: '${Routes.groupExpense}/:tripId/${Routes.createBudget}',
       pageBuilder: (context, state) => state.slidePage(
-        EditBudgetScreen(tripId: int.parse(state.pathParameters['tripId']!)),
+        CreateBudgetScreen(tripId: state.pathParameters['tripId']!),
       ),
     ),
     GoRoute(
-      path: '${Routes.addExpense}/:tripId',
+      path: '${Routes.groupExpense}/:tripId/${Routes.editBudget}',
       pageBuilder: (context, state) => state.slidePage(
-        AddExpenseScreen(tripId: int.parse(state.pathParameters['tripId']!)),
+        EditBudgetScreen(tripId: state.pathParameters['tripId']!),
       ),
     ),
     GoRoute(
-      path: '${Routes.expenseDetails}/:tripId/:expenseId',
+      path: '${Routes.groupExpense}/:tripId/${Routes.addExpense}',
+      pageBuilder: (context, state) => state.slidePage(
+        AddExpenseScreen(tripId: state.pathParameters['tripId']!),
+      ),
+    ),
+    GoRoute(
+      path:
+          '${Routes.groupExpense}/:tripId/${Routes.expenseDetails}/:expenseId',
       pageBuilder: (context, state) => state.slidePage(
         ExpenseDetailsScreen(
-          tripId: int.parse(state.pathParameters['tripId']!),
-          expenseId: int.parse(state.pathParameters['expenseId']!),
+          tripId: state.pathParameters['tripId']!,
+          expenseId: state.pathParameters['expenseId']!,
           initialSuccessMessage: state.uri.queryParameters['message'],
         ),
       ),
     ),
     GoRoute(
-      path: '${Routes.editExpense}/:tripId/:expenseId',
+      path:
+          '${Routes.groupExpense}/:tripId/${Routes.expenseDetails}/:expenseId/${Routes.editExpense}',
       pageBuilder: (context, state) => state.slidePage(
         EditExpenseScreen(
-          tripId: int.parse(state.pathParameters['tripId']!),
-          expenseId: int.parse(state.pathParameters['expenseId']!),
+          tripId: state.pathParameters['tripId']!,
+          expenseId: state.pathParameters['expenseId']!,
         ),
       ),
     ),
     GoRoute(
-      path: '${Routes.outstandingBalance}/:tripId',
+      path: '${Routes.groupExpense}/:tripId/${Routes.outstandingBalance}',
       pageBuilder: (context, state) => state.slidePage(
-        OutstandingBalanceScreen(
-          tripId: int.parse(state.pathParameters['tripId']!),
-        ),
+        OutstandingBalanceScreen(tripId: state.pathParameters['tripId']!),
       ),
     ),
     GoRoute(
-      path: '${Routes.recordSettlement}/:tripId',
+      path: '${Routes.groupExpense}/:tripId/${Routes.recordSettlement}',
       pageBuilder: (context, state) => state.slidePage(
         RecordSettlementScreen(
-          tripId: int.parse(state.pathParameters['tripId']!),
-          initialPayerId: int.tryParse(
-            state.uri.queryParameters['payerId'] ?? '',
-          ),
-          initialPayeeId: int.tryParse(
-            state.uri.queryParameters['payeeId'] ?? '',
-          ),
+          tripId: state.pathParameters['tripId']!,
+          initialPayerId: state.uri.queryParameters['payerId'],
+          initialPayeeId: state.uri.queryParameters['payeeId'],
         ),
       ),
     ),
     GoRoute(
-      path: '${Routes.settlementHistory}/:tripId',
+      path: '${Routes.groupExpense}/:tripId/${Routes.settlementHistory}',
       pageBuilder: (context, state) => state.slidePage(
-        SettlementHistoryScreen(
-          tripId: int.parse(state.pathParameters['tripId']!),
-        ),
+        SettlementHistoryScreen(tripId: state.pathParameters['tripId']!),
       ),
     ),
     GoRoute(
-      path: '${Routes.budgetAnalytics}/:tripId',
+      path: '${Routes.groupExpense}/:tripId/${Routes.budgetAnalytics}',
       pageBuilder: (context, state) => state.slidePage(
-        BudgetAnalyticsScreen(
-          tripId: int.parse(state.pathParameters['tripId']!),
-        ),
+        BudgetAnalyticsScreen(tripId: state.pathParameters['tripId']!),
       ),
     ),
     GoRoute(
       path: Routes.userAccount,
       pageBuilder: (context, state) =>
-          state.slidePage(const UserAccountScreen()),
+          state.navigationPage(const UserAccountScreen()),
     ),
     GoRoute(
       path: '${Routes.publicProfile}/:userId',
@@ -313,6 +312,11 @@ final GoRouter router = GoRouter(
     GoRoute(
       path: Routes.settings,
       pageBuilder: (context, state) => state.slidePage(const SettingsScreen()),
+    ),
+    GoRoute(
+      path: Routes.changePassword,
+      pageBuilder: (context, state) =>
+          state.slidePage(const ChangePasswordScreen()),
     ),
     GoRoute(
       path: Routes.safetyCheckInSettings,

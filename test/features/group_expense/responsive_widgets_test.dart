@@ -30,7 +30,7 @@ void main() {
               ),
               const BalanceCard(
                 balance: TravellerBalance(
-                  userId: 1,
+                  userId: '1',
                   name: 'A traveller with a very long full legal name',
                   initials: 'TL',
                   netBalance: -123456.78,
@@ -60,10 +60,10 @@ void main() {
 }
 
 BudgetState _budgetState() => BudgetState(
-      tripId: 1,
+      tripId: '1',
       budget: TripBudget(
-        budgetId: 1,
-        tripId: 1,
+        budgetId: '1',
+        tripId: '1',
         budgetName: 'A very long international group travel budget',
         budgetAmount: 200000,
         baseCurrency: 'MYR',

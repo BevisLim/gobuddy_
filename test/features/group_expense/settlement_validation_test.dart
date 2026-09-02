@@ -3,8 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   String? validate({
-    int? payerId = 2,
-    int? payeeId = 1,
+    String? payerId = '2',
+    String? payeeId = '1',
     String amount = '50',
     double outstanding = 100,
   }) =>
@@ -22,8 +22,8 @@ void main() {
   });
 
   test('payer cannot equal payee', () {
-    expect(
-        validate(payerId: 1, payeeId: 1), 'Payer and payee must be different');
+    expect(validate(payerId: '1', payeeId: '1'),
+        'Payer and payee must be different');
   });
 
   test('rejects zero and negative amounts', () {

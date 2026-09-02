@@ -63,7 +63,7 @@ class AuthenticationRepository {
       final message = error.message.toLowerCase();
       if (message.contains('password')) {
         throw Exception(
-          'Please choose a stronger password with at least 6 characters.',
+          'Use at least 8 characters, including uppercase, lowercase, a number, and a special character.',
         );
       }
       throw Exception('Unable to save your password. Please try again.');
@@ -126,7 +126,7 @@ class AuthenticationRepository {
       final message = error.message.toLowerCase();
       if (message.contains('password') || message.contains('weak')) {
         throw Exception(
-          'Choose a stronger password with at least 6 characters.',
+          'Use at least 8 characters, including uppercase, lowercase, a number, and a special character.',
         );
       }
       if (message.contains('expired') ||
@@ -139,6 +139,51 @@ class AuthenticationRepository {
       throw Exception('Unable to reset your password. Please try again.');
     } catch (_) {
       throw Exception('Unable to reset your password. Please try again.');
+    }
+  }
+
+  Future<void> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    final email = supabase.auth.currentUser?.email;
+    if (email == null || supabase.auth.currentSession == null) {
+      throw Exception('Your session has expired. Please sign in again.');
+    }
+    if (oldPassword == newPassword) {
+      throw Exception('Your new password must be different from your old password.');
+    }
+
+    try {
+      // Supabase requires a fresh password sign-in to prove the current
+      // password is valid before this sensitive account change.
+      await supabase.auth.signInWithPassword(
+        email: email,
+        password: oldPassword,
+      );
+      await supabase.auth.updateUser(UserAttributes(password: newPassword));
+    } on AuthException catch (error) {
+      final message = error.message.toLowerCase();
+      if (message.contains('invalid login') ||
+          message.contains('invalid credentials') ||
+          message.contains('email or password')) {
+        throw Exception('Your old password is incorrect.');
+      }
+      if (message.contains('same password') ||
+          message.contains('different from the old')) {
+        throw Exception(
+          'Your new password must be different from your old password.',
+        );
+      }
+      if (message.contains('password') || message.contains('weak')) {
+        throw Exception(
+          'Use at least 8 characters, including uppercase, lowercase, a number, and a special character.',
+        );
+      }
+      throw Exception('Unable to change your password. Please try again.');
+    } catch (error) {
+      if (error is Exception) rethrow;
+      throw Exception('Unable to change your password. Please try again.');
     }
   }
 
@@ -275,6 +320,46 @@ class AuthenticationRepository {
     }
   }
 
+  Future<void> deleteAccount() async {
+    if (supabase.auth.currentSession == null) {
+      throw Exception('Your session has expired. Please sign in again.');
+    }
+
+    try {
+      final response = await supabase.functions.invoke('delete-account');
+      final data = response.data;
+      if (data is! Map || data['deleted'] != true) {
+        throw Exception('Unable to delete your account. Please try again.');
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(Constants.isLoginKey);
+      await prefs.remove(Constants.isExistAccountKey);
+      await prefs.remove(Constants.isGuestModeKey);
+      await prefs.remove(Constants.registrationPendingKey);
+      await prefs.remove(Constants.registrationPendingEmailKey);
+      try {
+        await Purchases.logOut();
+      } catch (_) {
+        // Database deletion has already completed. Local third-party cleanup
+        // must not report the account as still active.
+      }
+      try {
+        await supabase.auth.signOut(scope: SignOutScope.local);
+      } catch (_) {
+        // Deleting auth.users invalidates the session on the server.
+      }
+    } on FunctionException catch (error) {
+      final data = error.details;
+      final message = data is Map ? data['error']?.toString() : null;
+      throw Exception(message ?? 'Unable to delete your account. Please try again.');
+    } on Exception {
+      rethrow;
+    } catch (_) {
+      throw Exception('Unable to delete your account. Please try again.');
+    }
+  }
+
   Future<bool> isLogin() async {
     return supabase.auth.currentUser != null;
   }
@@ -315,7 +400,7 @@ String _friendlyRegistrationError(AuthException error) {
     return 'An account with this email already exists. Please log in instead.';
   }
   if (message.contains('password')) {
-    return 'Please choose a stronger password with at least 6 characters.';
+    return 'Use at least 8 characters, including uppercase, lowercase, a number, and a special character.';
   }
   if (message.contains('email')) {
     return 'Please enter a valid email address.';

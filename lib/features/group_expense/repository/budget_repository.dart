@@ -1,8 +1,8 @@
 import '../model/trip_budget.dart';
 
 abstract interface class BudgetRepository {
-  Future<TripBudget?> getBudgetForTrip(int tripId);
-  Future<int> createBudget(TripBudget budget);
+  Future<TripBudget?> getBudgetForTrip(String tripId);
+  Future<String> createBudget(TripBudget budget);
   Future<void> updateBudget(TripBudget budget);
-  Future<double> getTotalSpent(int tripId);
+  Future<double> getTotalSpent(String tripId);
 }

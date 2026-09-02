@@ -43,13 +43,45 @@ void main() {
     expect(await notifier.signOut(), isTrue);
     expect(repository.didSignOut, isTrue);
   });
+
+  test('delegates confirmed account deletion to authentication repository',
+      () async {
+    final repository = _FakeAuthenticationRepository();
+    final container = ProviderContainer(
+      overrides: [
+        authenticationRepositoryProvider.overrideWithValue(repository),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(settingsViewModelProvider.future);
+    final deleted = await container
+        .read(settingsViewModelProvider.notifier)
+        .deleteAccount();
+
+    expect(deleted, isTrue);
+    expect(repository.didDeleteAccount, isTrue);
+    expect(
+      container
+          .read(settingsViewModelProvider)
+          .value!
+          .isDeletingAccount,
+      isFalse,
+    );
+  });
 }
 
 class _FakeAuthenticationRepository extends AuthenticationRepository {
   bool didSignOut = false;
+  bool didDeleteAccount = false;
 
   @override
   Future<void> signOut() async {
     didSignOut = true;
+  }
+
+  @override
+  Future<void> deleteAccount() async {
+    didDeleteAccount = true;
   }
 }

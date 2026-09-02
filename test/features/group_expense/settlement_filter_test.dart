@@ -4,11 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   final settlements = [
-    _settlement(1, 2, SettlementStatus.completed),
-    _settlement(2, 1, SettlementStatus.pending),
-    _settlement(3, 1, SettlementStatus.rejected),
+    _settlement('1', '2', SettlementStatus.completed),
+    _settlement('2', '1', SettlementStatus.pending),
+    _settlement('3', '1', SettlementStatus.rejected),
   ];
-  const names = {1: 'Ahmad Faiz', 2: 'Sarah Lim', 3: 'Ravi Kumar'};
+  const names = {'1': 'Ahmad Faiz', '2': 'Sarah Lim', '3': 'Ravi Kumar'};
 
   test('filters settlements by every supported status', () {
     for (final filter in SettlementFilter.values) {
@@ -30,13 +30,14 @@ void main() {
       travellerName: (id) => names[id]!,
     );
     expect(result, hasLength(1));
-    expect(result.single.payerId, 3);
+    expect(result.single.payerId, '3');
   });
 }
 
-Settlement _settlement(int payerId, int payeeId, SettlementStatus status) =>
+Settlement _settlement(
+        String payerId, String payeeId, SettlementStatus status) =>
     Settlement(
-      tripId: 1,
+      tripId: '1',
       payerId: payerId,
       payeeId: payeeId,
       amount: 10,

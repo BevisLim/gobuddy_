@@ -8,8 +8,15 @@ final userSafetyRepositoryProvider = Provider<UserSafetyRepository>(
   (ref) => SupabaseUserSafetyRepository(supabase),
 );
 
+final isUserBlockedProvider = FutureProvider.family<bool, String>(
+  (ref, targetUserId) => ref
+      .read(userSafetyRepositoryProvider)
+      .isUserBlocked(targetUserId),
+);
+
 abstract interface class UserSafetyRepository {
   Future<List<BlockedUser>> getBlockedUsers();
+  Future<bool> isUserBlocked(String targetUserId);
   Future<void> blockUser(String targetUserId);
   Future<void> unblockUser(String targetUserId);
   Future<UserReport> reportUser({
@@ -39,6 +46,17 @@ class SupabaseUserSafetyRepository implements UserSafetyRepository {
   }
 
   @override
+  Future<bool> isUserBlocked(String targetUserId) async {
+    final rows = await _client
+        .from('user_blocks')
+        .select('blocked_id')
+        .eq('blocker_id', _currentUserId)
+        .eq('blocked_id', targetUserId)
+        .limit(1);
+    return rows.isNotEmpty;
+  }
+
+  @override
   Future<List<BlockedUser>> getBlockedUsers() async {
     final rows = await _client.rpc<List<dynamic>>('get_blocked_users');
     return rows.map((value) {
@@ -58,10 +76,11 @@ class SupabaseUserSafetyRepository implements UserSafetyRepository {
     if (targetUserId.isEmpty || targetUserId == currentUserId) {
       throw const UserSafetyException('You cannot block this user.');
     }
-    await _client.from('user_blocks').upsert({
-      'blocker_id': currentUserId,
-      'blocked_id': targetUserId,
-    });
+    await _client.from('user_blocks').upsert(
+      {'blocker_id': currentUserId, 'blocked_id': targetUserId},
+      onConflict: 'blocker_id,blocked_id',
+      ignoreDuplicates: true,
+    );
   }
 
   @override

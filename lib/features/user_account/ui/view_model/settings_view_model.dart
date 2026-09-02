@@ -51,8 +51,28 @@ class SettingsViewModel extends AsyncNotifier<SettingsState> {
   }
 
   Future<bool> deleteAccount() async {
-    // TODO(account-deletion): Connect this confirmed action to the account
-    // deletion backend when the endpoint and retention policy are available.
-    return false;
+    final current = state.value ?? const SettingsState();
+    state = AsyncData(
+      current.copyWith(isDeletingAccount: true, clearError: true),
+    );
+    try {
+      await ref.read(authenticationRepositoryProvider).deleteAccount();
+      ref.invalidate(matchmakingViewModelProvider);
+      ref.invalidate(groupCollaborationViewModelProvider);
+      ref.invalidate(userAccountViewModelProvider);
+      state = AsyncData(current.copyWith(isDeletingAccount: false));
+      return true;
+    } catch (error) {
+      final message = error.toString();
+      state = AsyncData(
+        current.copyWith(
+          isDeletingAccount: false,
+          error: message.startsWith('Exception: ')
+              ? message.substring('Exception: '.length)
+              : message,
+        ),
+      );
+      return false;
+    }
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import '../../common/ui/widgets/primary_button.dart';
 import '../../common/ui/widgets/secondary_button.dart';
 import '../model/budget_validation.dart';
@@ -17,7 +18,7 @@ import 'widgets/group_expense_app_bar.dart';
 class EditBudgetScreen extends ConsumerStatefulWidget {
   const EditBudgetScreen({super.key, required this.tripId});
 
-  final int tripId;
+  final String tripId;
 
   @override
   ConsumerState<EditBudgetScreen> createState() => _EditBudgetScreenState();
@@ -27,7 +28,7 @@ class _EditBudgetScreenState extends ConsumerState<EditBudgetScreen> {
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController();
   final _notesController = TextEditingController();
-  int? _initializedBudgetId;
+  String? _initializedBudgetId;
 
   @override
   void dispose() {
@@ -40,7 +41,10 @@ class _EditBudgetScreenState extends ConsumerState<EditBudgetScreen> {
   Widget build(BuildContext context) {
     final budget = ref.watch(budgetViewModelProvider(widget.tripId));
     return Scaffold(
-      appBar: const GroupExpenseAppBar(title: 'Edit Trip Budget'),
+      appBar: GroupExpenseAppBar(
+        title: 'Edit Trip Budget',
+        fallbackRoute: '${Routes.groupExpense}/${widget.tripId}',
+      ),
       body: SafeArea(
         child: budget.when(
           loading: () => const Center(child: CircularProgressIndicator()),
@@ -76,7 +80,7 @@ class _EditBudgetScreenState extends ConsumerState<EditBudgetScreen> {
                 padding: const EdgeInsets.all(20),
                 children: [
                   Text(
-                    state.trip?.tripName ?? 'Current Trip',
+                    state.trip?.destination ?? 'Current Trip',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                           color: const Color(0xFF281958),
                           fontWeight: FontWeight.w800,

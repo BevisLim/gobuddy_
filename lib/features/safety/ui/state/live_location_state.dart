@@ -1,5 +1,9 @@
 import '../../model/location_data.dart';
 
+/// Sentinel used by the duration picker when sharing should last for the
+/// remainder of the selected trip instead of a fixed amount of time.
+const untilTripEndsDuration = Duration.zero;
+
 class LiveLocationState {
   const LiveLocationState({
     this.trips = const [],

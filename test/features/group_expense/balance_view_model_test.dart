@@ -33,10 +33,11 @@ void main() {
       tripRepositoryProvider.overrideWith(
         (ref) async => _BalanceTripRepository(),
       ),
+      authenticatedUserIdProvider.overrideWithValue('1'),
     ]);
     addTearDown(container.dispose);
 
-    final state = await container.read(balanceViewModelProvider(1).future);
+    final state = await container.read(balanceViewModelProvider('1').future);
 
     expect(state.owedToYou, 286.50);
     expect(state.youOwe, 0);
@@ -51,8 +52,9 @@ void main() {
 
 class _BalanceExpenseRepository implements ExpenseRepository {
   @override
-  Future<Map<int, double>> calculateNetExpenseBalances(int tripId) async =>
-      {1: 287, 2: -143.75, 3: -143.25, 4: 0};
+  Future<Map<String, double>> calculateNetExpenseBalances(
+          String tripId) async =>
+      {'1': 287, '2': -143.75, '3': -143.25, '4': 0};
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -60,14 +62,15 @@ class _BalanceExpenseRepository implements ExpenseRepository {
 
 class _BalanceSettlementRepository implements SettlementRepository {
   @override
-  Future<void> deleteSettlement(int settlementId) => throw UnimplementedError();
+  Future<void> deleteSettlement(String tripId, String settlementId) =>
+      throw UnimplementedError();
 
   @override
-  Future<List<Settlement>> getCompletedSettlements(int tripId) async => [
+  Future<List<Settlement>> getCompletedSettlements(String tripId) async => [
         Settlement(
           tripId: tripId,
-          payerId: 2,
-          payeeId: 1,
+          payerId: '2',
+          payeeId: '1',
           amount: 0.50,
           paymentMethod: 'Cash',
           settlementDate: DateTime(2025),
@@ -77,11 +80,11 @@ class _BalanceSettlementRepository implements SettlementRepository {
       ];
 
   @override
-  Future<List<Settlement>> getPendingSettlements(int tripId) async => [
+  Future<List<Settlement>> getPendingSettlements(String tripId) async => [
         Settlement(
           tripId: tripId,
-          payerId: 2,
-          payeeId: 1,
+          payerId: '2',
+          payeeId: '1',
           amount: 10,
           paymentMethod: 'Cash',
           settlementDate: DateTime(2025),
@@ -91,18 +94,24 @@ class _BalanceSettlementRepository implements SettlementRepository {
       ];
 
   @override
-  Future<SettlementReceipt?> getReceipt(int settlementId) async => null;
+  Future<SettlementReceipt?> getReceipt(
+    String tripId,
+    String settlementId,
+  ) async =>
+      null;
 
   @override
-  Future<Map<int, SettlementReceipt>> getReceiptsForTrip(int tripId) async =>
+  Future<Map<String, SettlementReceipt>> getReceiptsForTrip(
+    String tripId,
+  ) async =>
       const {};
 
   @override
-  Future<int> createSettlement(Settlement settlement,
+  Future<String> createSettlement(Settlement settlement,
           {SettlementReceipt? receipt}) =>
       throw UnimplementedError();
   @override
-  Future<List<Settlement>> getSettlementsForTrip(int tripId) =>
+  Future<List<Settlement>> getSettlementsForTrip(String tripId) =>
       throw UnimplementedError();
   @override
   Future<void> updateSettlement(Settlement settlement,
@@ -112,20 +121,21 @@ class _BalanceSettlementRepository implements SettlementRepository {
 
 class _BalanceTravellerRepository implements TravellerRepository {
   @override
-  Future<Traveller?> getTravellerById(int userId) async => null;
+  Future<Traveller?> getTravellerById(String tripId, String userId) async =>
+      null;
 
   @override
-  Future<List<Traveller>> getTravellersForTrip(int tripId) async => const [
-        Traveller(userId: 1, name: 'Ahmad', initials: 'AF'),
-        Traveller(userId: 2, name: 'Sarah', initials: 'SL'),
-        Traveller(userId: 3, name: 'Ravi', initials: 'RK'),
-        Traveller(userId: 4, name: 'Nurul', initials: 'NA'),
+  Future<List<Traveller>> getTravellersForTrip(String tripId) async => const [
+        Traveller(userId: '1', displayName: 'Ahmad', initials: 'AF'),
+        Traveller(userId: '2', displayName: 'Sarah', initials: 'SL'),
+        Traveller(userId: '3', displayName: 'Ravi', initials: 'RK'),
+        Traveller(userId: '4', displayName: 'Nurul', initials: 'NA'),
       ];
 }
 
 class _BalanceBudgetRepository implements BudgetRepository {
   @override
-  Future<TripBudget?> getBudgetForTrip(int tripId) async => null;
+  Future<TripBudget?> getBudgetForTrip(String tripId) async => null;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -133,5 +143,5 @@ class _BalanceBudgetRepository implements BudgetRepository {
 
 class _BalanceTripRepository implements TripRepository {
   @override
-  Future<Trip?> getTripById(int tripId) async => null;
+  Future<Trip?> getTripById(String tripId) async => null;
 }

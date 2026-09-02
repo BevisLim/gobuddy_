@@ -20,8 +20,10 @@ import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_re
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_message_player.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/widgets/voice_recording_preview.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/view_model/matchmaking_view_model.dart';
+import 'package:flutter_mvvm_riverpod/features/safety/repository/user_safety_repository.dart';
 import 'package:flutter_mvvm_riverpod/features/safety/ui/widgets/block_user_action.dart';
 import 'package:flutter_mvvm_riverpod/features/safety/ui/widgets/report_user_action.dart';
+import 'package:flutter_mvvm_riverpod/features/safety/ui/trip_live_locations_screen.dart';
 
 enum TripWorkspaceView { timeline, messages }
 
@@ -426,6 +428,11 @@ class _WorkspaceState extends ConsumerState<_Workspace> {
         ),
         actions: [
           IconButton(
+            onPressed: () => _openLiveLocations(context, state),
+            icon: const Icon(Icons.location_on_outlined),
+            tooltip: 'Trip members live locations',
+          ),
+          IconButton(
             onPressed: () {
               final activeCall = _activeCall(state);
               _openInAppCall(
@@ -590,6 +597,19 @@ class GroupInfoScreen extends ConsumerWidget {
             ),
           ),
           _GroupInfoTile(
+            icon: Icons.sos_rounded,
+            iconColor: Theme.of(context).colorScheme.error,
+            title: 'Emergency SOS',
+            subtitle: 'Open emergency help, location and contact alerts',
+            onTap: () => context.push(Routes.sos),
+          ),
+          _GroupInfoTile(
+            icon: Icons.location_on_outlined,
+            title: 'Live locations',
+            subtitle: 'See where sharing trip members are now',
+            onTap: () => _openLiveLocations(context, state),
+          ),
+          _GroupInfoTile(
             icon: Icons.folder_outlined,
             title: 'Files & media',
             subtitle: '${state.files.length} shared file(s)',
@@ -666,12 +686,14 @@ class _GroupInfoAction extends StatelessWidget {
 class _GroupInfoTile extends StatelessWidget {
   const _GroupInfoTile({
     required this.icon,
+    this.iconColor,
     required this.title,
     required this.subtitle,
     required this.onTap,
   });
 
   final IconData icon;
+  final Color? iconColor;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
@@ -679,7 +701,7 @@ class _GroupInfoTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListTile(
     contentPadding: EdgeInsets.zero,
-    leading: Icon(icon),
+    leading: Icon(icon, color: iconColor),
     title: Text(title),
     subtitle: Text(subtitle),
     trailing: const Icon(Icons.chevron_right),
@@ -693,6 +715,18 @@ void _openGroupSection(BuildContext context, String title, Widget child) {
       builder: (_) => Scaffold(
         appBar: AppBar(title: Text(title)),
         body: child,
+      ),
+    ),
+  );
+}
+
+void _openLiveLocations(BuildContext context, GroupCollaborationState state) {
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => TripLiveLocationsScreen(
+        tripId: state.tripId,
+        members: state.members,
+        currentUserId: state.currentUserId,
       ),
     ),
   );
@@ -858,6 +892,10 @@ Future<void> _showMemberSafetyActions({
   required WidgetRef ref,
   required CollaborationMember member,
 }) async {
+  final isBlocked = await ref
+      .read(userSafetyRepositoryProvider)
+      .isUserBlocked(member.userId);
+  if (!context.mounted) return;
   final action = await showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
@@ -871,8 +909,11 @@ Future<void> _showMemberSafetyActions({
             onTap: () => Navigator.pop(sheetContext, 'profile'),
           ),
           ListTile(
-            leading: const Icon(Icons.block, color: Colors.red),
-            title: const Text('Block user'),
+            leading: Icon(
+              isBlocked ? Icons.check_circle_outline : Icons.block,
+              color: isBlocked ? null : Colors.red,
+            ),
+            title: Text(isBlocked ? 'Unblock user' : 'Block user'),
             onTap: () => Navigator.pop(sheetContext, 'block'),
           ),
           ListTile(
@@ -897,6 +938,7 @@ Future<void> _showMemberSafetyActions({
       ref: ref,
       targetUserId: member.userId,
       targetDisplayName: displayName,
+      isBlocked: isBlocked,
     );
   } else if (action == 'report') {
     await ReportUserAction.show(
@@ -1673,6 +1715,17 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
                 child: const Icon(Icons.fact_check_outlined),
               ),
             ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: TextButton.icon(
+              onPressed: () => context.push(Routes.sos),
+              icon: const Icon(Icons.sos_rounded),
+              label: const Text('SOS'),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+              ),
+            ),
+          ),
         ],
       ),
       body: Column(

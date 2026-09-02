@@ -2,8 +2,8 @@ import '../model/settlement.dart';
 import '../model/settlement_receipt.dart';
 
 abstract interface class SettlementRepository {
-  Future<List<Settlement>> getSettlementsForTrip(int tripId);
-  Future<int> createSettlement(
+  Future<List<Settlement>> getSettlementsForTrip(String tripId);
+  Future<String> createSettlement(
     Settlement settlement, {
     SettlementReceipt? receipt,
   });
@@ -12,9 +12,9 @@ abstract interface class SettlementRepository {
     SettlementReceipt? receipt,
     bool removeReceipt = false,
   });
-  Future<void> deleteSettlement(int settlementId);
-  Future<SettlementReceipt?> getReceipt(int settlementId);
-  Future<Map<int, SettlementReceipt>> getReceiptsForTrip(int tripId);
-  Future<List<Settlement>> getCompletedSettlements(int tripId);
-  Future<List<Settlement>> getPendingSettlements(int tripId);
+  Future<void> deleteSettlement(String tripId, String settlementId);
+  Future<SettlementReceipt?> getReceipt(String tripId, String settlementId);
+  Future<Map<String, SettlementReceipt>> getReceiptsForTrip(String tripId);
+  Future<List<Settlement>> getCompletedSettlements(String tripId);
+  Future<List<Settlement>> getPendingSettlements(String tripId);
 }

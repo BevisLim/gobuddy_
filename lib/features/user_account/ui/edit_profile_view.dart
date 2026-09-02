@@ -20,6 +20,7 @@ class EditProfileView extends StatefulWidget {
     required this.onBack,
     required this.onSave,
     required this.onSelectImage,
+    required this.onDeleteImage,
     required this.onVerify,
   });
 
@@ -28,6 +29,7 @@ class EditProfileView extends StatefulWidget {
   final VoidCallback onBack;
   final ValueChanged<UserAccountProfileUpdate> onSave;
   final Future<String?> Function(ImageSource source) onSelectImage;
+  final Future<bool> Function() onDeleteImage;
   final VoidCallback onVerify;
 
   @override
@@ -148,7 +150,7 @@ class _EditProfileViewState extends State<EditProfileView> {
   }
 
   Future<void> _selectPhoto() async {
-    final source = await showModalBottomSheet<ImageSource>(
+    final action = await showModalBottomSheet<_ProfilePhotoAction>(
       context: context,
       showDragHandle: true,
       backgroundColor: _surface,
@@ -171,21 +173,70 @@ class _EditProfileViewState extends State<EditProfileView> {
                 leading: const Icon(Icons.camera_alt_outlined),
                 title: const Text('Take a photo'),
                 subtitle: const Text('Use your device camera'),
-                onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+                onTap: () => Navigator.pop(
+                  sheetContext,
+                  _ProfilePhotoAction.camera,
+                ),
               ),
               ListTile(
                 leading: const Icon(Icons.photo_library_outlined),
                 title: const Text('Choose from gallery'),
                 subtitle: const Text('Upload an existing photo'),
-                onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+                onTap: () => Navigator.pop(
+                  sheetContext,
+                  _ProfilePhotoAction.gallery,
+                ),
               ),
+              if (_profilePhoto != null && _profilePhoto!.trim().isNotEmpty)
+                ListTile(
+                  leading: const Icon(Icons.delete_outline_rounded),
+                  title: const Text('Delete profile image'),
+                  subtitle: const Text('Use the default profile image'),
+                  textColor: Colors.red,
+                  iconColor: Colors.red,
+                  onTap: () => Navigator.pop(
+                    sheetContext,
+                    _ProfilePhotoAction.delete,
+                  ),
+                ),
             ],
           ),
         ),
       ),
     );
-    if (source == null || !mounted) return;
+    if (action == null || !mounted) return;
 
+    if (action == _ProfilePhotoAction.delete) {
+      final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              title: const Text('Delete profile image?'),
+              content: const Text(
+                'Your current profile image will be replaced with the default image.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: const Text('Delete'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      if (!confirmed) return;
+
+      final deleted = await widget.onDeleteImage();
+      if (deleted && mounted) setState(() => _profilePhoto = null);
+      return;
+    }
+
+    final source = action == _ProfilePhotoAction.camera
+        ? ImageSource.camera
+        : ImageSource.gallery;
     final path = await widget.onSelectImage(source);
     if (path != null && mounted) setState(() => _profilePhoto = path);
   }
@@ -596,7 +647,7 @@ class _SettingsRow extends StatelessWidget {
 
 ImageProvider<Object> _imageProvider(String? path) {
   final resolved = path == null || path.isEmpty
-      ? 'assets/images/avatar.webp'
+      ? 'assets/images/defaultProfileImage.jpg'
       : path;
   if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
     return NetworkImage(resolved);
@@ -604,6 +655,8 @@ ImageProvider<Object> _imageProvider(String? path) {
   if (resolved.startsWith('assets/')) return AssetImage(resolved);
   return FileImage(File(resolved));
 }
+
+enum _ProfilePhotoAction { camera, gallery, delete }
 
 String _formatDate(DateTime date) {
   final month = date.month.toString().padLeft(2, '0');

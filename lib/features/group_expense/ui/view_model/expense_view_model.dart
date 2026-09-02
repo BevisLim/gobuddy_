@@ -22,16 +22,17 @@ part 'expense_view_model.g.dart';
 @riverpod
 class ExpenseViewModel extends _$ExpenseViewModel {
   late ExpenseRepository _repository;
-  late CurrencyService _currencyService;
   late ReceiptFileService _receiptFileService;
 
   @override
-  Future<ExpenseFormState> build({required int tripId, int? expenseId}) async {
+  Future<ExpenseFormState> build({
+    required String tripId,
+    String? expenseId,
+  }) async {
     final repositoryFuture = ref.watch(expenseRepositoryProvider.future);
     final travellerRepositoryFuture =
         ref.watch(travellerRepositoryProvider.future);
     final budgetRepositoryFuture = ref.watch(budgetRepositoryProvider.future);
-    _currencyService = ref.watch(currencyServiceProvider);
     _receiptFileService = ref.watch(receiptFileServiceProvider);
     _repository = await repositoryFuture;
     final travellerRepository = await travellerRepositoryFuture;
@@ -39,13 +40,15 @@ class ExpenseViewModel extends _$ExpenseViewModel {
     final categories = await _repository.getCategories();
     final travellers = await travellerRepository.getTravellersForTrip(tripId);
     final budget = await budgetRepository.getBudgetForTrip(tripId);
-    final expense =
-        expenseId == null ? null : await _repository.getExpenseById(expenseId);
+    final expense = expenseId == null
+        ? null
+        : await _repository.getExpenseById(tripId, expenseId);
     final participants = expenseId == null
         ? const <ExpenseParticipant>[]
-        : await _repository.getParticipants(expenseId);
-    final receipt =
-        expenseId == null ? null : await _repository.getReceipt(expenseId);
+        : await _repository.getParticipants(tripId, expenseId);
+    final receipt = expenseId == null
+        ? null
+        : await _repository.getReceipt(tripId, expenseId);
     return ExpenseFormState(
       tripId: tripId,
       baseCurrency: budget?.baseCurrency ?? 'MYR',
@@ -62,15 +65,16 @@ class ExpenseViewModel extends _$ExpenseViewModel {
     required int? categoryId,
     required String amount,
     required String currency,
-    required int? payerId,
+    required String? payerId,
     required DateTime expenseDate,
-    required List<int> participantIds,
+    required List<String> participantIds,
     required ExpenseSplitMethod splitMethod,
-    required Map<int, double> customShares,
-    required Map<int, double> percentages,
+    required Map<String, double> customShares,
+    required Map<String, double> percentages,
     String? notes,
     String? selectedReceiptPath,
     bool removeReceipt = false,
+    ExchangeRateQuote? exchangeRate,
   }) async {
     final current = state.value;
     if (current == null) return false;
@@ -90,10 +94,12 @@ class ExpenseViewModel extends _$ExpenseViewModel {
     String? persistedReceiptPath;
     try {
       final originalAmount = double.parse(amount.trim());
-      final rate = await _currencyService.getExchangeRate(
-        fromCurrency: currency,
-        toCurrency: current.baseCurrency,
-      );
+      final rate = currency == current.baseCurrency
+          ? 1.0
+          : exchangeRate?.fromCurrency == currency &&
+                  exchangeRate?.toCurrency == current.baseCurrency
+              ? exchangeRate!.rate
+              : throw const FormatException('Exchange rate is required');
       final baseAmount = MoneyUtils.roundMoney(originalAmount * rate);
       final participants = _participants(
         method: splitMethod,
@@ -101,7 +107,7 @@ class ExpenseViewModel extends _$ExpenseViewModel {
         userIds: participantIds,
         customShares: customShares,
         percentages: percentages,
-        expenseId: current.expense?.expenseId ?? 0,
+        expenseId: current.expense?.expenseId ?? '',
       );
       state = AsyncData(current.copyWith(
         isSaving: true,
@@ -131,11 +137,11 @@ class ExpenseViewModel extends _$ExpenseViewModel {
       final receipt = persistedReceiptPath == null
           ? null
           : ExpenseReceipt(
-              expenseId: current.expense?.expenseId ?? 0,
+              expenseId: current.expense?.expenseId ?? '',
               imagePath: persistedReceiptPath,
               uploadedAt: now,
             );
-      final int savedId;
+      final String savedId;
       if (expense.expenseId == null) {
         savedId = await _repository.createExpense(
           expense: expense,
@@ -159,7 +165,7 @@ class ExpenseViewModel extends _$ExpenseViewModel {
       }
       ref.invalidate(budgetViewModelProvider(current.tripId));
       ref.invalidate(balanceViewModelProvider(current.tripId));
-      ref.invalidate(expenseDashboardViewModelProvider);
+      ref.invalidate(expenseDashboardViewModelProvider(current.tripId));
       ref.invalidate(analyticsViewModelProvider(current.tripId));
       state = AsyncData(current.copyWith(
         expense: expense.copyWith(expenseId: savedId),
@@ -193,13 +199,13 @@ class ExpenseViewModel extends _$ExpenseViewModel {
     if (current == null || expenseId == null) return false;
     state = AsyncData(current.copyWith(isSaving: true, clearError: true));
     try {
-      await _repository.deleteExpense(expenseId);
+      await _repository.deleteExpense(current.tripId, expenseId);
       if (current.receipt != null) {
         await _deleteReceiptBestEffort(current.receipt!.imagePath);
       }
       ref.invalidate(budgetViewModelProvider(current.tripId));
       ref.invalidate(balanceViewModelProvider(current.tripId));
-      ref.invalidate(expenseDashboardViewModelProvider);
+      ref.invalidate(expenseDashboardViewModelProvider(current.tripId));
       ref.invalidate(analyticsViewModelProvider(current.tripId));
       state = AsyncData(current.copyWith(
         isSaving: false,
@@ -215,10 +221,10 @@ class ExpenseViewModel extends _$ExpenseViewModel {
   List<ExpenseParticipant> _participants({
     required ExpenseSplitMethod method,
     required double baseAmount,
-    required List<int> userIds,
-    required Map<int, double> customShares,
-    required Map<int, double> percentages,
-    required int expenseId,
+    required List<String> userIds,
+    required Map<String, double> customShares,
+    required Map<String, double> percentages,
+    required String expenseId,
   }) =>
       switch (method) {
         ExpenseSplitMethod.equal => ExpenseSplitCalculator.equal(

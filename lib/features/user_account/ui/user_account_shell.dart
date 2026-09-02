@@ -143,6 +143,7 @@ class _UserAccountScreenState extends ConsumerState<UserAccountScreen> {
           onSave: viewModel.updateProfile,
           onSelectImage: (source) =>
               viewModel.selectProfileImage(source: source),
+          onDeleteImage: viewModel.deleteProfileImage,
           onVerify: () => context.push(Routes.identityVerification),
         ),
         UserAccountPage.security => _AccountStaticFrame(
@@ -574,7 +575,7 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
                         child: Image(
                           image: _accountImageProvider(
                             widget.user.profilePhoto,
-                            fallback: 'assets/images/avatar.webp',
+                            fallback: 'assets/images/defaultProfileImage.jpg',
                           ),
                           fit: BoxFit.cover,
                         ),
@@ -1796,7 +1797,7 @@ InputDecoration _editInputDecoration([String? label]) {
 
 ImageProvider<Object> _accountImageProvider(
   String? path, {
-  String fallback = 'assets/images/avatar.webp',
+  String fallback = 'assets/images/defaultProfileImage.jpg',
 }) {
   final resolved = path == null || path.isEmpty ? fallback : path;
   if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
