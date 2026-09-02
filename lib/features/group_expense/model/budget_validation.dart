@@ -1,3 +1,5 @@
+import 'expense_constants.dart';
+
 class BudgetValidation {
   BudgetValidation._();
 
@@ -16,6 +18,9 @@ class BudgetValidation {
 
   static String? currency(String value) {
     if (value.trim().isEmpty) return 'Base currency is required';
+    if (!ExpenseConstants.supportedCurrencies.contains(value)) {
+      return 'Select a supported currency';
+    }
     return null;
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter_mvvm_riverpod/features/group_expense/model/budget_validation.dart';
+import 'package:flutter_mvvm_riverpod/features/group_expense/model/expense_constants.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -15,9 +16,12 @@ void main() {
       expect(BudgetValidation.amount('3000.50'), isNull);
     });
 
-    test('requires a currency', () {
+    test('accepts the shared supported currencies only', () {
       expect(BudgetValidation.currency(''), isNotNull);
-      expect(BudgetValidation.currency('MYR'), isNull);
+      for (final currency in ExpenseConstants.supportedCurrencies) {
+        expect(BudgetValidation.currency(currency), isNull, reason: currency);
+      }
+      expect(BudgetValidation.currency('GBP'), 'Select a supported currency');
     });
   });
 }

@@ -4,8 +4,8 @@ import '../../common/remote/supabase_client.dart';
 import 'budget_repository.dart';
 import 'analytics_repository.dart';
 import 'currency_service.dart';
+import 'frankfurter_currency_service.dart';
 import 'expense_repository.dart';
-import 'local_currency_service.dart';
 import 'receipt_file_service.dart';
 import 'receipt_storage_service.dart';
 import 'settlement_repository.dart';
@@ -28,7 +28,7 @@ final authenticatedUserIdProvider = Provider<String?>((ref) {
 });
 
 final currencyServiceProvider =
-    Provider<CurrencyService>((ref) => LocalCurrencyService());
+    Provider<CurrencyService>((ref) => FrankfurterCurrencyService());
 
 final receiptStorageServiceProvider = Provider<ReceiptStorageService>((ref) {
   return SupabaseReceiptStorageService(supabase);

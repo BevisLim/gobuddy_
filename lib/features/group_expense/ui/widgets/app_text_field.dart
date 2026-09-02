@@ -8,6 +8,7 @@ class AppTextField extends StatelessWidget {
     this.keyboardType,
     this.validator,
     this.maxLines = 1,
+    this.onChanged,
   });
 
   final String label;
@@ -15,6 +16,7 @@ class AppTextField extends StatelessWidget {
   final TextInputType? keyboardType;
   final String? Function(String?)? validator;
   final int maxLines;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) => TextFormField(
@@ -22,6 +24,7 @@ class AppTextField extends StatelessWidget {
         keyboardType: keyboardType,
         validator: validator,
         maxLines: maxLines,
+        onChanged: onChanged,
         decoration: InputDecoration(labelText: label),
       );
 }
