@@ -7,6 +7,7 @@ type NotificationRow = {
   trip_id: string | null;
   title: string;
   body: string;
+  metadata?: Record<string, unknown>;
 };
 
 type WebhookPayload = {
@@ -58,6 +59,9 @@ Deno.serve(async (request) => {
 
   let sent = 0;
   const invalidTokens: string[] = [];
+  const metadata = notification.metadata ?? {};
+  const notificationType = String(metadata.type ?? "update");
+  const isIncomingCall = notificationType === "incoming_call";
   for (const device of devices) {
     const response = await fetch(endpoint, {
       method: "POST",
@@ -75,9 +79,35 @@ Deno.serve(async (request) => {
           data: {
             notification_id: notification.id,
             trip_id: notification.trip_id ?? "",
+            type: notificationType,
+            call_id: String(metadata.call_id ?? ""),
+            call_type: String(metadata.call_type ?? ""),
+            caller_id: String(metadata.caller_id ?? ""),
           },
-          android: { priority: "high" },
-          apns: { payload: { aps: { sound: "default" } } },
+          android: {
+            priority: "high",
+            notification: isIncomingCall
+              ? {
+                channel_id: "gobuddy_incoming_calls",
+                sound: "default",
+                notification_priority: "PRIORITY_MAX",
+                visibility: "PUBLIC",
+              }
+              : undefined,
+          },
+          apns: {
+            headers: isIncomingCall
+              ? { "apns-priority": "10" }
+              : undefined,
+            payload: {
+              aps: {
+                sound: "default",
+                "interruption-level": isIncomingCall
+                  ? "time-sensitive"
+                  : "active",
+              },
+            },
+          },
         },
       }),
     });

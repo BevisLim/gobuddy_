@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -31,6 +32,7 @@ class CallScreen extends StatefulWidget {
     required this.displayName,
     this.onCallEnded,
     this.onVideoEnabled,
+    this.onClose,
     super.key,
   });
 
@@ -40,6 +42,7 @@ class CallScreen extends StatefulWidget {
   final String displayName;
   final Future<void> Function(CallEndDetails details)? onCallEnded;
   final Future<void> Function()? onVideoEnabled;
+  final VoidCallback? onClose;
 
   bool get isVideo => call.isVideo;
   bool get isInitiator => call.initiatedBy == currentUserId;
@@ -61,6 +64,7 @@ class _CallScreenState extends State<CallScreen> {
   final Map<String, Future<_GroupPeer>> _creatingPeers = {};
   final Map<String, TripCallParticipant> _participants = {};
   final Set<String> _processedSignalIds = {};
+  Future<void> _signalQueue = Future<void>.value();
 
   MediaStream? _localStream;
   MediaStream? _cameraCaptureStream;
@@ -79,10 +83,14 @@ class _CallScreenState extends State<CallScreen> {
   bool _everConnected = false;
   bool _localSpeaking = false;
   bool _pollingStats = false;
+  bool _syncingSignals = false;
   bool _ending = false;
   bool _participantLeft = false;
+  bool _minimized = false;
+  Offset? _floatingOffset;
   bool _disposed = false;
   late final DateTime _joinedAt;
+  late DateTime _lastSignalSyncAt;
 
   Map<String, dynamic> get _iceServers {
     final servers = <Map<String, dynamic>>[
@@ -107,11 +115,18 @@ class _CallScreenState extends State<CallScreen> {
   void initState() {
     super.initState();
     _joinedAt = DateTime.now();
+    _lastSignalSyncAt = _joinedAt.subtract(const Duration(seconds: 8));
     unawaited(_initialize());
   }
 
   Future<void> _initialize() async {
     try {
+      if (_turnUrl.isEmpty) {
+        debugPrint(
+          '[group_call] turn_server_missing call_id=${widget.call.id} '
+          'message=Calls may fail on restrictive carrier or NAT networks',
+        );
+      }
       await _localRenderer.initialize();
       final localStream = await navigator.mediaDevices.getUserMedia({
         'audio': {
@@ -133,9 +148,9 @@ class _CallScreenState extends State<CallScreen> {
       _wasVideo = _cameraEnabled || widget.call.hadVideo;
       if (!kIsWeb) await Helper.setSpeakerphoneOn(true);
 
-      _realtimeChannel = _signaling.subscribe(
+      _realtimeChannel = await _signaling.subscribe(
         callId: widget.call.id,
-        onSignal: (signal) => unawaited(_handleSignal(signal)),
+        onSignal: (signal) => unawaited(_queueSignal(signal)),
         onParticipant: (participant) =>
             unawaited(_handleParticipant(participant)),
         onCallEnded: () => unawaited(_closeEndedCall()),
@@ -146,15 +161,13 @@ class _CallScreenState extends State<CallScreen> {
         micEnabled: _micEnabled,
         cameraEnabled: _cameraEnabled,
       );
+      await _sendSignal(
+        type: 'ready',
+        payload: {'display_name': widget.displayName},
+      );
 
       await _refreshParticipants();
-      final recentSignals = await _signaling.loadSignals(
-        callId: widget.call.id,
-        since: _joinedAt.subtract(const Duration(seconds: 8)),
-      );
-      for (final signal in recentSignals) {
-        await _handleSignal(signal);
-      }
+      await _syncMissedSignals();
 
       _presenceTimer = Timer.periodic(const Duration(seconds: 12), (_) {
         unawaited(_heartbeatAndRefresh());
@@ -182,6 +195,7 @@ class _CallScreenState extends State<CallScreen> {
         cameraEnabled: _cameraEnabled,
       );
       await _refreshParticipants();
+      await _syncMissedSignals();
     } catch (_) {
       if (mounted) setState(() => _status = 'Reconnecting...');
     }
@@ -189,6 +203,11 @@ class _CallScreenState extends State<CallScreen> {
 
   Future<void> _refreshParticipants() async {
     final active = await _signaling.loadParticipants(callId: widget.call.id);
+    debugPrint(
+      '[group_call] room_joined_members call_id=${widget.call.id} '
+      'local_id=${widget.currentUserId} members='
+      '${active.map((participant) => participant.userId).join(',')}',
+    );
     final activeIds = active.map((participant) => participant.userId).toSet();
     for (final participant in active) {
       await _handleParticipant(participant);
@@ -204,6 +223,25 @@ class _CallScreenState extends State<CallScreen> {
       await _removePeer(userId);
     }
     _updateGroupStatus();
+  }
+
+  Future<void> _syncMissedSignals() async {
+    if (_syncingSignals || _disposed) return;
+    _syncingSignals = true;
+    try {
+      final signals = await _signaling.loadSignals(
+        callId: widget.call.id,
+        since: _lastSignalSyncAt.subtract(const Duration(seconds: 1)),
+      );
+      for (final signal in signals) {
+        if (signal.createdAt.isAfter(_lastSignalSyncAt)) {
+          _lastSignalSyncAt = signal.createdAt;
+        }
+        await _queueSignal(signal);
+      }
+    } finally {
+      _syncingSignals = false;
+    }
   }
 
   Future<void> _handleParticipant(TripCallParticipant participant) async {
@@ -286,6 +324,11 @@ class _CallScreenState extends State<CallScreen> {
     };
     connection.onTrack = (event) {
       if (event.streams.isEmpty || _disposed) return;
+      debugPrint(
+        '[group_call] track_received call_id=${widget.call.id} '
+        'remote_id=$remoteUserId kind=${event.track.kind} '
+        'track_id=${event.track.id}',
+      );
       peer.remoteStream = event.streams.first;
       peer.renderer.srcObject = event.streams.first;
       if (event.track.kind == 'video') {
@@ -321,6 +364,11 @@ class _CallScreenState extends State<CallScreen> {
         peer.connected = true;
         peer.disconnectTimer?.cancel();
         _everConnected = true;
+        debugPrint(
+          '[group_call] peer_connected call_id=${widget.call.id} '
+          'local_id=${widget.currentUserId} remote_id=${peer.userId} '
+          'peer_count=${_peers.length}',
+        );
         _callTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
           if (mounted) {
             setState(() => _callDuration += const Duration(seconds: 1));
@@ -394,6 +442,10 @@ class _CallScreenState extends State<CallScreen> {
         );
         peer.remoteDescriptionSet = true;
         await _drainPendingCandidates(peer);
+        if (peer.needsNegotiation) {
+          peer.needsNegotiation = false;
+          await _createAndSendOffer(peer);
+        }
       case 'candidate':
         final candidate = RTCIceCandidate(
           signal.payload['candidate'] as String?,
@@ -420,6 +472,19 @@ class _CallScreenState extends State<CallScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _queueSignal(TripCallSignal signal) {
+    _signalQueue = _signalQueue.then((_) => _handleSignal(signal)).onError((
+      error,
+      stackTrace,
+    ) {
+      debugPrint(
+        '[group_call] signaling_error call_id=${widget.call.id} '
+        'sender_id=${signal.senderId} type=${signal.type} error=$error',
+      );
+    });
+    return _signalQueue;
+  }
+
   Future<void> _drainPendingCandidates(_GroupPeer peer) async {
     for (final candidate in peer.pendingCandidates) {
       await peer.connection.addCandidate(candidate);
@@ -429,6 +494,15 @@ class _CallScreenState extends State<CallScreen> {
 
   Future<void> _createAndSendOffer(_GroupPeer peer) async {
     if (peer.makingOffer || _disposed) return;
+    final signalingState = await peer.connection.getSignalingState();
+    if (signalingState != RTCSignalingState.RTCSignalingStateStable) {
+      peer.needsNegotiation = true;
+      debugPrint(
+        '[group_call] negotiation_queued call_id=${widget.call.id} '
+        'remote_id=${peer.userId} state=$signalingState',
+      );
+      return;
+    }
     peer.makingOffer = true;
     try {
       // Keep both media sections negotiated even when this peer currently has
@@ -448,6 +522,7 @@ class _CallScreenState extends State<CallScreen> {
           'display_name': widget.displayName,
         },
       );
+      peer.needsNegotiation = false;
     } finally {
       peer.makingOffer = false;
     }
@@ -700,7 +775,7 @@ class _CallScreenState extends State<CallScreen> {
       }
     }
     await _disposeRtc();
-    if (mounted) Navigator.of(context).pop();
+    if (mounted) _closeCallUi();
   }
 
   Future<void> _closeEndedCall() async {
@@ -708,7 +783,16 @@ class _CallScreenState extends State<CallScreen> {
     setState(() => _ending = true);
     _participantLeft = true;
     await _disposeRtc();
-    if (mounted) Navigator.of(context).pop();
+    if (mounted) _closeCallUi();
+  }
+
+  void _closeCallUi() {
+    final onClose = widget.onClose;
+    if (onClose != null) {
+      onClose();
+    } else {
+      Navigator.of(context).pop();
+    }
   }
 
   Future<void> _removePeer(
@@ -759,83 +843,213 @@ class _CallScreenState extends State<CallScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_minimized && _showVideoGrid) return _buildFloatingVideo(context);
     final participantCount = _activeRemoteParticipants.length + 1;
-    return PopScope(
-      canPop: _ending,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) unawaited(_leaveCall());
-      },
-      child: Scaffold(
-        backgroundColor: const Color(0xFF0B0B0F),
-        body: SafeArea(
+    return Positioned.fill(
+      child: PopScope(
+        canPop: _ending,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) unawaited(_leaveCall());
+        },
+        child: Scaffold(
+          backgroundColor: const Color(0xFF0B0B0F),
+          body: SafeArea(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 76, 12, 118),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 280),
+                    child: _showVideoGrid
+                        ? KeyedSubtree(
+                            key: const ValueKey('group-video'),
+                            child: _buildVideoGrid(),
+                          )
+                        : KeyedSubtree(
+                            key: const ValueKey('group-voice'),
+                            child: _buildVoiceGrid(),
+                          ),
+                  ),
+                ),
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: IconButton(
+                    onPressed: _ending ? null : _leaveCall,
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black38,
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                    tooltip: 'Leave group call',
+                  ),
+                ),
+                Positioned(
+                  top: 10,
+                  left: 64,
+                  right: 64,
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Trip group call',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        '$participantCount ${participantCount == 1 ? 'participant' : 'participants'} • ${_callDuration > Duration.zero ? _formatDuration(_callDuration) : _status}',
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                    ],
+                  ),
+                ),
+                if (_showVideoGrid)
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: IconButton(
+                      onPressed: _ending
+                          ? null
+                          : () => setState(() => _minimized = true),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.black38,
+                        foregroundColor: Colors.white,
+                      ),
+                      icon: const Icon(Icons.picture_in_picture_alt_rounded),
+                      tooltip: 'Minimize video call',
+                    ),
+                  ),
+                if (_error != null)
+                  Positioned(
+                    left: 20,
+                    right: 20,
+                    bottom: 102,
+                    child: Text(
+                      _error!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.redAccent),
+                    ),
+                  ),
+                Positioned(
+                  left: 20,
+                  right: 20,
+                  bottom: 22,
+                  child: _buildCallControls(),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFloatingVideo(BuildContext context) {
+    final screen = MediaQuery.sizeOf(context);
+    const windowWidth = 220.0;
+    const windowHeight = 154.0;
+    final fallback = Offset(
+      math.max(12.0, screen.width - windowWidth - 16),
+      math.max(12.0, screen.height - windowHeight - 104),
+    );
+    final offset = _floatingOffset ?? fallback;
+    final maxX = math.max(12.0, screen.width - windowWidth - 12);
+    final maxY = math.max(12.0, screen.height - windowHeight - 12);
+    final position = Offset(
+      offset.dx.clamp(12.0, maxX).toDouble(),
+      offset.dy.clamp(12.0, maxY).toDouble(),
+    );
+    final participants = _participantViews;
+    final focus = participants
+        .where(
+          (participant) =>
+              !participant.isLocal &&
+              participant.cameraEnabled &&
+              participant.renderer?.srcObject != null,
+        )
+        .firstOrNull;
+    final displayed =
+        focus ??
+        participants
+            .where(
+              (participant) =>
+                  participant.cameraEnabled &&
+                  participant.renderer?.srcObject != null,
+            )
+            .firstOrNull ??
+        participants.first;
+
+    return Positioned(
+      left: position.dx,
+      top: position.dy,
+      width: windowWidth,
+      height: windowHeight,
+      child: GestureDetector(
+        onTap: () => setState(() => _minimized = false),
+        onPanUpdate: (details) {
+          setState(() {
+            _floatingOffset = Offset(
+              (position.dx + details.delta.dx).clamp(12.0, maxX).toDouble(),
+              (position.dy + details.delta.dy).clamp(12.0, maxY).toDouble(),
+            );
+          });
+        },
+        child: Material(
+          color: const Color(0xFF17171D),
+          elevation: 16,
+          borderRadius: BorderRadius.circular(18),
+          clipBehavior: Clip.antiAlias,
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 76, 12, 118),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 280),
-                  child: _showVideoGrid
-                      ? KeyedSubtree(
-                          key: const ValueKey('group-video'),
-                          child: _buildVideoGrid(),
-                        )
-                      : KeyedSubtree(
-                          key: const ValueKey('group-voice'),
-                          child: _buildVoiceGrid(),
-                        ),
-                ),
-              ),
+              _VideoParticipantTile(participant: displayed),
               Positioned(
-                top: 8,
-                left: 8,
-                child: IconButton(
-                  onPressed: _ending ? null : _leaveCall,
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.black38,
-                    foregroundColor: Colors.white,
-                  ),
-                  icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                  tooltip: 'Leave group call',
-                ),
-              ),
-              Positioned(
-                top: 10,
-                left: 64,
-                right: 64,
-                child: Column(
+                top: 4,
+                right: 4,
+                child: Row(
                   children: [
-                    const Text(
-                      'Trip group call',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    IconButton.filledTonal(
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => setState(() => _minimized = false),
+                      icon: const Icon(Icons.open_in_full_rounded, size: 18),
+                      tooltip: 'Expand call',
                     ),
-                    Text(
-                      '$participantCount ${participantCount == 1 ? 'participant' : 'participants'} • ${_callDuration > Duration.zero ? _formatDuration(_callDuration) : _status}',
-                      style: const TextStyle(color: Colors.white70),
+                    const SizedBox(width: 4),
+                    IconButton.filled(
+                      visualDensity: VisualDensity.compact,
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: _ending ? null : _leaveCall,
+                      icon: const Icon(Icons.call_end_rounded, size: 18),
+                      tooltip: 'Leave call',
                     ),
                   ],
                 ),
               ),
-              if (_error != null)
-                Positioned(
-                  left: 20,
-                  right: 20,
-                  bottom: 102,
-                  child: Text(
-                    _error!,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.redAccent),
+              Positioned(
+                left: 10,
+                bottom: 8,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    child: Text(
+                      _formatDuration(_callDuration),
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
                   ),
                 ),
-              Positioned(
-                left: 20,
-                right: 20,
-                bottom: 22,
-                child: _buildCallControls(),
               ),
             ],
           ),
@@ -969,6 +1183,7 @@ class _GroupPeer {
   Timer? disconnectTimer;
   bool remoteDescriptionSet = false;
   bool makingOffer = false;
+  bool needsNegotiation = false;
   bool connected = false;
   bool micEnabled = true;
   bool cameraEnabled = false;

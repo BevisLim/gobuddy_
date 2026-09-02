@@ -15,6 +15,8 @@ class Routes {
   static const myTrips = '/my-trips';
   static const expenseTripPicker = '/my-trips?pickExpense=true';
   static const messages = '/messages';
+  static const trip = '/trip';
+  static const trips = '/trips';
   static const groupExpense = '/expenses';
   static const createBudget = 'budget/create';
   static const editBudget = 'budget/edit';
@@ -39,4 +41,10 @@ class Routes {
   static const addEmergencyContact = '/safety/emergency-contacts/add';
   static const liveLocation = '/safety/live-location';
   static const sos = '/safety/sos';
+
+  static String tripTimeline(String tripId) =>
+      '$trip/${Uri.encodeComponent(tripId)}/timeline';
+
+  static String tripMessages(String tripId) =>
+      '$trip/${Uri.encodeComponent(tripId)}/messages';
 }

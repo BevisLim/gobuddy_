@@ -1,11 +1,20 @@
 import 'dart:async';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:flutter_mvvm_riverpod/features/common/remote/supabase_client.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration_models.dart';
+
+const _activityProposalMigrationMessage =
+    'Activity proposals are not enabled yet. Apply Supabase migration '
+    '20260902150000_activity_proposal_approval.sql.';
+
+bool _isActivityProposalSchemaMissing(PostgrestException error) =>
+    error.code == 'PGRST205' ||
+    error.code == '42P01' ||
+    error.message.contains('trip_activity_proposals');
 
 final collaborationRepositoryProvider = Provider<CollaborationRepository>(
   (ref) => CollaborationRepository(supabase),
@@ -29,7 +38,7 @@ class CollaborationRepository {
     }
     final trip = await _client
         .from('matchmaking_trips')
-        .select('owner_id')
+        .select('owner_id, destination, start_date, end_date')
         .eq('id', tripId)
         .single();
     final results = await Future.wait<dynamic>([
@@ -99,6 +108,7 @@ class CollaborationRepository {
           .eq('trip_id', tripId)
           .eq('user_id', currentUserId),
       _loadTimelineDays(tripId),
+      _loadActivityProposals(tripId),
     ]);
     final profileNames = <String, String>{
       for (final profile in results[8] as List<dynamic>)
@@ -146,6 +156,13 @@ class CollaborationRepository {
     }
     return GroupCollaborationState(
       tripId: tripId,
+      tripTitle: trip['destination'] as String? ?? 'Trip',
+      tripStartDate: trip['start_date'] == null
+          ? null
+          : DateTime.parse(trip['start_date'] as String),
+      tripEndDate: trip['end_date'] == null
+          ? null
+          : DateTime.parse(trip['end_date'] as String),
       currentUserId: currentUserId,
       creatorId: trip['owner_id'] as String,
       isAdmin: adminIds.contains(currentUserId),
@@ -173,6 +190,13 @@ class CollaborationRepository {
                 TripActivity.fromMap(activity as Map<String, dynamic>),
           )
           .toList(),
+      activityProposals: (results[14] as List<dynamic>).map((proposal) {
+        final row = proposal as Map<String, dynamic>;
+        return TripActivityProposal.fromMap(
+          row,
+          proposedByName: profileNames[row['proposed_by'] as String],
+        );
+      }).toList(),
       timelineDays: (results[13] as List<dynamic>)
           .map(
             (row) => DateTime.parse(
@@ -248,159 +272,231 @@ class CollaborationRepository {
     }
   }
 
-  RealtimeChannel subscribe(String tripId, void Function() onChange) {
-    return _client.channel('trip-workspace-$tripId')
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'trip_messages',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'trip_id',
-          value: tripId,
-        ),
-        callback: (_) => onChange(),
-      )
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'trip_polls',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'trip_id',
-          value: tripId,
-        ),
-        callback: (_) => onChange(),
-      )
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'trip_poll_votes',
-        callback: (_) => onChange(),
-      )
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'trip_activity_comments',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'trip_id',
-          value: tripId,
-        ),
-        callback: (_) => onChange(),
-      )
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'trip_activity_events',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'trip_id',
-          value: tripId,
-        ),
-        callback: (_) => onChange(),
-      )
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'trip_activities',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'trip_id',
-          value: tripId,
-        ),
-        callback: (_) => onChange(),
-      )
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'trip_timeline_days',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'trip_id',
-          value: tripId,
-        ),
-        callback: (_) => onChange(),
-      )
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'matchmaking_trip_members',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'trip_id',
-          value: tripId,
-        ),
-        callback: (_) => onChange(),
-      )
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'trip_member_roles',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'trip_id',
-          value: tripId,
-        ),
-        callback: (_) => onChange(),
-      )
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'trip_poll_options',
-        callback: (_) => onChange(),
-      )
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'trip_files',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'trip_id',
-          value: tripId,
-        ),
-        callback: (_) => onChange(),
-      )
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'trip_calls',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'trip_id',
-          value: tripId,
-        ),
-        callback: (_) => onChange(),
-      )
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'trip_typing_status',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'trip_id',
-          value: tripId,
-        ),
-        callback: (_) => onChange(),
-      )
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'trip_message_reads',
-        callback: (_) => onChange(),
-      )
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'trip_activity_rsvps',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'trip_id',
-          value: tripId,
-        ),
-        callback: (_) => onChange(),
-      )
-      ..subscribe();
+  Future<List<dynamic>> _loadActivityProposals(String tripId) async {
+    try {
+      return await _client
+          .from('trip_activity_proposals')
+          .select()
+          .eq('trip_id', tripId)
+          .order('created_at', ascending: false)
+          .timeout(const Duration(seconds: 3));
+    } on PostgrestException catch (error) {
+      // Proposals were added after the original collaboration workspace.
+      // A deployment that has not applied that optional migration must still
+      // be able to open the trip timeline and use the existing features.
+      if (_isActivityProposalSchemaMissing(error)) {
+        return const [];
+      }
+      rethrow;
+    } on TimeoutException {
+      return const [];
+    }
+  }
+
+  Future<RealtimeChannel> subscribe(
+    String tripId,
+    void Function() onChange,
+  ) async {
+    final channel =
+        _client
+            .channel('trip-workspace-$tripId')
+            .onBroadcast(
+              event: 'incoming_call',
+              callback: (payload) {
+                debugPrint(
+                  '[group_call] signaling_send_to_group received '
+                  'trip_id=$tripId call_id=${payload['callId']}',
+                );
+                onChange();
+              },
+            )
+          ..onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'trip_messages',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'trip_id',
+              value: tripId,
+            ),
+            callback: (_) => onChange(),
+          )
+          ..onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'trip_polls',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'trip_id',
+              value: tripId,
+            ),
+            callback: (_) => onChange(),
+          )
+          ..onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'trip_poll_votes',
+            callback: (_) => onChange(),
+          )
+          ..onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'trip_activity_comments',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'trip_id',
+              value: tripId,
+            ),
+            callback: (_) => onChange(),
+          )
+          ..onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'trip_activity_events',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'trip_id',
+              value: tripId,
+            ),
+            callback: (_) => onChange(),
+          )
+          ..onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'trip_activities',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'trip_id',
+              value: tripId,
+            ),
+            callback: (_) => onChange(),
+          )
+          ..onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'matchmaking_trip_members',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'trip_id',
+              value: tripId,
+            ),
+            callback: (_) => onChange(),
+          )
+          ..onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'trip_member_roles',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'trip_id',
+              value: tripId,
+            ),
+            callback: (_) => onChange(),
+          )
+          ..onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'trip_poll_options',
+            callback: (_) => onChange(),
+          )
+          ..onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'trip_files',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'trip_id',
+              value: tripId,
+            ),
+            callback: (_) => onChange(),
+          )
+          ..onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'trip_calls',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'trip_id',
+              value: tripId,
+            ),
+            callback: (payload) {
+              debugPrint(
+                '[group_call] call_room_database_change trip_id=$tripId '
+                'call_id=${payload.newRecord['id'] ?? payload.oldRecord['id']}',
+              );
+              onChange();
+            },
+          )
+          ..onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'trip_typing_status',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'trip_id',
+              value: tripId,
+            ),
+            callback: (_) => onChange(),
+          )
+          ..onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'trip_message_reads',
+            callback: (_) => onChange(),
+          )
+          ..onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'trip_activity_rsvps',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'trip_id',
+              value: tripId,
+            ),
+            callback: (_) => onChange(),
+          );
+
+    channel.subscribe((status, error) {
+      debugPrint(
+        '[group_call] workspace_room_status trip_id=$tripId '
+        'status=${status.name}${error == null ? '' : ' error=$error'}',
+      );
+    });
+    // Realtime improves freshness but must never block the first render. The
+    // initial database snapshot below remains authoritative, and later events
+    // invalidate it once the channel reaches its subscribed state.
+    return channel;
+  }
+
+  Future<void> broadcastCallInvite({
+    required String tripId,
+    required TripCall call,
+    required String callerName,
+  }) async {
+    final channel = _client.channel('trip-workspace-$tripId');
+    try {
+      final response = await channel.sendBroadcastMessage(
+        event: 'incoming_call',
+        payload: {
+          'roomId': call.id,
+          'groupId': tripId,
+          'callerName': callerName,
+          'callType': call.callType,
+          'callId': call.id,
+          'trip_id': tripId,
+          'call_id': call.id,
+          'call_type': call.callType,
+          'initiated_by': call.initiatedBy,
+          'created_at': call.createdAt.toUtc().toIso8601String(),
+        },
+      );
+      debugPrint(
+        '[group_call] signaling_send_to_group trip_id=$tripId '
+        'call_id=${call.id} response=$response',
+      );
+    } finally {
+      await _client.removeChannel(channel);
+    }
   }
 
   Future<void> sendMessage(String tripId, String userId, String body) => _client
@@ -459,6 +555,55 @@ class CollaborationRepository {
     'start_time': startTime.toUtc().toIso8601String(),
     'location': location,
   });
+
+  Future<void> submitActivityProposal({
+    required String tripId,
+    required String proposedBy,
+    required String title,
+    required DateTime startTime,
+    String? location,
+  }) async {
+    try {
+      await _client.from('trip_activity_proposals').insert({
+        'trip_id': tripId,
+        'proposed_by': proposedBy,
+        'title': title.trim(),
+        'start_time': startTime.toUtc().toIso8601String(),
+        'location': (location?.trim().isEmpty ?? true)
+            ? null
+            : location!.trim(),
+        'status': 'pending_approval',
+      });
+    } on PostgrestException catch (error) {
+      if (_isActivityProposalSchemaMissing(error)) {
+        throw StateError(_activityProposalMigrationMessage);
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> reviewActivityProposal({
+    required String proposalId,
+    required bool accept,
+  }) async {
+    try {
+      await _client.rpc(
+        'review_trip_activity_proposal',
+        params: {
+          'p_proposal_id': proposalId,
+          'p_decision': accept ? 'accepted' : 'rejected',
+        },
+      );
+    } on PostgrestException catch (error) {
+      if (_isActivityProposalSchemaMissing(error) ||
+          error.code == 'PGRST202' ||
+          error.code == '42883' ||
+          error.message.contains('review_trip_activity_proposal')) {
+        throw StateError(_activityProposalMigrationMessage);
+      }
+      rethrow;
+    }
+  }
 
   Future<void> addTimelineDay(
     String tripId,

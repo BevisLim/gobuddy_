@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/model/matchmaking_models.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/matchmaking_shell_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -22,29 +23,31 @@ void main() {
     description: 'Test trip',
   );
 
-  Widget page({required bool canOpenGroup}) => MaterialApp(
-    home: Scaffold(
-      body: TripDetailsPage(
-        trip: trip,
-        canOpenGroup: canOpenGroup,
-        onBack: () {},
-        onRequest: () {},
-        onOpenGroup: () {},
+  Widget page({required bool canOpenGroup}) => ProviderScope(
+    child: MaterialApp(
+      home: Scaffold(
+        body: TripDetailsPage(
+          trip: trip,
+          canOpenGroup: canOpenGroup,
+          onBack: () {},
+          onRequest: () {},
+          onOpenGroup: () {},
+        ),
       ),
     ),
   );
 
-  testWidgets('unjoined traveller cannot open group workspace', (tester) async {
+  testWidgets('unjoined traveller cannot open trip timeline', (tester) async {
     await tester.pumpWidget(page(canOpenGroup: false));
 
-    expect(find.text('Open group workspace'), findsNothing);
+    expect(find.text('Open trip timeline'), findsNothing);
     expect(find.text('Request to Join'), findsOneWidget);
   });
 
-  testWidgets('trip member can open group workspace', (tester) async {
+  testWidgets('trip member can open trip timeline', (tester) async {
     await tester.pumpWidget(page(canOpenGroup: true));
 
-    expect(find.text('Open group workspace'), findsOneWidget);
+    expect(find.text('Open trip timeline'), findsOneWidget);
     expect(find.text('Request to Join'), findsNothing);
   });
 }

@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:flutter_mvvm_riverpod/features/common/remote/supabase_client.dart';
@@ -94,60 +97,86 @@ class WebRtcCallSignalingRepository {
         .toList(growable: false);
   }
 
-  RealtimeChannel subscribe({
+  Future<RealtimeChannel> subscribe({
     required String callId,
     required void Function(TripCallSignal signal) onSignal,
     required void Function(TripCallParticipant participant) onParticipant,
     required void Function() onCallEnded,
-  }) => _client
-      .channel('trip-call-signals:$callId')
-      .onPostgresChanges(
-        event: PostgresChangeEvent.insert,
-        schema: 'public',
-        table: 'trip_call_signals',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'call_id',
-          value: callId,
-        ),
-        callback: (payload) {
-          if (payload.newRecord.isNotEmpty) {
-            onSignal(TripCallSignal.fromMap(payload.newRecord));
-          }
-        },
-      )
-      .onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'trip_call_participants',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'call_id',
-          value: callId,
-        ),
-        callback: (payload) {
-          final record = payload.newRecord.isNotEmpty
-              ? payload.newRecord
-              : payload.oldRecord;
-          if (record.isNotEmpty && record['updated_at'] != null) {
-            onParticipant(TripCallParticipant.fromMap(record));
-          }
-        },
-      )
-      .onPostgresChanges(
-        event: PostgresChangeEvent.update,
-        schema: 'public',
-        table: 'trip_calls',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'id',
-          value: callId,
-        ),
-        callback: (payload) {
-          if (payload.newRecord['status'] == 'ended') onCallEnded();
-        },
-      )
-      .subscribe();
+  }) async {
+    final channel = _client
+        .channel('trip-call-signals:$callId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'trip_call_signals',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'call_id',
+            value: callId,
+          ),
+          callback: (payload) {
+            if (payload.newRecord.isNotEmpty) {
+              onSignal(TripCallSignal.fromMap(payload.newRecord));
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'trip_call_participants',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'call_id',
+            value: callId,
+          ),
+          callback: (payload) {
+            final record = payload.newRecord.isNotEmpty
+                ? payload.newRecord
+                : payload.oldRecord;
+            if (record.isNotEmpty && record['updated_at'] != null) {
+              onParticipant(TripCallParticipant.fromMap(record));
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'trip_calls',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: callId,
+          ),
+          callback: (payload) {
+            if (payload.newRecord['status'] == 'ended') onCallEnded();
+          },
+        );
+
+    final ready = Completer<void>();
+    channel.subscribe((status, error) {
+      debugPrint(
+        '[group_call] signaling_room_status call_id=$callId '
+        'status=${status.name}${error == null ? '' : ' error=$error'}',
+      );
+      if (status == RealtimeSubscribeStatus.subscribed && !ready.isCompleted) {
+        ready.complete();
+      } else if ((status == RealtimeSubscribeStatus.channelError ||
+              status == RealtimeSubscribeStatus.timedOut ||
+              status == RealtimeSubscribeStatus.closed) &&
+          !ready.isCompleted) {
+        ready.completeError(
+          StateError('Could not subscribe to group call signaling: $status'),
+        );
+      }
+    });
+    try {
+      await ready.future.timeout(const Duration(seconds: 10));
+    } catch (_) {
+      await _client.removeChannel(channel);
+      rethrow;
+    }
+    return channel;
+  }
 
   Future<List<TripCallParticipant>> loadParticipants({
     required String callId,
@@ -213,14 +242,20 @@ class WebRtcCallSignalingRepository {
     required String type,
     required Map<String, dynamic> payload,
     String? targetId,
-  }) => _client.from('trip_call_signals').insert({
-    'call_id': callId,
-    'trip_id': tripId,
-    'sender_id': senderId,
-    'target_id': targetId,
-    'signal_type': type,
-    'payload': payload,
-  });
+  }) async {
+    debugPrint(
+      '[group_call] signaling_send_to_group call_id=$callId '
+      'sender_id=$senderId target_id=${targetId ?? 'all'} type=$type',
+    );
+    await _client.from('trip_call_signals').insert({
+      'call_id': callId,
+      'trip_id': tripId,
+      'sender_id': senderId,
+      'target_id': targetId,
+      'signal_type': type,
+      'payload': payload,
+    });
+  }
 
   Future<void> removeChannel(RealtimeChannel channel) async {
     await _client.removeChannel(channel);

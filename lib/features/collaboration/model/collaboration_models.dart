@@ -286,15 +286,60 @@ class CollaborationNotification {
       );
 }
 
+class TripActivityProposal {
+  const TripActivityProposal({
+    required this.id,
+    required this.tripId,
+    required this.proposedBy,
+    required this.title,
+    required this.startTime,
+    required this.status,
+    required this.createdAt,
+    this.proposedByName,
+    this.location,
+  });
+
+  final String id;
+  final String tripId;
+  final String proposedBy;
+  final String? proposedByName;
+  final String title;
+  final String? location;
+  final DateTime startTime;
+  final String status;
+  final DateTime createdAt;
+
+  bool get isPending => status == 'pending_approval';
+
+  factory TripActivityProposal.fromMap(
+    Map<String, dynamic> map, {
+    String? proposedByName,
+  }) => TripActivityProposal(
+    id: map['id'] as String,
+    tripId: map['trip_id'] as String,
+    proposedBy: map['proposed_by'] as String,
+    proposedByName: proposedByName,
+    title: map['title'] as String,
+    location: map['location'] as String?,
+    startTime: DateTime.parse(map['start_time'] as String).toLocal(),
+    status: map['status'] as String,
+    createdAt: DateTime.parse(map['created_at'] as String).toLocal(),
+  );
+}
+
 class GroupCollaborationState {
   const GroupCollaborationState({
     required this.tripId,
+    this.tripTitle = 'Trip',
+    this.tripStartDate,
+    this.tripEndDate,
     required this.currentUserId,
     required this.creatorId,
     required this.isAdmin,
     required this.members,
     required this.messages,
     required this.activities,
+    this.activityProposals = const [],
     this.timelineDays = const [],
     required this.polls,
     required this.files,
@@ -307,12 +352,16 @@ class GroupCollaborationState {
   });
 
   final String tripId;
+  final String tripTitle;
+  final DateTime? tripStartDate;
+  final DateTime? tripEndDate;
   final String currentUserId;
   final String creatorId;
   final bool isAdmin;
   final List<CollaborationMember> members;
   final List<TripMessage> messages;
   final List<TripActivity> activities;
+  final List<TripActivityProposal> activityProposals;
   final List<DateTime> timelineDays;
   final List<ActivityPoll> polls;
   final List<SharedTripFile> files;
@@ -324,6 +373,19 @@ class GroupCollaborationState {
   final List<String> typingMemberNames;
 
   bool get isCreator => currentUserId == creatorId;
+  List<TripActivityProposal> get pendingActivityProposals => activityProposals
+      .where((proposal) => proposal.isPending)
+      .toList(growable: false);
+  int? get tripDurationDays {
+    final start = tripStartDate;
+    final end = tripEndDate;
+    if (start == null || end == null) return null;
+    final startDay = DateTime(start.year, start.month, start.day);
+    final endDay = DateTime(end.year, end.month, end.day);
+    final duration = endDay.difference(startDay).inDays + 1;
+    return duration < 1 ? 1 : duration;
+  }
+
   List<CollaborationNotification> get unreadNotifications => notifications
       .where((notification) => !readNotificationIds.contains(notification.id))
       .toList(growable: false);

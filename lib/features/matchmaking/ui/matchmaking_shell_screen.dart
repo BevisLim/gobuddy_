@@ -296,10 +296,8 @@ class _MatchmakingShellScreenState
             state.joinedTripIds.contains(state.selectedTrip!.id),
         onBack: () => viewModel.goTo(MatchmakingPage.discover),
         onRequest: () => viewModel.goTo(MatchmakingPage.request),
-        onOpenGroup: () => context.push(
-          '${Routes.groupCollaboration}?tripId='
-          '${Uri.encodeQueryComponent(state.selectedTrip!.id)}',
-        ),
+        onOpenGroup: () =>
+            context.push(Routes.tripTimeline(state.selectedTrip!.id)),
       ),
       MatchmakingPage.create => InteractiveTripFormPage(
         hostedTrips: state.ownedTrips,
@@ -330,9 +328,7 @@ class _MatchmakingShellScreenState
         onRemoveHosted: viewModel.deleteTrip,
         onLeaveTrip: viewModel.leaveTrip,
         onDismissRemovedTrip: viewModel.dismissRemovedTrip,
-        onOpenGroup: (id) => context.push(
-          '${Routes.groupCollaboration}?tripId=${Uri.encodeQueryComponent(id)}',
-        ),
+        onOpenTimeline: (id) => context.push(Routes.tripTimeline(id)),
         onRemoveRequest: viewModel.removeRequest,
       ),
       MatchmakingPage.request => RequestPage(
@@ -1285,7 +1281,7 @@ class TripDetailsPage extends StatelessWidget {
               OutlinedButton.icon(
                 onPressed: onOpenGroup,
                 icon: const Icon(Icons.groups_outlined),
-                label: const Text('Open group workspace'),
+                label: const Text('Open trip timeline'),
               ),
             ] else
               PrimaryButton(label: 'Request to Join', onTap: onRequest),
@@ -1904,7 +1900,7 @@ class MyTripsPage extends StatelessWidget {
   final List<MatchmakingTrip> trips, joinedTrips, removedTrips, allTrips;
   final List<JoinRequest> requests;
   final ValueChanged<String> onManage, onEdit, onFinish, onRemoveHosted;
-  final ValueChanged<String> onOpenGroup;
+  final ValueChanged<String> onOpenTimeline;
   final Future<void> Function(String) onLeaveTrip, onRemoveRequest;
   final Future<void> Function(String) onDismissRemovedTrip;
   const MyTripsPage({
@@ -1920,7 +1916,7 @@ class MyTripsPage extends StatelessWidget {
     required this.onFinish,
     required this.onRemoveHosted,
     required this.onEdit,
-    required this.onOpenGroup,
+    required this.onOpenTimeline,
     required this.onLeaveTrip,
     required this.onDismissRemovedTrip,
     required this.onRemoveRequest,
@@ -1984,6 +1980,7 @@ class MyTripsPage extends StatelessWidget {
           members: '${trip.groupMemberCount} joined',
           image: trip.imageUrl,
           status: _lifecycleLabel(trip),
+          onOpen: () => onOpenTimeline(trip.id),
           onEdit: () => onEdit(trip.id),
           onManage: () => onManage(trip.id),
           onFinish: trip.lifecycle == TripLifecycle.finished
@@ -2019,8 +2016,8 @@ class MyTripsPage extends StatelessWidget {
                 spacing: 4,
                 children: [
                   IconButton(
-                    tooltip: 'Open group',
-                    onPressed: () => onOpenGroup(trip.id),
+                    tooltip: 'Open messages',
+                    onPressed: () => context.push(Routes.tripMessages(trip.id)),
                     icon: const Icon(Icons.chat_bubble_outline_rounded),
                   ),
                   IconButton(
@@ -2040,7 +2037,7 @@ class MyTripsPage extends StatelessWidget {
                   ),
                 ],
               ),
-              onTap: () => onOpenGroup(trip.id),
+              onTap: () => onOpenTimeline(trip.id),
             ),
           ),
         for (final trip in removedTrips)
@@ -2934,6 +2931,7 @@ class CompactTrip extends StatelessWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onFinish;
   final VoidCallback? onRemove;
+  final VoidCallback? onOpen;
   const CompactTrip({
     super.key,
     required this.destination,
@@ -2945,6 +2943,7 @@ class CompactTrip extends StatelessWidget {
     this.onEdit,
     this.onFinish,
     this.onRemove,
+    this.onOpen,
   });
 
   Future<void> _confirmFinish(BuildContext context) async {
@@ -2977,47 +2976,50 @@ class CompactTrip extends StatelessWidget {
     clipBehavior: Clip.antiAlias,
     child: Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 92,
-                height: 92,
-                child: TravelImage(url: image, radius: 10),
-              ),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            destination,
-                            style: const TextStyle(
-                              fontFamily: 'Georgia',
-                              fontWeight: FontWeight.w600,
-                              color: _ink,
-                              fontSize: 18,
+        InkWell(
+          onTap: onOpen,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 92,
+                  height: 92,
+                  child: TravelImage(url: image, radius: 10),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              destination,
+                              style: const TextStyle(
+                                fontFamily: 'Georgia',
+                                fontWeight: FontWeight.w600,
+                                color: _ink,
+                                fontSize: 18,
+                              ),
                             ),
                           ),
-                        ),
-                        _Status(label: status),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(dates, style: _label),
-                    const SizedBox(height: 9),
-                    Text(
-                      members,
-                      style: const TextStyle(color: _muted, fontSize: 12),
-                    ),
-                  ],
+                          _Status(label: status),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(dates, style: _label),
+                      const SizedBox(height: 9),
+                      Text(
+                        members,
+                        style: const TextStyle(color: _muted, fontSize: 12),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         Container(

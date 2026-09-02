@@ -12,6 +12,7 @@ import 'package:flutter_mvvm_riverpod/core/routing/router.dart';
 import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_theme.dart';
 import 'package:flutter_mvvm_riverpod/features/common/ui/providers/app_theme_mode_provider.dart';
+import 'package:flutter_mvvm_riverpod/features/collaboration/ui/global_incoming_call_listener.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -58,42 +59,39 @@ class _ConfigurationErrorApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        home: Scaffold(
-          body: SafeArea(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 520),
-                child: const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.settings_outlined, size: 48),
-                      SizedBox(height: 16),
-                      Text(
-                        'Supabase configuration is missing',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      SizedBox(height: 12),
-                      Text(
-                        'Set SUPABASE_URL and SUPABASE_ANON_KEY in the local '
-                        '.env file, regenerate the Envied configuration, and '
-                        'restart the app.',
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
+    debugShowCheckedModeBanner: false,
+    home: Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: const Padding(
+              padding: EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.settings_outlined, size: 48),
+                  SizedBox(height: 16),
+                  Text(
+                    'Supabase configuration is missing',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
                   ),
-                ),
+                  SizedBox(height: 12),
+                  Text(
+                    'Set SUPABASE_URL and SUPABASE_ANON_KEY in the local '
+                    '.env file, regenerate the Envied configuration, and '
+                    'restart the app.',
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ),
             ),
           ),
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class GoBuddyApp extends ConsumerStatefulWidget {
@@ -148,6 +146,8 @@ class _GoBuddyAppState extends ConsumerState<GoBuddyApp> {
       localizationsDelegates: context.localizationDelegates,
       supportedLocales: context.supportedLocales,
       locale: context.locale,
+      builder: (context, child) =>
+          GlobalIncomingCallListener(child: child ?? const SizedBox.shrink()),
     );
   }
 }

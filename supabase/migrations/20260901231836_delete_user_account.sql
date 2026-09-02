@@ -18,12 +18,8 @@ begin
     raise exception 'User account not found';
   end if;
 
-  -- Delete owned trips while the auth user still exists. Membership deletion
-  -- triggers can create final notifications for the affected user.
   delete from public.matchmaking_trips where owner_id = p_user_id;
 
-  -- Remove every remaining public row with a direct FK to auth.users. Group
-  -- by table so tables with multiple user columns are handled in one delete.
   for v_table in
     select
       namespace.nspname as schema_name,
@@ -60,10 +56,7 @@ begin
     ) using v_ids;
   end loop;
 
-  -- Remove notifications last, including any emitted by deletion triggers.
   delete from public.matchmaking_notifications where user_id = p_user_id;
-
-  -- Auth-owned identities, sessions, tokens, and MFA records cascade here.
   delete from auth.users where id = p_user_id;
 end;
 $$;
@@ -71,4 +64,4 @@ $$;
 revoke all on function public.delete_user_account(uuid) from public;
 revoke all on function public.delete_user_account(uuid) from anon;
 revoke all on function public.delete_user_account(uuid) from authenticated;
-grant execute on function public.delete_user_account(uuid) to service_role;
+grant execute on function public.delete_user_account(uuid) to service_role;;

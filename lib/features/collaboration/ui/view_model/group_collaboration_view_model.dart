@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -33,21 +33,31 @@ class GroupCollaborationViewModel
       throw StateError('Please sign in before opening a trip workspace.');
     }
     _repository = ref.read(collaborationRepositoryProvider);
-    final workspace = await _repository
-        .loadWorkspace(tripId: _tripId, currentUserId: userId)
-        .timeout(
-          const Duration(seconds: 15),
-          onTimeout: () => throw TimeoutException(
-            'The trip workspace took too long to load. Check your Supabase connection and trip membership.',
-          ),
-        );
-    final channel = _repository.subscribe(_tripId, () => ref.invalidateSelf());
+    final channel = await _repository.subscribe(
+      _tripId,
+      () => ref.invalidateSelf(),
+    );
     _channel = channel;
     ref.onDispose(() {
       supabase.removeChannel(channel);
       if (identical(_channel, channel)) _channel = null;
     });
-    return workspace;
+    try {
+      // Load after the room subscription is live so an invitation cannot land
+      // in the old snapshot-before-subscribe race window.
+      return await _repository
+          .loadWorkspace(tripId: _tripId, currentUserId: userId)
+          .timeout(
+            const Duration(seconds: 15),
+            onTimeout: () => throw TimeoutException(
+              'The trip workspace took too long to load. Check your Supabase connection and trip membership.',
+            ),
+          );
+    } catch (_) {
+      await supabase.removeChannel(channel);
+      if (identical(_channel, channel)) _channel = null;
+      rethrow;
+    }
   }
 
   GroupCollaborationState? get _current {
@@ -173,13 +183,12 @@ class GroupCollaborationViewModel
     ref.invalidateSelf();
   }
 
-  Future<void> proposeActivity({
+  Future<void> addActivity({
     required String title,
     required DateTime startTime,
     String? location,
   }) async {
-    final current = _current;
-    if (current == null) return;
+    final current = _requireMemberManager();
     await _repository.addActivity(
       tripId: current.tripId,
       title: title,
@@ -190,14 +199,61 @@ class GroupCollaborationViewModel
       tripId: current.tripId,
       actorId: current.currentUserId,
       type: 'activity_created',
-      summary: 'A new activity was proposed: ${title.trim()}.',
+      summary: 'An activity was added to the timeline: ${title.trim()}.',
+    );
+    ref.invalidateSelf();
+  }
+
+  Future<void> proposeActivity({
+    required String title,
+    required DateTime startTime,
+    String? location,
+  }) async {
+    final current = _current;
+    if (current == null) return;
+    if (current.canManageMembers) {
+      throw StateError('Admins should add activities directly.');
+    }
+    await _repository.submitActivityProposal(
+      tripId: current.tripId,
+      proposedBy: current.currentUserId,
+      title: title,
+      startTime: startTime,
+      location: location,
+    );
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: 'activity_proposal_submitted',
+      summary: 'An activity was proposed for admin review: ${title.trim()}.',
+    );
+    ref.invalidateSelf();
+  }
+
+  Future<void> reviewActivityProposal(
+    TripActivityProposal proposal, {
+    required bool accept,
+  }) async {
+    final current = _requireMemberManager();
+    await _repository.reviewActivityProposal(
+      proposalId: proposal.id,
+      accept: accept,
+    );
+    await _repository.recordEvent(
+      tripId: current.tripId,
+      actorId: current.currentUserId,
+      type: accept
+          ? 'activity_proposal_accepted'
+          : 'activity_proposal_rejected',
+      summary: accept
+          ? 'Activity proposal approved: ${proposal.title}.'
+          : 'Activity proposal rejected: ${proposal.title}.',
     );
     ref.invalidateSelf();
   }
 
   Future<void> addTimelineDay(DateTime day) async {
-    final current = _current;
-    if (current == null) return;
+    final current = _requireMemberManager();
     final selectedDay = DateTime(day.year, day.month, day.day);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -226,8 +282,7 @@ class GroupCollaborationViewModel
   }
 
   Future<int> deleteTimelineDay(DateTime day) async {
-    final current = _current;
-    if (current == null) return 0;
+    final current = _requireMemberManager();
     final selectedDay = DateTime(day.year, day.month, day.day);
     final deletedActivities = await _repository.deleteTimelineDay(
       current.tripId,
@@ -261,8 +316,7 @@ class GroupCollaborationViewModel
   }
 
   Future<void> togglePin(TripActivity activity) async {
-    final current = _current;
-    if (current == null) return;
+    final current = _requireMemberManager();
     await _repository.updateActivity(activity.id, {
       'is_pinned': !activity.isPinned,
     });
@@ -277,7 +331,7 @@ class GroupCollaborationViewModel
   }
 
   Future<void> toggleLock(TripActivity activity) async {
-    _requireCreator();
+    _requireMemberManager();
     await _repository.updateActivity(activity.id, {
       'is_locked': !activity.isLocked,
     });
@@ -312,11 +366,7 @@ class GroupCollaborationViewModel
     required DateTime startTime,
     String? location,
   }) async {
-    final current = _current;
-    if (current == null) return;
-    if (activity.isLocked && !current.isCreator) {
-      throw StateError('This itinerary item is locked by the trip creator.');
-    }
+    final current = _requireMemberManager();
     await _repository.updateActivity(activity.id, {
       'title': title,
       'start_time': startTime.toUtc().toIso8601String(),
@@ -332,11 +382,7 @@ class GroupCollaborationViewModel
   }
 
   Future<void> deleteActivity(TripActivity activity) async {
-    final current = _current;
-    if (current == null) return;
-    if (activity.isLocked && !current.isCreator) {
-      throw StateError('Only the trip creator can remove a locked activity.');
-    }
+    final current = _requireMemberManager();
     await _repository.deleteActivity(activity.id);
     await _repository.sendMessage(
       current.tripId,
@@ -522,6 +568,23 @@ class GroupCollaborationViewModel
     final call = await _repository.startCall(
       tripId: current.tripId,
       type: type,
+    );
+    try {
+      await _repository.broadcastCallInvite(
+        tripId: current.tripId,
+        call: call,
+        callerName: _memberName(current, current.currentUserId),
+      );
+    } catch (error) {
+      // The persisted trip_calls row remains a reliable fallback invitation.
+      debugPrint(
+        '[group_call] signaling_send_to_group failed '
+        'trip_id=${current.tripId} call_id=${call.id} error=$error',
+      );
+    }
+    debugPrint(
+      '[group_call] room_joined_members call_id=${call.id} '
+      'invited_members=${current.members.length}',
     );
     await _repository.recordEvent(
       tripId: current.tripId,
