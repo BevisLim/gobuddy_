@@ -320,6 +320,46 @@ class AuthenticationRepository {
     }
   }
 
+  Future<void> deleteAccount() async {
+    if (supabase.auth.currentSession == null) {
+      throw Exception('Your session has expired. Please sign in again.');
+    }
+
+    try {
+      final response = await supabase.functions.invoke('delete-account');
+      final data = response.data;
+      if (data is! Map || data['deleted'] != true) {
+        throw Exception('Unable to delete your account. Please try again.');
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(Constants.isLoginKey);
+      await prefs.remove(Constants.isExistAccountKey);
+      await prefs.remove(Constants.isGuestModeKey);
+      await prefs.remove(Constants.registrationPendingKey);
+      await prefs.remove(Constants.registrationPendingEmailKey);
+      try {
+        await Purchases.logOut();
+      } catch (_) {
+        // Database deletion has already completed. Local third-party cleanup
+        // must not report the account as still active.
+      }
+      try {
+        await supabase.auth.signOut(scope: SignOutScope.local);
+      } catch (_) {
+        // Deleting auth.users invalidates the session on the server.
+      }
+    } on FunctionException catch (error) {
+      final data = error.details;
+      final message = data is Map ? data['error']?.toString() : null;
+      throw Exception(message ?? 'Unable to delete your account. Please try again.');
+    } on Exception {
+      rethrow;
+    } catch (_) {
+      throw Exception('Unable to delete your account. Please try again.');
+    }
+  }
+
   Future<bool> isLogin() async {
     return supabase.auth.currentUser != null;
   }

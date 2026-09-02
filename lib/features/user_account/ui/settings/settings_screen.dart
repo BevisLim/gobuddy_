@@ -175,13 +175,20 @@ class SettingsScreen extends ConsumerWidget {
                   child: _SettingsTile(
                     icon: Icons.delete_forever_outlined,
                     iconColor: AppColors.rambutan100,
-                    title:
-                        'Permanently delete your account and all associated data',
-                    trailing: const Icon(
-                      Icons.chevron_right_rounded,
-                      color: AppColors.rambutan100,
-                    ),
-                    onTap: () => _showDeleteConfirmation(context, ref),
+                    title: 'Delete Account',
+                    subtitle: 'Permanently remove your account and data',
+                    trailing: value?.isDeletingAccount == true
+                        ? const SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(
+                            Icons.chevron_right_rounded,
+                            color: AppColors.rambutan100,
+                          ),
+                    onTap: value?.isDeletingAccount == true
+                        ? null
+                        : () => _showDeleteConfirmation(context, ref),
                   ),
                 ),
               ],
@@ -219,10 +226,13 @@ class SettingsScreen extends ConsumerWidget {
   Future<void> _confirmDeletion(BuildContext context, WidgetRef ref) async {
     final deleted =
         await ref.read(settingsViewModelProvider.notifier).deleteAccount();
-    if (!context.mounted || deleted) return;
-    context.showInfoSnackBar(
-      'Account deletion is pending backend integration.',
-    );
+    if (!context.mounted) return;
+    if (deleted) {
+      context.go(Routes.login);
+      return;
+    }
+    final error = ref.read(settingsViewModelProvider).value?.error;
+    context.showErrorSnackBar(error ?? 'Unable to delete your account.');
   }
 }
 
