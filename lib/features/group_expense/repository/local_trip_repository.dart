@@ -4,13 +4,14 @@ import '../model/trip.dart';
 import 'trip_repository.dart';
 
 /// Development mirror only. Replace with the owning trip module.
+/// Legacy local/test adapter. Production wiring reads matchmaking_trips.
 class LocalTripRepository implements TripRepository {
   const LocalTripRepository(this.database);
 
   final Database database;
 
   @override
-  Future<Trip?> getTripById(int tripId) async {
+  Future<Trip?> getTripById(String tripId) async {
     final rows = await database.query(
       'trips',
       where: 'trip_id = ?',

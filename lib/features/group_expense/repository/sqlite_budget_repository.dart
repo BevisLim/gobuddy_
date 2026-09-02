@@ -3,22 +3,23 @@ import 'package:sqflite/sqflite.dart';
 import '../model/trip_budget.dart';
 import 'budget_repository.dart';
 
+/// Legacy local/test adapter. Production wiring uses SupabaseBudgetRepository.
 class SqliteBudgetRepository implements BudgetRepository {
   const SqliteBudgetRepository(this.database);
   final Database database;
 
   @override
-  Future<int> createBudget(TripBudget budget) async {
+  Future<String> createBudget(TripBudget budget) async {
     if (budget.budgetName.trim().isEmpty ||
         budget.budgetAmount <= 0 ||
         budget.baseCurrency.trim().isEmpty) {
       throw ArgumentError('Invalid budget data');
     }
-    return database.insert('trip_budgets', budget.toMap());
+    return (await database.insert('trip_budgets', budget.toMap())).toString();
   }
 
   @override
-  Future<TripBudget?> getBudgetForTrip(int tripId) async {
+  Future<TripBudget?> getBudgetForTrip(String tripId) async {
     final rows = await database.query(
       'trip_budgets',
       where: 'trip_id = ?',
@@ -29,7 +30,7 @@ class SqliteBudgetRepository implements BudgetRepository {
   }
 
   @override
-  Future<double> getTotalSpent(int tripId) async {
+  Future<double> getTotalSpent(String tripId) async {
     final rows = await database.rawQuery(
       'SELECT COALESCE(SUM(base_amount), 0) AS total FROM expenses WHERE trip_id = ?',
       [tripId],

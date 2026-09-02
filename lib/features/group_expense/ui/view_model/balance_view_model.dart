@@ -11,8 +11,11 @@ part 'balance_view_model.g.dart';
 @riverpod
 class BalanceViewModel extends _$BalanceViewModel {
   @override
-  Future<BalanceState> build(int tripId) async {
-    final session = ref.watch(appSessionProvider);
+  Future<BalanceState> build(String tripId) async {
+    final currentUserId = ref.watch(authenticatedUserIdProvider);
+    if (currentUserId == null) {
+      throw StateError('Authentication is required for trip balances');
+    }
     final expenseRepositoryFuture = ref.watch(expenseRepositoryProvider.future);
     final settlementRepositoryFuture =
         ref.watch(settlementRepositoryProvider.future);
@@ -41,7 +44,7 @@ class BalanceViewModel extends _$BalanceViewModel {
       },
       settlements: completed,
     );
-    final pendingUserIds = <int>{
+    final pendingUserIds = <String>{
       for (final settlement in pending) ...[
         settlement.payerId,
         settlement.payeeId,
@@ -51,7 +54,7 @@ class BalanceViewModel extends _$BalanceViewModel {
       for (final traveller in travellers)
         TravellerBalance(
           userId: traveller.userId,
-          name: traveller.name,
+          name: traveller.displayName,
           initials: traveller.initials,
           netBalance: MoneyUtils.roundMoney(
             netBalances[traveller.userId] ?? 0,
@@ -64,9 +67,9 @@ class BalanceViewModel extends _$BalanceViewModel {
     ];
     return BalanceState(
       tripId: tripId,
-      currentUserId: session.currentUserId,
+      currentUserId: currentUserId,
       currency: budget?.baseCurrency ?? 'MYR',
-      tripName: trip?.tripName ?? 'Current Trip',
+      tripName: trip?.destination ?? 'Current Trip',
       balances: balances,
       suggestions: BalanceCalculator.suggestions(netBalances),
     );

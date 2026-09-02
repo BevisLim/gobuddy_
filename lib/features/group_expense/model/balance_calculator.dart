@@ -12,8 +12,8 @@ class BalanceReconciliationException implements Exception {
 class BalanceCalculator {
   BalanceCalculator._();
 
-  static Map<int, double> applyCompletedSettlements({
-    required Map<int, double> expenseBalances,
+  static Map<String, double> applyCompletedSettlements({
+    required Map<String, double> expenseBalances,
     required List<Settlement> settlements,
   }) {
     final cents = {
@@ -33,7 +33,7 @@ class BalanceCalculator {
   }
 
   static List<SettlementSuggestion> suggestions(
-    Map<int, double> balances, {
+    Map<String, double> balances, {
     int toleranceCents = 1,
   }) {
     final creditors = <_BalanceEntry>[];
@@ -87,6 +87,6 @@ class BalanceCalculator {
 
 class _BalanceEntry {
   _BalanceEntry(this.userId, this.cents);
-  final int userId;
+  final String userId;
   int cents;
 }

@@ -7,17 +7,21 @@ import 'widgets/group_expense_app_bar.dart';
 
 class AddExpenseScreen extends StatelessWidget {
   const AddExpenseScreen({super.key, required this.tripId});
-  final int tripId;
+  final String tripId;
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: const GroupExpenseAppBar(title: 'Add Expense'),
+        appBar: GroupExpenseAppBar(
+          title: 'Add Expense',
+          fallbackRoute: '${Routes.groupExpense}/$tripId',
+        ),
         body: SafeArea(
           child: ExpenseForm(
             tripId: tripId,
-            onSaved: (expenseId) => context.go(
+            onSaved: (expenseId) => context.pushReplacement(
               Uri(
-                path: '${Routes.expenseDetails}/$tripId/$expenseId',
+                path:
+                    '${Routes.groupExpense}/$tripId/${Routes.expenseDetails}/$expenseId',
                 queryParameters: const {
                   'message': 'Expense added successfully',
                 },

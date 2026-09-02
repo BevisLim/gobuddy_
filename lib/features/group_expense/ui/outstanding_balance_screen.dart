@@ -13,13 +13,16 @@ import 'widgets/group_expense_app_bar.dart';
 class OutstandingBalanceScreen extends ConsumerWidget {
   const OutstandingBalanceScreen({super.key, required this.tripId});
 
-  final int tripId;
+  final String tripId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final balances = ref.watch(balanceViewModelProvider(tripId));
     return Scaffold(
-      appBar: const GroupExpenseAppBar(title: 'Outstanding Balance'),
+      appBar: GroupExpenseAppBar(
+        title: 'Outstanding Balance',
+        fallbackRoute: '${Routes.groupExpense}/$tripId',
+      ),
       body: SafeArea(
         child: balances.when(
           loading: () => const Center(child: CircularProgressIndicator()),
@@ -120,7 +123,7 @@ class OutstandingBalanceScreen extends ConsumerWidget {
                                 width: double.infinity,
                                 child: FilledButton.icon(
                                   onPressed: () => context.push(
-                                    '${Routes.recordSettlement}/$tripId?payerId=${suggestion.payerId}&payeeId=${suggestion.payeeId}',
+                                    '${Routes.groupExpense}/$tripId/${Routes.recordSettlement}?payerId=${suggestion.payerId}&payeeId=${suggestion.payeeId}',
                                   ),
                                   icon: const Icon(Icons.payments_outlined),
                                   label: const Text('Record Settlement'),

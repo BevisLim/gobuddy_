@@ -14,10 +14,10 @@ class Settlement {
     required this.createdAt,
   });
 
-  final int? settlementId;
-  final int tripId;
-  final int payerId;
-  final int payeeId;
+  final String? settlementId;
+  final String tripId;
+  final String payerId;
+  final String payeeId;
   final double amount;
   final String paymentMethod;
   final DateTime settlementDate;
@@ -26,10 +26,10 @@ class Settlement {
   final DateTime createdAt;
 
   Settlement copyWith({
-    int? settlementId,
-    int? tripId,
-    int? payerId,
-    int? payeeId,
+    String? settlementId,
+    String? tripId,
+    String? payerId,
+    String? payeeId,
     double? amount,
     String? paymentMethod,
     DateTime? settlementDate,
@@ -65,10 +65,10 @@ class Settlement {
       };
 
   factory Settlement.fromMap(Map<String, Object?> map) => Settlement(
-        settlementId: map['settlement_id']! as int,
-        tripId: map['trip_id']! as int,
-        payerId: map['payer_id']! as int,
-        payeeId: map['payee_id']! as int,
+        settlementId: map['settlement_id']!.toString(),
+        tripId: map['trip_id']!.toString(),
+        payerId: map['payer_id']!.toString(),
+        payeeId: map['payee_id']!.toString(),
         amount: (map['amount']! as num).toDouble(),
         paymentMethod: map['payment_method']! as String,
         settlementDate: DateTime.parse(map['settlement_date']! as String),

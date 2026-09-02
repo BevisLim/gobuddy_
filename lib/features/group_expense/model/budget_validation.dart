@@ -8,7 +8,7 @@ class BudgetValidation {
 
   static String? amount(String value) {
     final parsed = double.tryParse(value.trim());
-    if (parsed == null || parsed <= 0) {
+    if (parsed == null || !parsed.isFinite || parsed <= 0) {
       return 'Enter a budget amount greater than zero';
     }
     return null;

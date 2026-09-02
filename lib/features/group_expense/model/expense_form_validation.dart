@@ -6,7 +6,7 @@ class ExpenseFormValidation {
 
   static String? amount(String value) {
     final amount = double.tryParse(value.trim());
-    return amount == null || amount <= 0
+    return amount == null || !amount.isFinite || amount <= 0
         ? 'Enter an amount greater than zero'
         : null;
   }

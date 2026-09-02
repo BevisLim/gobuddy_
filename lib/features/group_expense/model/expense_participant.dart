@@ -6,8 +6,8 @@ class ExpenseParticipant {
     this.sharePercentage,
   });
 
-  final int expenseId;
-  final int userId;
+  final String expenseId;
+  final String userId;
   final double shareAmount;
   final double? sharePercentage;
 
@@ -20,8 +20,8 @@ class ExpenseParticipant {
 
   factory ExpenseParticipant.fromMap(Map<String, Object?> map) =>
       ExpenseParticipant(
-        expenseId: map['expense_id']! as int,
-        userId: map['user_id']! as int,
+        expenseId: map['expense_id']!.toString(),
+        userId: map['user_id']!.toString(),
         shareAmount: (map['share_amount']! as num).toDouble(),
         sharePercentage: (map['share_percentage'] as num?)?.toDouble(),
       );

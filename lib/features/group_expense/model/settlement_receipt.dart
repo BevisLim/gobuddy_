@@ -6,8 +6,8 @@ class SettlementReceipt {
     required this.uploadedAt,
   });
 
-  final int? receiptId;
-  final int settlementId;
+  final String? receiptId;
+  final String settlementId;
   final String imagePath;
   final DateTime uploadedAt;
 
@@ -20,8 +20,8 @@ class SettlementReceipt {
 
   factory SettlementReceipt.fromMap(Map<String, Object?> map) =>
       SettlementReceipt(
-        receiptId: map['receipt_id']! as int,
-        settlementId: map['settlement_id']! as int,
+        receiptId: map['receipt_id']!.toString(),
+        settlementId: map['settlement_id']!.toString(),
         imagePath: map['image_path']! as String,
         uploadedAt: DateTime.parse(map['uploaded_at']! as String),
       );

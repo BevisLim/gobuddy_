@@ -10,8 +10,8 @@ class TripBudget {
     required this.updatedAt,
   });
 
-  final int? budgetId;
-  final int tripId;
+  final String? budgetId;
+  final String tripId;
   final String budgetName;
   final double budgetAmount;
   final String baseCurrency;
@@ -20,8 +20,8 @@ class TripBudget {
   final DateTime updatedAt;
 
   TripBudget copyWith({
-    int? budgetId,
-    int? tripId,
+    String? budgetId,
+    String? tripId,
     String? budgetName,
     double? budgetAmount,
     String? baseCurrency,
@@ -53,8 +53,8 @@ class TripBudget {
       };
 
   factory TripBudget.fromMap(Map<String, Object?> map) => TripBudget(
-        budgetId: map['budget_id']! as int,
-        tripId: map['trip_id']! as int,
+        budgetId: map['budget_id']!.toString(),
+        tripId: map['trip_id']!.toString(),
         budgetName: map['budget_name']! as String,
         budgetAmount: (map['budget_amount']! as num).toDouble(),
         baseCurrency: map['base_currency']! as String,

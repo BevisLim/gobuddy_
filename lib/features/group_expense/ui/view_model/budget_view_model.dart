@@ -17,7 +17,7 @@ class BudgetViewModel extends _$BudgetViewModel {
   late TripRepository _tripRepository;
 
   @override
-  Future<BudgetState> build(int tripId) async {
+  Future<BudgetState> build(String tripId) async {
     final budgetRepositoryFuture = ref.watch(budgetRepositoryProvider.future);
     final tripRepositoryFuture = ref.watch(tripRepositoryProvider.future);
     _budgetRepository = await budgetRepositoryFuture;
@@ -166,8 +166,8 @@ class BudgetViewModel extends _$BudgetViewModel {
     return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 
-  void _invalidateSummaries(int tripId) {
-    ref.invalidate(expenseDashboardViewModelProvider);
+  void _invalidateSummaries(String tripId) {
+    ref.invalidate(expenseDashboardViewModelProvider(tripId));
     ref.invalidate(analyticsViewModelProvider(tripId));
   }
 }

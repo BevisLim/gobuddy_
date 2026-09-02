@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 
 import '../model/category_spending.dart';
 import '../model/money_utils.dart';
@@ -16,14 +17,17 @@ import 'widgets/group_expense_app_bar.dart';
 class BudgetAnalyticsScreen extends ConsumerWidget {
   const BudgetAnalyticsScreen({super.key, required this.tripId});
 
-  final int tripId;
+  final String tripId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final provider = analyticsViewModelProvider(tripId);
     final analytics = ref.watch(provider);
     return Scaffold(
-      appBar: const GroupExpenseAppBar(title: 'Budget Analytics'),
+      appBar: GroupExpenseAppBar(
+        title: 'Budget Analytics',
+        fallbackRoute: '${Routes.groupExpense}/$tripId',
+      ),
       body: SafeArea(
         child: analytics.when(
           loading: () => const Center(child: CircularProgressIndicator()),

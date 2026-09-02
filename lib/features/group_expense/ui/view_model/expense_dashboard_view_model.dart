@@ -10,9 +10,7 @@ part 'expense_dashboard_view_model.g.dart';
 @riverpod
 class ExpenseDashboardViewModel extends _$ExpenseDashboardViewModel {
   @override
-  Future<ExpenseDashboardState> build() async {
-    final session = ref.watch(appSessionProvider);
-    final tripId = session.currentTripId;
+  Future<ExpenseDashboardState> build(String tripId) async {
     final tripRepositoryFuture = ref.watch(tripRepositoryProvider.future);
     final travellerRepositoryFuture =
         ref.watch(travellerRepositoryProvider.future);
@@ -43,7 +41,6 @@ class ExpenseDashboardViewModel extends _$ExpenseDashboardViewModel {
   }
 
   Future<void> refresh() async {
-    final tripId = ref.read(appSessionProvider).currentTripId;
     ref.invalidate(balanceViewModelProvider(tripId));
     ref.invalidate(analyticsViewModelProvider(tripId));
     ref.invalidateSelf();

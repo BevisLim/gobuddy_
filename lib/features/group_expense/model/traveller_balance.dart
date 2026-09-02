@@ -9,7 +9,7 @@ class TravellerBalance {
     required this.status,
   });
 
-  final int userId;
+  final String userId;
   final String name;
   final String initials;
   final double netBalance;
