@@ -14,6 +14,8 @@ class Routes {
   static const main = '/main';
   static const myTrips = '/my-trips';
   static const messages = '/messages';
+  static const trip = '/trip';
+  static const trips = '/trips';
   static const expenseDashboard = '/expenses';
   static const createBudget = '/expenses/budget/create';
   static const editBudget = '/expenses/budget/edit';
@@ -37,4 +39,10 @@ class Routes {
   static const addEmergencyContact = '/safety/emergency-contacts/add';
   static const liveLocation = '/safety/live-location';
   static const sos = '/safety/sos';
+
+  static String tripTimeline(String tripId) =>
+      '$trip/${Uri.encodeComponent(tripId)}/timeline';
+
+  static String tripMessages(String tripId) =>
+      '$trip/${Uri.encodeComponent(tripId)}/messages';
 }

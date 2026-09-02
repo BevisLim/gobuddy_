@@ -183,6 +183,35 @@ final GoRouter router = GoRouter(
       pageBuilder: (context, state) => state.slidePage(const MessagesScreen()),
     ),
     GoRoute(
+      path: '${Routes.trip}/:tripId/messages',
+      pageBuilder: (context, state) => state.slidePage(
+        GroupCollaborationScreen(
+          tripId: state.pathParameters['tripId']!,
+          knownRemoved: state.uri.queryParameters['removed'] == 'true',
+          initialView: TripWorkspaceView.messages,
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '${Routes.trip}/:tripId/timeline',
+      pageBuilder: (context, state) => state.slidePage(
+        GroupCollaborationScreen(
+          tripId: state.pathParameters['tripId']!,
+          initialView: TripWorkspaceView.timeline,
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '${Routes.messages}/:tripId',
+      redirect: (context, state) =>
+          Routes.tripMessages(state.pathParameters['tripId']!),
+    ),
+    GoRoute(
+      path: '${Routes.trips}/:tripId/timeline',
+      redirect: (context, state) =>
+          Routes.tripTimeline(state.pathParameters['tripId']!),
+    ),
+    GoRoute(
       path: Routes.expenseDashboard,
       pageBuilder: (context, state) =>
           state.slidePage(const ExpenseDashboardScreen()),
@@ -329,7 +358,11 @@ final GoRouter router = GoRouter(
         final tripId = state.uri.queryParameters['tripId'] ?? '';
         final knownRemoved = state.uri.queryParameters['removed'] == 'true';
         return state.slidePage(
-          GroupCollaborationScreen(tripId: tripId, knownRemoved: knownRemoved),
+          GroupCollaborationScreen(
+            tripId: tripId,
+            knownRemoved: knownRemoved,
+            initialView: TripWorkspaceView.messages,
+          ),
         );
       },
     ),

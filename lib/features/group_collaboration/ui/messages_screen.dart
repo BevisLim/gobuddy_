@@ -124,14 +124,10 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
       bottomNavigationBar: const AppModuleNavigation(selectedIndex: 2),
     );
   }
-
 }
 
 class _TripConversationCard extends StatelessWidget {
-  const _TripConversationCard({
-    required this.trip,
-    required this.wasRemoved,
-  });
+  const _TripConversationCard({required this.trip, required this.wasRemoved});
   final MatchmakingTrip trip;
   final bool wasRemoved;
 
@@ -163,8 +159,9 @@ class _TripConversationCard extends StatelessWidget {
             )
           : const Icon(Icons.chevron_right_rounded),
       onTap: () {
-        final path = '${Routes.groupCollaboration}?tripId=${trip.id}'
-            '${wasRemoved ? '&removed=true' : ''}';
+        final path = wasRemoved
+            ? '${Routes.tripMessages(trip.id)}?removed=true'
+            : Routes.tripTimeline(trip.id);
         context.push(path);
       },
     ),

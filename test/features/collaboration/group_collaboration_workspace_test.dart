@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration_models.dart';
 
 void main() {
@@ -40,6 +41,34 @@ void main() {
     );
   });
 
+  test('keeps selected trip metadata and trip-specific navigation paths', () {
+    final state = GroupCollaborationState(
+      tripId: 'trip/one',
+      tripTitle: 'Kyoto Autumn Trip',
+      tripStartDate: DateTime(2026, 10, 4),
+      tripEndDate: DateTime(2026, 10, 8),
+      currentUserId: 'owner',
+      creatorId: 'owner',
+      isAdmin: false,
+      members: const [],
+      messages: const [],
+      activities: const [],
+      polls: const [],
+      files: const [],
+      comments: const [],
+      notifications: const [],
+      calls: const [],
+      rsvps: const [],
+      typingMemberNames: const [],
+    );
+
+    expect(state.tripTitle, 'Kyoto Autumn Trip');
+    expect(state.tripStartDate, DateTime(2026, 10, 4));
+    expect(state.tripDurationDays, 5);
+    expect(Routes.tripTimeline(state.tripId), '/trip/trip%2Fone/timeline');
+    expect(Routes.tripMessages(state.tripId), '/trip/trip%2Fone/messages');
+  });
+
   test('real workspace member roles and mute state are represented', () {
     final member = CollaborationMember(
       userId: 'member',
@@ -51,6 +80,40 @@ void main() {
     expect(member.displayName, 'Aina');
     expect(member.isAdmin, isTrue);
     expect(member.isMuted, isTrue);
+  });
+
+  test('keeps pending activity proposals out of official activities', () {
+    final proposal = TripActivityProposal.fromMap({
+      'id': 'proposal-1',
+      'trip_id': 'trip-1',
+      'proposed_by': 'member',
+      'title': 'Sunrise hike',
+      'location': 'Mount Batur',
+      'start_time': '2026-10-05T22:00:00.000Z',
+      'status': 'pending_approval',
+      'created_at': '2026-09-02T12:00:00.000Z',
+    }, proposedByName: 'Aina');
+    final state = GroupCollaborationState(
+      tripId: 'trip-1',
+      currentUserId: 'admin',
+      creatorId: 'owner',
+      isAdmin: true,
+      members: const [],
+      messages: const [],
+      activities: const [],
+      activityProposals: [proposal],
+      polls: const [],
+      files: const [],
+      comments: const [],
+      notifications: const [],
+      calls: const [],
+      rsvps: const [],
+      typingMemberNames: const [],
+    );
+
+    expect(state.activities, isEmpty);
+    expect(state.pendingActivityProposals, [proposal]);
+    expect(proposal.proposedByName, 'Aina');
   });
 
   test('maps a Supabase call-history row for the shared RTC call', () {
