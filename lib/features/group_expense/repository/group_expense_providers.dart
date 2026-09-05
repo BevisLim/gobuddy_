@@ -23,7 +23,15 @@ import 'trip_repository.dart';
 ///
 /// Tests may override this provider without coupling the feature to the
 /// authentication module's temporary fake-login implementation.
+final groupExpenseAuthChangesProvider = StreamProvider((ref) {
+  return supabase.auth.onAuthStateChange;
+});
+
 final authenticatedUserIdProvider = Provider<String?>((ref) {
+  // Re-evaluate the authenticated user whenever Supabase changes sessions.
+  // Reading currentUser directly without this dependency leaves Group Expense
+  // providers scoped to the account that first opened them.
+  ref.watch(groupExpenseAuthChangesProvider);
   return supabase.auth.currentUser?.id;
 });
 
