@@ -9,7 +9,8 @@ class ActivityProposalDialog extends StatefulWidget {
     super.key,
   });
 
-  final Future<void> Function(String title, String? location) onPropose;
+  final Future<bool> Function(String title, String? location, TimeOfDay time)
+  onPropose;
   final Future<void> Function(String question, List<String> options)
   onCreatePoll;
   final bool proposalMode;
@@ -26,6 +27,7 @@ class _ActivityProposalDialogState extends State<ActivityProposalDialog> {
   final _optionTwoController = TextEditingController();
   bool _creatingPoll = false;
   bool _submitting = false;
+  TimeOfDay? _selectedTime;
 
   @override
   void dispose() {
@@ -54,6 +56,12 @@ class _ActivityProposalDialogState extends State<ActivityProposalDialog> {
       );
       return;
     }
+    if (!_creatingPoll && _selectedTime == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a time for this activity')),
+      );
+      return;
+    }
     setState(() => _submitting = true);
     try {
       if (_creatingPoll) {
@@ -62,7 +70,24 @@ class _ActivityProposalDialogState extends State<ActivityProposalDialog> {
           _optionTwoController.text,
         ]);
       } else {
-        await widget.onPropose(title, _locationController.text.trim());
+        final submitted = await widget.onPropose(
+          title,
+          _locationController.text.trim(),
+          _selectedTime!,
+        );
+        if (!submitted) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Activity proposals are temporarily unavailable. '
+                  'Please ask an admin to apply the latest database update.',
+                ),
+              ),
+            );
+          }
+          return;
+        }
       }
       if (mounted) Navigator.pop(context);
     } catch (error) {
@@ -102,6 +127,34 @@ class _ActivityProposalDialogState extends State<ActivityProposalDialog> {
                 labelText: 'Location (optional)',
               ),
             ),
+          if (!_creatingPoll) ...[
+            const SizedBox(height: 12),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.access_time_rounded),
+              title: const Text('Activity time'),
+              subtitle: Text(
+                _selectedTime == null
+                    ? 'Required — tap to select'
+                    : MaterialLocalizations.of(
+                        context,
+                      ).formatTimeOfDay(_selectedTime!),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _submitting
+                  ? null
+                  : () async {
+                      final selected = await showTimePicker(
+                        context: context,
+                        initialTime: _selectedTime ?? TimeOfDay.now(),
+                        helpText: 'Select activity time',
+                      );
+                      if (selected != null && mounted) {
+                        setState(() => _selectedTime = selected);
+                      }
+                    },
+            ),
+          ],
           if (_creatingPoll) ...[
             TextField(
               controller: _optionOneController,
