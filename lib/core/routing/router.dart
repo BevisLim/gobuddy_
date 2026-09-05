@@ -40,6 +40,9 @@ import '../../features/safety/ui/sos_screen.dart';
 import '../../features/safety/ui/safety_check_in_settings_screen.dart';
 
 import 'routes.dart';
+import 'account_access_redirect.dart';
+import '../../features/admin/repository/admin_repository.dart';
+import '../../features/admin/ui/admin_screen.dart';
 
 enum SlideDirection { right, left, up, down }
 
@@ -100,7 +103,72 @@ final rootNavigatorKey = GlobalKey<NavigatorState>();
 final GoRouter router = GoRouter(
   navigatorKey: rootNavigatorKey,
   initialLocation: Routes.splash,
+  redirect: (context, state) async {
+    final path = state.uri.path;
+    const publicPaths = {
+      Routes.splash,
+      Routes.login,
+      Routes.welcome,
+      Routes.register,
+      Routes.forgotPassword,
+      Routes.resetPassword,
+      Routes.otp,
+      Routes.setPassword,
+      Routes.termsOfService,
+      Routes.privacyPolicy,
+      Routes.accessError,
+    };
+    if (publicPaths.contains(path)) return null;
+    try {
+      final access = await AdminRepository().access();
+      return accountAccessRedirect(access, path);
+    } catch (_) {
+      return Routes.accessError;
+    }
+  },
   routes: [
+    GoRoute(
+      path: Routes.admin,
+      builder: (context, state) => const AdminScreen(),
+    ),
+    GoRoute(
+      path: '${Routes.admin}/reports',
+      builder: (context, state) => AdminScreen(
+        key: ValueKey(state.uri.toString()),
+        section: 1,
+        status: state.uri.queryParameters['status'] ?? 'pending',
+      ),
+    ),
+    GoRoute(
+      path: '${Routes.admin}/users',
+      builder: (context, state) => AdminScreen(
+        key: ValueKey(state.uri.toString()),
+        section: 2,
+        status: state.uri.queryParameters['status'] ?? 'all',
+      ),
+    ),
+    GoRoute(
+      path: '${Routes.admin}/reports/:reportId',
+      builder: (context, state) =>
+          AdminReportScreen(reportId: state.pathParameters['reportId']!),
+    ),
+    GoRoute(
+      path: '${Routes.admin}/activity',
+      builder: (context, state) => const AdminScreen(section: 3),
+    ),
+    GoRoute(
+      path: '${Routes.admin}/users/:userId',
+      builder: (context, state) =>
+          AdminProfileScreen(userId: state.pathParameters['userId']!),
+    ),
+    GoRoute(
+      path: Routes.accountBanned,
+      builder: (context, state) => const _AccessScreen(banned: true),
+    ),
+    GoRoute(
+      path: Routes.accessError,
+      builder: (context, state) => const _AccessScreen(banned: false),
+    ),
     GoRoute(
       path: Routes.splash,
       pageBuilder: (context, state) => state.slidePage(
@@ -372,3 +440,44 @@ final GoRouter router = GoRouter(
     ),
   ],
 );
+
+class _AccessScreen extends StatelessWidget {
+  const _AccessScreen({required this.banned});
+  final bool banned;
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            banned
+                ? 'Your account is restricted. If suspended, try again after the suspension ends.'
+                : 'Unable to verify account access. Please try again.',
+          ),
+          TextButton(
+            onPressed: () => context.go(Routes.main),
+            child: const Text('Retry'),
+          ),
+          TextButton(
+            onPressed: () async {
+              try {
+                await AdminRepository().signOut();
+                if (context.mounted) context.go(Routes.login);
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Unable to sign out. Please try again.'),
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    ),
+  );
+}

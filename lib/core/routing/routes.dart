@@ -5,6 +5,9 @@ class Routes {
   static const welcome = '/welcome';
   static const register = '/register';
   static const login = '/login';
+  static const admin = '/admin';
+  static const accountBanned = '/account-banned';
+  static const accessError = '/access-error';
   static const forgotPassword = '/forgot-password';
   static const resetPassword = '/reset-password';
   static const otp = '/otp';

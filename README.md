@@ -131,6 +131,8 @@ dart run easy_localization:generate -f keys -o locale_keys.g.dart --source-dir a
 dart run build_runner build --delete-conflicting-outputs
 # Group Expense exchange rates
 
+Admin role setup and moderation details: [Admin moderation](docs/admin-moderation.md).
+
 Multi-currency expenses use Frankfurter's public v2 pair API as a daily
 reference-rate source. These are reference rates, not live trading prices. The
 selected rate and rounded base amount are saved with the expense when it is
