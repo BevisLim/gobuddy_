@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../collaboration/model/collaboration_models.dart';
@@ -29,6 +31,9 @@ class _TripLiveLocationsScreenState
     extends ConsumerState<TripLiveLocationsScreen> {
   Timer? _freshnessTimer;
   late final Stream<List<SharedLiveLocation>> _locations;
+  final MapController _mapController = MapController();
+  String? _selectedUserId;
+  LatLng? _lastFollowedPoint;
 
   @override
   void initState() {
@@ -44,6 +49,7 @@ class _TripLiveLocationsScreenState
   @override
   void dispose() {
     _freshnessTimer?.cancel();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -90,15 +96,80 @@ class _TripLiveLocationsScreenState
               ),
             );
           }
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: active.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 8),
-            itemBuilder: (context, index) => _LocationCard(
-              share: active[index],
-              member: _member(active[index].userId),
-              isCurrentUser: active[index].userId == widget.currentUserId,
-            ),
+          final selected = active.where(
+            (share) => share.userId == _selectedUserId,
+          ).firstOrNull;
+          final initialShare = selected ?? active.first;
+          if (selected != null) _followSelected(selected);
+          return Column(
+            children: [
+              Expanded(
+                flex: 3,
+                child: Stack(
+                  children: [
+                    FlutterMap(
+                      mapController: _mapController,
+                      options: MapOptions(
+                        initialCenter: _point(initialShare),
+                        initialZoom: 16,
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate:
+                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName:
+                              'com.henry.flutter_mvvm_riverpod',
+                        ),
+                        _AnimatedLocationMarkers(
+                          shares: active,
+                          members: widget.members,
+                          currentUserId: widget.currentUserId,
+                          selectedUserId: _selectedUserId,
+                          onSelected: _selectShare,
+                        ),
+                      ],
+                    ),
+                    Positioned(
+                      right: 6,
+                      bottom: 6,
+                      child: Material(
+                        color: Colors.white.withValues(alpha: 0.88),
+                        borderRadius: BorderRadius.circular(4),
+                        child: InkWell(
+                          onTap: _openOpenStreetMapCopyright,
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 3,
+                            ),
+                            child: Text(
+                              '© OpenStreetMap contributors',
+                              style: TextStyle(fontSize: 10),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: ListView.separated(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: active.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) => _LocationCard(
+                    share: active[index],
+                    member: _member(active[index].userId),
+                    isCurrentUser:
+                        active[index].userId == widget.currentUserId,
+                    isSelected: active[index].userId == _selectedUserId,
+                    onSelected: () => _selectShare(active[index]),
+                  ),
+                ),
+              ),
+            ],
           );
         },
       ),
@@ -108,6 +179,168 @@ class _TripLiveLocationsScreenState
   CollaborationMember? _member(String userId) => widget.members
       .where((member) => member.userId == userId)
       .firstOrNull;
+
+  LatLng _point(SharedLiveLocation share) =>
+      LatLng(share.latitude, share.longitude);
+
+  void _selectShare(SharedLiveLocation share) {
+    setState(() => _selectedUserId = share.userId);
+    final point = _point(share);
+    _lastFollowedPoint = point;
+    _mapController.move(point, 17);
+  }
+
+  void _followSelected(SharedLiveLocation share) {
+    final point = _point(share);
+    if (point == _lastFollowedPoint) return;
+    _lastFollowedPoint = point;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _mapController.move(point, 17);
+    });
+  }
+
+  Future<void> _openOpenStreetMapCopyright() => launchUrl(
+    Uri.parse('https://www.openstreetmap.org/copyright'),
+    mode: LaunchMode.externalApplication,
+  );
+}
+
+class _AnimatedLocationMarkers extends StatefulWidget {
+  const _AnimatedLocationMarkers({
+    required this.shares,
+    required this.members,
+    required this.currentUserId,
+    required this.selectedUserId,
+    required this.onSelected,
+  });
+
+  final List<SharedLiveLocation> shares;
+  final List<CollaborationMember> members;
+  final String currentUserId;
+  final String? selectedUserId;
+  final ValueChanged<SharedLiveLocation> onSelected;
+
+  @override
+  State<_AnimatedLocationMarkers> createState() =>
+      _AnimatedLocationMarkersState();
+}
+
+class _AnimatedLocationMarkersState extends State<_AnimatedLocationMarkers>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  final Map<String, LatLng> _from = {};
+  final Map<String, LatLng> _to = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    for (final share in widget.shares) {
+      final point = LatLng(share.latitude, share.longitude);
+      _from[share.userId] = point;
+      _to[share.userId] = point;
+    }
+    _controller.value = 1;
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnimatedLocationMarkers oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final progress = Curves.easeOut.transform(_controller.value);
+    final activeIds = widget.shares.map((share) => share.userId).toSet();
+    _from.removeWhere((id, _) => !activeIds.contains(id));
+    _to.removeWhere((id, _) => !activeIds.contains(id));
+    var moved = false;
+    for (final share in widget.shares) {
+      final target = LatLng(share.latitude, share.longitude);
+      final previousTarget = _to[share.userId] ?? target;
+      final displayed = _interpolate(
+        _from[share.userId] ?? previousTarget,
+        previousTarget,
+        progress,
+      );
+      _from[share.userId] = displayed;
+      _to[share.userId] = target;
+      moved = moved || displayed != target;
+    }
+    if (moved) _controller.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _controller,
+    builder: (context, _) {
+      final progress = Curves.easeOut.transform(_controller.value);
+      return MarkerLayer(
+        markers: widget.shares.map((share) {
+          final point = _interpolate(
+            _from[share.userId]!,
+            _to[share.userId]!,
+            progress,
+          );
+          final member = widget.members
+              .where((item) => item.userId == share.userId)
+              .firstOrNull;
+          final name = share.userId == widget.currentUserId
+              ? 'You'
+              : member?.displayName ?? 'Trip member';
+          final selected = share.userId == widget.selectedUserId;
+          return Marker(
+            point: point,
+            width: selected ? 70 : 58,
+            height: selected ? 70 : 58,
+            child: Semantics(
+              label: '$name live location',
+              button: true,
+              child: GestureDetector(
+                onTap: () => widget.onSelected(share),
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Theme.of(context).colorScheme.primary,
+                    border: Border.all(
+                      color: selected ? Colors.white : Colors.white70,
+                      width: selected ? 4 : 3,
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 8,
+                        offset: Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    name.characters.first.toUpperCase(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(growable: false),
+      );
+    },
+  );
+
+  LatLng _interpolate(LatLng start, LatLng end, double progress) => LatLng(
+    start.latitude + (end.latitude - start.latitude) * progress,
+    start.longitude + (end.longitude - start.longitude) * progress,
+  );
 }
 
 class _LocationCard extends StatelessWidget {
@@ -115,11 +348,15 @@ class _LocationCard extends StatelessWidget {
     required this.share,
     required this.member,
     required this.isCurrentUser,
+    required this.isSelected,
+    required this.onSelected,
   });
 
   final SharedLiveLocation share;
   final CollaborationMember? member;
   final bool isCurrentUser;
+  final bool isSelected;
+  final VoidCallback onSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -129,49 +366,56 @@ class _LocationCard extends StatelessWidget {
         ? member!.displayName!
         : 'Trip member';
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  foregroundImage: member?.profilePhotoUrl == null
-                      ? null
-                      : NetworkImage(member!.profilePhotoUrl!),
-                  child: member?.profilePhotoUrl == null
-                      ? Text(name.characters.first.toUpperCase())
-                      : null,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      Text(
-                        'Updated ${_relativeTime(share.recordedAt)} · '
-                        'accurate to about ${share.accuracy.round()} m',
-                      ),
-                    ],
+      color: isSelected
+          ? Theme.of(context).colorScheme.primaryContainer
+          : null,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onSelected,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    foregroundImage: member?.profilePhotoUrl == null
+                        ? null
+                        : NetworkImage(member!.profilePhotoUrl!),
+                    child: member?.profilePhotoUrl == null
+                        ? Text(name.characters.first.toUpperCase())
+                        : null,
                   ),
-                ),
-                const Icon(Icons.location_on, color: Colors.green),
-              ],
-            ),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () => _openMaps(context),
-                icon: const Icon(Icons.map_outlined),
-                label: const Text('Open in Maps'),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        Text(
+                          'Updated ${_relativeTime(share.recordedAt)} · '
+                          'accurate to about ${share.accuracy.round()} m',
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.location_on, color: Colors.green),
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => _openMaps(context),
+                  icon: const Icon(Icons.map_outlined),
+                  label: const Text('Open in Maps'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

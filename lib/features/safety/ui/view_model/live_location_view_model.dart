@@ -61,8 +61,8 @@ class LiveLocationViewModel extends Notifier<LiveLocationState> {
     state = state.copyWith(isStarting: true, clearError: true);
     try {
       final service = ref.read(locationServiceProvider);
-      await service.requestPermission();
-      final firstLocation = await service.watchLocation().first;
+      await service.requestPermission(background: true);
+      final firstLocation = await service.getCurrentLocation();
       final selectedTrip = state.trips.firstWhere((trip) => trip.id == tripId);
       final tripExpiry = DateTime(
         selectedTrip.endDate.year,

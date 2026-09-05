@@ -42,6 +42,18 @@ class LiveLocationScreen extends ConsumerWidget {
                         'Your selected trip group can see your latest location until you stop sharing or the timer expires.',
                         style: AppTheme.body14,
                       ),
+                      const SizedBox(height: 12),
+                      const Card(
+                        child: ListTile(
+                          leading: Icon(Icons.notifications_active_outlined),
+                          title: Text('Background sharing'),
+                          subtitle: Text(
+                            'GoBuddy shows a sharing notification or system '
+                            'location indicator while location sharing remains '
+                            'active with the screen locked.',
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 24),
                       if (state.trips.isEmpty)
                         const Card(
@@ -115,7 +127,15 @@ class LiveLocationScreen extends ConsumerWidget {
                           ),
                         ] else
                           FilledButton.icon(
-                            onPressed: state.isStarting ? null : viewModel.startSharing,
+                            onPressed: state.isStarting
+                                ? null
+                                : () async {
+                                    if (await _confirmBackgroundSharing(
+                                      context,
+                                    )) {
+                                      await viewModel.startSharing();
+                                    }
+                                  },
                             icon: state.isStarting
                                 ? const SizedBox.square(
                                     dimension: 18,
@@ -139,5 +159,34 @@ class LiveLocationScreen extends ConsumerWidget {
     if (duration == untilTripEndsDuration) return 'Until trip ends';
     if (duration.inMinutes < 60) return '${duration.inMinutes} minutes';
     return '${duration.inHours} hour${duration.inHours == 1 ? '' : 's'}';
+  }
+
+  static Future<bool> _confirmBackgroundSharing(
+    BuildContext context,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.location_on_outlined),
+        title: const Text('Allow background location?'),
+        content: const Text(
+          'To keep your trip group updated when your screen is locked or you '
+          'use another app, choose precise location and "Allow all the time". '
+          'A visible system notification or location indicator will remain '
+          'while sharing is active.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -103,20 +105,65 @@ class SupabaseLiveLocationRepository implements LiveLocationRepository {
   }
 
   @override
-  Stream<List<SharedLiveLocation>> watchTripShares(String tripId) => _client
-      .from('live_location_shares')
-      .stream(primaryKey: ['id'])
-      .eq('trip_id', tripId)
-      .eq('is_active', true)
-      .map((rows) {
-        final now = DateTime.now();
-        final shares = rows
-            .map(SharedLiveLocation.fromMap)
-            .where((share) => share.isActiveAt(now))
-            .toList(growable: false)
-          ..sort((a, b) => b.recordedAt.compareTo(a.recordedAt));
-        return shares;
-      });
+  Stream<List<SharedLiveLocation>> watchTripShares(String tripId) {
+    final realtime = _client
+        .from('live_location_shares')
+        .stream(primaryKey: ['id'])
+        .eq('trip_id', tripId)
+        .eq('is_active', true)
+        .map(_activeShares);
+    StreamSubscription<List<SharedLiveLocation>>? subscription;
+    Timer? refreshTimer;
+    var refreshInProgress = false;
+    late final StreamController<List<SharedLiveLocation>> controller;
+
+    Future<void> refresh() async {
+      if (refreshInProgress || controller.isClosed) return;
+      refreshInProgress = true;
+      try {
+        final rows = await _client
+            .from('live_location_shares')
+            .select()
+            .eq('trip_id', tripId)
+            .eq('is_active', true);
+        if (!controller.isClosed) controller.add(_activeShares(rows));
+      } catch (error, stackTrace) {
+        if (!controller.isClosed) controller.addError(error, stackTrace);
+      } finally {
+        refreshInProgress = false;
+      }
+    }
+
+    controller = StreamController<List<SharedLiveLocation>>(
+      onListen: () {
+        subscription = realtime.listen(
+          controller.add,
+          onError: controller.addError,
+        );
+        // Re-query periodically as a fallback for mobile networks that miss a
+        // realtime event while reconnecting.
+        refreshTimer = Timer.periodic(
+          const Duration(seconds: 10),
+          (_) => unawaited(refresh()),
+        );
+      },
+      onCancel: () async {
+        refreshTimer?.cancel();
+        await subscription?.cancel();
+      },
+    );
+    return controller.stream;
+  }
+
+  List<SharedLiveLocation> _activeShares(List<Map<String, dynamic>> rows) {
+    final now = DateTime.now();
+    final shares = rows
+        .map(SharedLiveLocation.fromMap)
+        .where((share) => share.isActiveAt(now))
+        .toList(growable: false)
+      ..sort((a, b) => b.recordedAt.compareTo(a.recordedAt));
+    return shares;
+  }
 
   void _requireUser(String userId) {
     if (_currentUserId() != userId) {

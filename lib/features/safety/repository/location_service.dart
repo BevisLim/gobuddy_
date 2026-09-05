@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -8,7 +9,7 @@ final locationServiceProvider = Provider<LocationService>(
 );
 
 abstract interface class LocationService {
-  Future<void> requestPermission();
+  Future<void> requestPermission({bool background = false});
   Future<LocationData> getCurrentLocation();
   Stream<LocationData> watchLocation();
 }
@@ -26,7 +27,7 @@ class GeolocatorLocationService implements LocationService {
   const GeolocatorLocationService();
 
   @override
-  Future<void> requestPermission() async {
+  Future<void> requestPermission({bool background = false}) async {
     if (!await Geolocator.isLocationServiceEnabled()) {
       throw const LocationServiceException(
         'Turn on your device location service and try again.',
@@ -47,6 +48,16 @@ class GeolocatorLocationService implements LocationService {
         'Location permission is disabled. Allow it in app settings.',
         openSettings: true,
       );
+    }
+    if (background && permission == LocationPermission.whileInUse) {
+      permission = await Geolocator.requestPermission();
+      if (permission != LocationPermission.always) {
+        throw const LocationServiceException(
+          'Choose "Allow all the time" in location settings so your trip '
+          'group can see updates while your screen is locked.',
+          openSettings: true,
+        );
+      }
     }
   }
 
@@ -74,11 +85,41 @@ class GeolocatorLocationService implements LocationService {
 
   @override
   Stream<LocationData> watchLocation() => Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          distanceFilter: 10,
-        ),
+        locationSettings: _liveLocationSettings(),
       ).map(_toLocationData);
+
+  LocationSettings _liveLocationSettings() {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return AndroidSettings(
+        accuracy: LocationAccuracy.best,
+        distanceFilter: 3,
+        intervalDuration: Duration(seconds: 5),
+        foregroundNotificationConfig: ForegroundNotificationConfig(
+          notificationTitle: 'Live location sharing is on',
+          notificationText:
+              'GoBuddy is sharing your location with your trip group.',
+          notificationChannelName: 'Live location sharing',
+          enableWakeLock: true,
+          setOngoing: true,
+        ),
+      );
+    }
+    if (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      return AppleSettings(
+        accuracy: LocationAccuracy.best,
+        activityType: ActivityType.fitness,
+        distanceFilter: 3,
+        pauseLocationUpdatesAutomatically: false,
+        allowBackgroundLocationUpdates: true,
+        showBackgroundLocationIndicator: true,
+      );
+    }
+    return const LocationSettings(
+      accuracy: LocationAccuracy.best,
+      distanceFilter: 3,
+    );
+  }
 
   LocationData _toLocationData(Position position) => LocationData(
         latitude: position.latitude,

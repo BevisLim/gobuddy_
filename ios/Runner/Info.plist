@@ -4,6 +4,14 @@
 <dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>GoBuddy uses your location while you share it with your trip group.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>GoBuddy shares your live location with your selected trip group while the app is in the background or your screen is locked.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>GoBuddy shares your live location with your selected trip group while the app is in the background or your screen is locked.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>GoBuddy uses your camera for profile photos, video calls, and sharing photos with your trip group.</string>
 	<key>NSMicrophoneUsageDescription</key>
