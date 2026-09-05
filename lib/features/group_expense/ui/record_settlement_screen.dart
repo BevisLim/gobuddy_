@@ -71,7 +71,21 @@ class _RecordSettlementScreenState
             onRetry: () => ref.invalidate(provider),
           ),
           data: (state) {
+            final memberIds = state.travellers.map((item) => item.userId);
+            if (memberIds.toSet().length != state.travellers.length) {
+              return LoadErrorState(
+                message: 'Unable to load a valid trip member roster.',
+                onRetry: () => ref.invalidate(provider),
+              );
+            }
+            if (!memberIds.contains(state.currentUserId)) {
+              return LoadErrorState(
+                message: 'You must be a trip member to record a settlement.',
+                onRetry: () => ref.invalidate(provider),
+              );
+            }
             _initialize(state);
+            _ensureValidSelections(state);
             final outstanding = _payerId == null || _payeeId == null
                 ? 0.0
                 : state.outstandingFor(_payerId!, _payeeId!);
@@ -86,15 +100,17 @@ class _RecordSettlementScreenState
                       color: const Color(0xFFF59E0B).withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Row(children: [
-                      Icon(Icons.warning_amber, color: Color(0xFFF59E0B)),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Payment happens outside GoBuddy. Record it here only after arranging payment.',
+                    child: const Row(
+                      children: [
+                        Icon(Icons.warning_amber, color: Color(0xFFF59E0B)),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Payment happens outside GoBuddy. Record it here only after arranging payment.',
+                          ),
                         ),
-                      ),
-                    ]),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 18),
                   if (state.errorMessage != null) ...[
@@ -112,13 +128,15 @@ class _RecordSettlementScreenState
                       helperText: 'You are submitting this payment',
                     ),
                     items: state.travellers
-                        .map((item) => DropdownMenuItem(
-                              value: item.userId,
-                              child: Text(
-                                item.displayName,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ))
+                        .map(
+                          (item) => DropdownMenuItem(
+                            value: item.userId,
+                            child: Text(
+                              item.displayName,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
                         .toList(growable: false),
                     onChanged: null,
                   ),
@@ -130,13 +148,15 @@ class _RecordSettlementScreenState
                     decoration: const InputDecoration(labelText: 'Payee *'),
                     items: state.travellers
                         .where((item) => item.userId != _payerId)
-                        .map((item) => DropdownMenuItem(
-                              value: item.userId,
-                              child: Text(
-                                item.displayName,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ))
+                        .map(
+                          (item) => DropdownMenuItem(
+                            value: item.userId,
+                            child: Text(
+                              item.displayName,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
                         .toList(growable: false),
                     onChanged: (value) => setState(() {
                       _payeeId = value;
@@ -152,23 +172,26 @@ class _RecordSettlementScreenState
                       color: const Color(0xFFF7F4FD),
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: Row(children: [
-                      const Expanded(child: Text('Outstanding Amount')),
-                      Text(
-                        MoneyUtils.formatCurrency(
-                          outstanding,
-                          currency: state.currency,
+                    child: Row(
+                      children: [
+                        const Expanded(child: Text('Outstanding Amount')),
+                        Text(
+                          MoneyUtils.formatCurrency(
+                            outstanding,
+                            currency: state.currency,
+                          ),
+                          style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                    ]),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 16),
                   AppTextField(
                     label: 'Settlement Amount *',
                     controller: _amount,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     validator: (value) =>
                         ExpenseFormValidation.amount(value ?? ''),
                   ),
@@ -176,11 +199,16 @@ class _RecordSettlementScreenState
                   DropdownButtonFormField<String>(
                     initialValue: _paymentMethod,
                     isExpanded: true,
-                    decoration:
-                        const InputDecoration(labelText: 'Payment Method *'),
+                    decoration: const InputDecoration(
+                      labelText: 'Payment Method *',
+                    ),
                     items: ExpenseConstants.paymentMethods
-                        .map((method) => DropdownMenuItem(
-                            value: method, child: Text(method)))
+                        .map(
+                          (method) => DropdownMenuItem(
+                            value: method,
+                            child: Text(method),
+                          ),
+                        )
                         .toList(growable: false),
                     onChanged: (value) =>
                         setState(() => _paymentMethod = value ?? ''),
@@ -195,15 +223,17 @@ class _RecordSettlementScreenState
                       color: const Color(0xFFF7F4FD),
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: const Row(children: [
-                      Icon(Icons.hourglass_top, color: Color(0xFFF59E0B)),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'This submission will remain Pending until the payee confirms receiving it.',
+                    child: const Row(
+                      children: [
+                        Icon(Icons.hourglass_top, color: Color(0xFFF59E0B)),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'This submission will remain Pending until the payee confirms receiving it.',
+                          ),
                         ),
-                      ),
-                    ]),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 8),
                   ListTile(
@@ -213,11 +243,7 @@ class _RecordSettlementScreenState
                     trailing: const Icon(Icons.calendar_month_outlined),
                     onTap: _pickDate,
                   ),
-                  AppTextField(
-                    label: 'Notes',
-                    controller: _notes,
-                    maxLines: 3,
-                  ),
+                  AppTextField(label: 'Notes', controller: _notes, maxLines: 3),
                   const SizedBox(height: 18),
                   _receiptPicker(),
                   const SizedBox(height: 24),
@@ -241,17 +267,34 @@ class _RecordSettlementScreenState
     _initialized = true;
     _payerId = state.currentUserId;
     if (widget.initialPayerId == state.currentUserId) {
-      _payeeId = widget.initialPayeeId;
+      final initialPayeeId = widget.initialPayeeId;
+      if (initialPayeeId != state.currentUserId &&
+          state.travellers.any((item) => item.userId == initialPayeeId)) {
+        _payeeId = initialPayeeId;
+      }
     }
     if (_payeeId == null) {
       for (final suggestion in state.suggestions) {
-        if (suggestion.payerId == state.currentUserId) {
+        if (suggestion.payerId == state.currentUserId &&
+            suggestion.payeeId != state.currentUserId &&
+            state.travellers.any((item) => item.userId == suggestion.payeeId)) {
           _payeeId = suggestion.payeeId;
           break;
         }
       }
     }
     _syncAmount(state);
+  }
+
+  void _ensureValidSelections(SettlementState state) {
+    _payerId = state.currentUserId;
+    final payeeId = _payeeId;
+    if (payeeId == null) return;
+    if (payeeId == state.currentUserId ||
+        !state.travellers.any((item) => item.userId == payeeId)) {
+      _payeeId = null;
+      _amount.clear();
+    }
   }
 
   void _syncAmount(SettlementState state) {
@@ -265,7 +308,9 @@ class _RecordSettlementScreenState
     if (!(_formKey.currentState?.validate() ?? false)) return;
     FocusManager.instance.primaryFocus?.unfocus();
     final provider = settlementViewModelProvider(widget.tripId);
-    final saved = await ref.read(provider.notifier).createSettlement(
+    final saved = await ref
+        .read(provider.notifier)
+        .createSettlement(
           payerId: _payerId,
           payeeId: _payeeId,
           amount: _amount.text,
@@ -285,56 +330,62 @@ class _RecordSettlementScreenState
   }
 
   Widget _receiptPicker() => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Optional Receipt',
-              style: TextStyle(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          if (_receiptPath != null) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: Image.file(
-                File(_receiptPath!),
-                height: 160,
-                width: double.infinity,
-                fit: BoxFit.cover,
-              ),
-            ),
-            TextButton.icon(
-              onPressed: () => setState(() => _receiptPath = null),
-              icon: const Icon(Icons.delete_outline),
-              label: const Text('Remove receipt'),
-            ),
-          ] else
-            OutlinedButton.icon(
-              onPressed: _chooseReceipt,
-              icon: const Icon(Icons.add_a_photo_outlined),
-              label: const Text('Add receipt'),
-            ),
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Text(
+        'Optional Receipt',
+        style: TextStyle(fontWeight: FontWeight.w800),
+      ),
+      const SizedBox(height: 8),
+      if (_receiptPath != null) ...[
+        ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Image.file(
+            File(_receiptPath!),
+            height: 160,
+            width: double.infinity,
+            fit: BoxFit.cover,
+          ),
+        ),
+        TextButton.icon(
+          onPressed: () => setState(() => _receiptPath = null),
+          icon: const Icon(Icons.delete_outline),
+          label: const Text('Remove receipt'),
+        ),
+      ] else
+        OutlinedButton.icon(
+          onPressed: _chooseReceipt,
+          icon: const Icon(Icons.add_a_photo_outlined),
+          label: const Text('Add receipt'),
+        ),
+    ],
+  );
 
   Future<void> _chooseReceipt() async {
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       builder: (context) => SafeArea(
-        child: Wrap(children: [
-          ListTile(
-            leading: const Icon(Icons.camera_alt_outlined),
-            title: const Text('Camera'),
-            onTap: () => Navigator.pop(context, ImageSource.camera),
-          ),
-          ListTile(
-            leading: const Icon(Icons.photo_library_outlined),
-            title: const Text('Gallery'),
-            onTap: () => Navigator.pop(context, ImageSource.gallery),
-          ),
-        ]),
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('Camera'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Gallery'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+          ],
+        ),
       ),
     );
     if (source == null) return;
-    final image =
-        await ImagePicker().pickImage(source: source, imageQuality: 85);
+    final image = await ImagePicker().pickImage(
+      source: source,
+      imageQuality: 85,
+    );
     if (image != null && mounted) setState(() => _receiptPath = image.path);
   }
 

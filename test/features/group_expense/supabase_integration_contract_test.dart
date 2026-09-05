@@ -1,5 +1,6 @@
 import 'package:flutter_mvvm_riverpod/features/group_expense/repository/group_expense_repository_exception.dart';
 import 'package:flutter_mvvm_riverpod/features/group_expense/repository/supabase_receipt_storage_service.dart';
+import 'package:flutter_mvvm_riverpod/features/group_expense/repository/supabase_settlement_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -39,6 +40,19 @@ void main() {
             .having((error) => error.code, 'code', 'unauthorized')
             .having((error) => error.message, 'message',
                 isNot(contains('sensitive'))),
+      ),
+    );
+  });
+
+  test('zero-row settlement delete is not reported as successful', () {
+    expect(
+      () => SupabaseSettlementRepository.requireDeletedSettlement(const []),
+      throwsA(
+        isA<GroupExpenseRepositoryException>().having(
+          (error) => error.code,
+          'code',
+          'delete_failed',
+        ),
       ),
     );
   });
