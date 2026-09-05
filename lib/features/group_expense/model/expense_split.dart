@@ -14,9 +14,9 @@ class ExpenseSplitCalculator {
   ExpenseSplitCalculator._();
 
   static List<ExpenseParticipant> equal({
-    required int expenseId,
+    required String expenseId,
     required double baseAmount,
-    required List<int> userIds,
+    required List<String> userIds,
   }) {
     if (userIds.isEmpty) {
       throw const ExpenseSplitException('Select at least one participant');
@@ -41,14 +41,14 @@ class ExpenseSplitCalculator {
   }
 
   static List<ExpenseParticipant> custom({
-    required int expenseId,
+    required String expenseId,
     required double baseAmount,
-    required Map<int, double> shares,
+    required Map<String, double> shares,
   }) {
     if (shares.isEmpty) {
       throw const ExpenseSplitException('Select at least one participant');
     }
-    if (shares.values.any((share) => share < 0)) {
+    if (shares.values.any((share) => !share.isFinite || share < 0)) {
       throw const ExpenseSplitException('Custom shares cannot be negative');
     }
     final expected = MoneyUtils.toCents(baseAmount);
@@ -71,14 +71,15 @@ class ExpenseSplitCalculator {
   }
 
   static List<ExpenseParticipant> percentage({
-    required int expenseId,
+    required String expenseId,
     required double baseAmount,
-    required Map<int, double> percentages,
+    required Map<String, double> percentages,
   }) {
     if (percentages.isEmpty) {
       throw const ExpenseSplitException('Select at least one participant');
     }
-    if (percentages.values.any((percentage) => percentage < 0)) {
+    if (percentages.values
+        .any((percentage) => !percentage.isFinite || percentage < 0)) {
       throw const ExpenseSplitException('Percentages cannot be negative');
     }
     final percentageTotal = percentages.values.fold<double>(0, (a, b) => a + b);
@@ -86,23 +87,34 @@ class ExpenseSplitCalculator {
       throw const ExpenseSplitException('Percentages must total 100%');
     }
     final totalCents = MoneyUtils.toCents(baseAmount);
-    var assignedCents = 0;
     final entries = percentages.entries.toList(growable: false);
-    return [
+    final allocations = <({int index, int cents, double remainder})>[
       for (var index = 0; index < entries.length; index++)
         (() {
-          final entry = entries[index];
-          final shareCents = index == entries.length - 1
-              ? totalCents - assignedCents
-              : (totalCents * entry.value / 100).round();
-          assignedCents += shareCents;
-          return ExpenseParticipant(
-            expenseId: expenseId,
-            userId: entry.key,
-            shareAmount: MoneyUtils.fromCents(shareCents),
-            sharePercentage: entry.value,
-          );
+          final exact = totalCents * entries[index].value / 100;
+          final cents = exact.floor();
+          return (index: index, cents: cents, remainder: exact - cents);
         })(),
+    ];
+    final centsByIndex = [for (final item in allocations) item.cents];
+    final assignedCents =
+        centsByIndex.fold<int>(0, (total, cents) => total + cents);
+    final remaining = totalCents - assignedCents;
+    final remainderOrder = [...allocations]..sort((left, right) {
+        final order = right.remainder.compareTo(left.remainder);
+        return order != 0 ? order : left.index.compareTo(right.index);
+      });
+    for (var index = 0; index < remaining; index++) {
+      centsByIndex[remainderOrder[index % remainderOrder.length].index]++;
+    }
+    return [
+      for (var index = 0; index < entries.length; index++)
+        ExpenseParticipant(
+          expenseId: expenseId,
+          userId: entries[index].key,
+          shareAmount: MoneyUtils.fromCents(centsByIndex[index]),
+          sharePercentage: entries[index].value,
+        ),
     ];
   }
 

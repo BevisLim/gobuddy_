@@ -4,11 +4,11 @@ import '../model/expense_receipt.dart';
 import '../model/expense_category.dart';
 
 abstract interface class ExpenseRepository {
-  Future<List<Expense>> getExpensesForTrip(int tripId);
+  Future<List<Expense>> getExpensesForTrip(String tripId);
   Future<List<ExpenseCategory>> getCategories();
-  Future<Expense?> getExpenseById(int expenseId);
-  Future<ExpenseReceipt?> getReceipt(int expenseId);
-  Future<int> createExpense({
+  Future<Expense?> getExpenseById(String tripId, String expenseId);
+  Future<ExpenseReceipt?> getReceipt(String tripId, String expenseId);
+  Future<String> createExpense({
     required Expense expense,
     required List<ExpenseParticipant> participants,
     ExpenseReceipt? receipt,
@@ -19,7 +19,10 @@ abstract interface class ExpenseRepository {
     ExpenseReceipt? receipt,
     bool removeReceipt = false,
   });
-  Future<void> deleteExpense(int expenseId);
-  Future<List<ExpenseParticipant>> getParticipants(int expenseId);
-  Future<Map<int, double>> calculateNetExpenseBalances(int tripId);
+  Future<void> deleteExpense(String tripId, String expenseId);
+  Future<List<ExpenseParticipant>> getParticipants(
+    String tripId,
+    String expenseId,
+  );
+  Future<Map<String, double>> calculateNetExpenseBalances(String tripId);
 }

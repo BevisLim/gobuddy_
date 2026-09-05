@@ -189,83 +189,105 @@ final GoRouter router = GoRouter(
           state.navigationPage(const MessagesScreen()),
     ),
     GoRoute(
-      path: Routes.expenseDashboard,
-      pageBuilder: (context, state) =>
-          state.navigationPage(const ExpenseDashboardScreen()),
-    ),
-    GoRoute(
-      path: '${Routes.createBudget}/:tripId',
+      path: '${Routes.trip}/:tripId/messages',
       pageBuilder: (context, state) => state.slidePage(
-        CreateBudgetScreen(tripId: int.parse(state.pathParameters['tripId']!)),
+        GroupCollaborationScreen(
+          tripId: state.pathParameters['tripId']!,
+          knownRemoved: state.uri.queryParameters['removed'] == 'true',
+          initialView: TripWorkspaceView.messages,
+        ),
       ),
     ),
     GoRoute(
-      path: '${Routes.editBudget}/:tripId',
+      path: '${Routes.trip}/:tripId/timeline',
       pageBuilder: (context, state) => state.slidePage(
-        EditBudgetScreen(tripId: int.parse(state.pathParameters['tripId']!)),
+        GroupCollaborationScreen(
+          tripId: state.pathParameters['tripId']!,
+          initialView: TripWorkspaceView.timeline,
+        ),
       ),
     ),
     GoRoute(
-      path: '${Routes.addExpense}/:tripId',
-      pageBuilder: (context, state) => state.slidePage(
-        AddExpenseScreen(tripId: int.parse(state.pathParameters['tripId']!)),
+      path: '${Routes.messages}/:tripId',
+      redirect: (context, state) =>
+          Routes.tripMessages(state.pathParameters['tripId']!),
+    ),
+    GoRoute(
+      path: '${Routes.trips}/:tripId/timeline',
+      redirect: (context, state) =>
+          Routes.tripTimeline(state.pathParameters['tripId']!),
+    ),
+    GoRoute(
+      path: '${Routes.groupExpense}/:tripId',
+      pageBuilder: (context, state) => state.navigationPage(
+        ExpenseDashboardScreen(tripId: state.pathParameters['tripId']!),
       ),
     ),
     GoRoute(
-      path: '${Routes.expenseDetails}/:tripId/:expenseId',
+      path: '${Routes.groupExpense}/:tripId/${Routes.createBudget}',
+      pageBuilder: (context, state) => state.slidePage(
+        CreateBudgetScreen(tripId: state.pathParameters['tripId']!),
+      ),
+    ),
+    GoRoute(
+      path: '${Routes.groupExpense}/:tripId/${Routes.editBudget}',
+      pageBuilder: (context, state) => state.slidePage(
+        EditBudgetScreen(tripId: state.pathParameters['tripId']!),
+      ),
+    ),
+    GoRoute(
+      path: '${Routes.groupExpense}/:tripId/${Routes.addExpense}',
+      pageBuilder: (context, state) => state.slidePage(
+        AddExpenseScreen(tripId: state.pathParameters['tripId']!),
+      ),
+    ),
+    GoRoute(
+      path:
+          '${Routes.groupExpense}/:tripId/${Routes.expenseDetails}/:expenseId',
       pageBuilder: (context, state) => state.slidePage(
         ExpenseDetailsScreen(
-          tripId: int.parse(state.pathParameters['tripId']!),
-          expenseId: int.parse(state.pathParameters['expenseId']!),
+          tripId: state.pathParameters['tripId']!,
+          expenseId: state.pathParameters['expenseId']!,
           initialSuccessMessage: state.uri.queryParameters['message'],
         ),
       ),
     ),
     GoRoute(
-      path: '${Routes.editExpense}/:tripId/:expenseId',
+      path:
+          '${Routes.groupExpense}/:tripId/${Routes.expenseDetails}/:expenseId/${Routes.editExpense}',
       pageBuilder: (context, state) => state.slidePage(
         EditExpenseScreen(
-          tripId: int.parse(state.pathParameters['tripId']!),
-          expenseId: int.parse(state.pathParameters['expenseId']!),
+          tripId: state.pathParameters['tripId']!,
+          expenseId: state.pathParameters['expenseId']!,
         ),
       ),
     ),
     GoRoute(
-      path: '${Routes.outstandingBalance}/:tripId',
+      path: '${Routes.groupExpense}/:tripId/${Routes.outstandingBalance}',
       pageBuilder: (context, state) => state.slidePage(
-        OutstandingBalanceScreen(
-          tripId: int.parse(state.pathParameters['tripId']!),
-        ),
+        OutstandingBalanceScreen(tripId: state.pathParameters['tripId']!),
       ),
     ),
     GoRoute(
-      path: '${Routes.recordSettlement}/:tripId',
+      path: '${Routes.groupExpense}/:tripId/${Routes.recordSettlement}',
       pageBuilder: (context, state) => state.slidePage(
         RecordSettlementScreen(
-          tripId: int.parse(state.pathParameters['tripId']!),
-          initialPayerId: int.tryParse(
-            state.uri.queryParameters['payerId'] ?? '',
-          ),
-          initialPayeeId: int.tryParse(
-            state.uri.queryParameters['payeeId'] ?? '',
-          ),
+          tripId: state.pathParameters['tripId']!,
+          initialPayerId: state.uri.queryParameters['payerId'],
+          initialPayeeId: state.uri.queryParameters['payeeId'],
         ),
       ),
     ),
     GoRoute(
-      path: '${Routes.settlementHistory}/:tripId',
+      path: '${Routes.groupExpense}/:tripId/${Routes.settlementHistory}',
       pageBuilder: (context, state) => state.slidePage(
-        SettlementHistoryScreen(
-          tripId: int.parse(state.pathParameters['tripId']!),
-        ),
+        SettlementHistoryScreen(tripId: state.pathParameters['tripId']!),
       ),
     ),
     GoRoute(
-      path: '${Routes.budgetAnalytics}/:tripId',
+      path: '${Routes.groupExpense}/:tripId/${Routes.budgetAnalytics}',
       pageBuilder: (context, state) => state.slidePage(
-        BudgetAnalyticsScreen(
-          tripId: int.parse(state.pathParameters['tripId']!),
-        ),
+        BudgetAnalyticsScreen(tripId: state.pathParameters['tripId']!),
       ),
     ),
     GoRoute(
@@ -340,7 +362,11 @@ final GoRouter router = GoRouter(
         final tripId = state.uri.queryParameters['tripId'] ?? '';
         final knownRemoved = state.uri.queryParameters['removed'] == 'true';
         return state.slidePage(
-          GroupCollaborationScreen(tripId: tripId, knownRemoved: knownRemoved),
+          GroupCollaborationScreen(
+            tripId: tripId,
+            knownRemoved: knownRemoved,
+            initialView: TripWorkspaceView.messages,
+          ),
         );
       },
     ),

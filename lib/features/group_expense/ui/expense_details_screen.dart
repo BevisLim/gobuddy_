@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,6 +8,7 @@ import '../model/money_utils.dart';
 import 'view_model/expense_view_model.dart';
 import 'widgets/budget_feedback_panel.dart';
 import 'widgets/load_error_state.dart';
+import 'widgets/receipt_image.dart';
 import 'widgets/group_expense_app_bar.dart';
 
 class ExpenseDetailsScreen extends ConsumerWidget {
@@ -20,8 +19,8 @@ class ExpenseDetailsScreen extends ConsumerWidget {
     this.initialSuccessMessage,
   });
 
-  final int tripId;
-  final int expenseId;
+  final String tripId;
+  final String expenseId;
   final String? initialSuccessMessage;
 
   @override
@@ -36,17 +35,18 @@ class ExpenseDetailsScreen extends ConsumerWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Expense deleted successfully.')),
         );
-        context.go(Routes.expenseDashboard);
+        context.go('${Routes.groupExpense}/$tripId');
       }
     });
     return Scaffold(
       appBar: GroupExpenseAppBar(
         title: 'Expense Details',
+        fallbackRoute: '${Routes.groupExpense}/$tripId',
         actions: [
           IconButton(
             tooltip: 'Edit expense',
             onPressed: () => context.push(
-              '${Routes.editExpense}/$tripId/$expenseId',
+              '${Routes.groupExpense}/$tripId/${Routes.expenseDetails}/$expenseId/${Routes.editExpense}',
             ),
             icon: const Icon(Icons.edit_outlined),
           ),
@@ -136,7 +136,10 @@ class ExpenseDetailsScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 20),
-                _DetailRow(label: 'Paid by', value: payer?.name ?? 'Unknown'),
+                _DetailRow(
+                  label: 'Paid by',
+                  value: payer?.displayName ?? 'Unknown',
+                ),
                 _DetailRow(
                   label: 'Date',
                   value: ExpenseDateUtils.formatDate(expense.expenseDate),
@@ -154,7 +157,7 @@ class ExpenseDetailsScreen extends ConsumerWidget {
                     contentPadding: EdgeInsets.zero,
                     leading:
                         const CircleAvatar(child: Icon(Icons.person_outline)),
-                    title: Text(traveller?.name ?? 'Traveller'),
+                    title: Text(traveller?.displayName ?? 'Traveller'),
                     subtitle: participant.sharePercentage == null
                         ? null
                         : Text(
@@ -175,16 +178,7 @@ class ExpenseDetailsScreen extends ConsumerWidget {
                   const SizedBox(height: 8),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(18),
-                    child: Image.file(
-                      File(state.receipt!.imagePath),
-                      height: 220,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const SizedBox(
-                        height: 100,
-                        child:
-                            Center(child: Text('Receipt preview unavailable')),
-                      ),
-                    ),
+                    child: ReceiptImage(path: state.receipt!.imagePath),
                   ),
                 ],
               ],

@@ -11,8 +11,8 @@ class BalanceState {
     this.suggestions = const [],
   });
 
-  final int tripId;
-  final int currentUserId;
+  final String tripId;
+  final String currentUserId;
   final String currency;
   final String tripName;
   final List<TravellerBalance> balances;
@@ -37,7 +37,7 @@ class BalanceState {
 
   double get net => currentUserBalance?.netBalance ?? 0;
 
-  String travellerName(int userId) {
+  String travellerName(String userId) {
     for (final balance in balances) {
       if (balance.userId == userId) return balance.name;
     }

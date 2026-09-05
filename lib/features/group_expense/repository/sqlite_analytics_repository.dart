@@ -4,13 +4,14 @@ import '../model/category_spending.dart';
 import '../model/spending_trend_point.dart';
 import 'analytics_repository.dart';
 
+/// Legacy local/test adapter. Production wiring uses SupabaseAnalyticsRepository.
 class SqliteAnalyticsRepository implements AnalyticsRepository {
   const SqliteAnalyticsRepository(this.database);
 
   final Database database;
 
   @override
-  Future<List<CategorySpending>> getCategorySpending(int tripId) async {
+  Future<List<CategorySpending>> getCategorySpending(String tripId) async {
     final rows = await database.rawQuery('''
       SELECT category.category_id, category.name, category.icon_name,
              SUM(expense.base_amount) AS amount
@@ -34,7 +35,7 @@ class SqliteAnalyticsRepository implements AnalyticsRepository {
   }
 
   @override
-  Future<List<SpendingTrendPoint>> getSpendingTrend(int tripId) async {
+  Future<List<SpendingTrendPoint>> getSpendingTrend(String tripId) async {
     final rows = await database.rawQuery('''
       SELECT substr(expense_date, 1, 10) AS spending_date,
              SUM(base_amount) AS amount

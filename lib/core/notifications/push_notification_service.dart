@@ -47,26 +47,27 @@ class PushNotificationService {
     if (_initialized || !_isSupported) return;
     _initialized = true;
 
-    const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     final iosSettings = DarwinInitializationSettings(
       notificationCategories: [
         DarwinNotificationCategory(
           'safety_check_in',
-          actions: [
-            DarwinNotificationAction.plain(_checkInAction, "I'm safe"),
-          ],
+          actions: [DarwinNotificationAction.plain(_checkInAction, "I'm safe")],
         ),
       ],
     );
     await _localNotifications.initialize(
-      settings:
-          InitializationSettings(android: androidSettings, iOS: iosSettings),
+      settings: InitializationSettings(
+        android: androidSettings,
+        iOS: iosSettings,
+      ),
       onDidReceiveNotificationResponse: handleNotificationResponse,
       onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
     );
-    final launchDetails =
-        await _localNotifications.getNotificationAppLaunchDetails();
+    final launchDetails = await _localNotifications
+        .getNotificationAppLaunchDetails();
     final launchResponse = launchDetails?.notificationResponse;
     if (launchDetails?.didNotificationLaunchApp == true &&
         launchResponse != null) {
@@ -84,7 +85,8 @@ class PushNotificationService {
     );
     await _localNotifications
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.createNotificationChannel(channel);
     const safetyChannel = AndroidNotificationChannel(
       'gobuddy_safety_check_ins',
@@ -94,8 +96,22 @@ class PushNotificationService {
     );
     await _localNotifications
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.createNotificationChannel(safetyChannel);
+    const callChannel = AndroidNotificationChannel(
+      'gobuddy_incoming_calls',
+      'Incoming group calls',
+      description: 'Ringing alerts for GoBuddy voice and video calls',
+      importance: Importance.max,
+      playSound: true,
+      enableVibration: true,
+    );
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.createNotificationChannel(callChannel);
 
     // Ask once during app startup because notifications are also used by
     // non-safety features. The operating system will not display the prompt
@@ -112,19 +128,23 @@ class PushNotificationService {
     if (!Env.hasSupabase) return;
 
     await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform);
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
     FirebaseMessaging.onMessage.listen(_showForegroundNotification);
     FirebaseMessaging.onMessageOpenedApp.listen(_openRemoteMessage);
     final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
     if (initialMessage != null) {
-      Future<void>.delayed(const Duration(milliseconds: 500),
-          () => _openRemoteMessage(initialMessage));
+      Future<void>.delayed(
+        const Duration(milliseconds: 500),
+        () => _openRemoteMessage(initialMessage),
+      );
     }
 
-    _tokenSubscription =
-        FirebaseMessaging.instance.onTokenRefresh.listen(_registerToken);
+    _tokenSubscription = FirebaseMessaging.instance.onTokenRefresh.listen(
+      _registerToken,
+    );
     _authSubscription = supabase.auth.onAuthStateChange.listen((event) {
       if (event.session != null) unawaited(_registerCurrentToken());
     });
@@ -137,7 +157,8 @@ class PushNotificationService {
     if (Platform.isAndroid) {
       return await _localNotifications
               .resolvePlatformSpecificImplementation<
-                  AndroidFlutterLocalNotificationsPlugin>()
+                AndroidFlutterLocalNotificationsPlugin
+              >()
               ?.requestNotificationsPermission() ??
           true;
     }
@@ -161,15 +182,16 @@ class PushNotificationService {
     await _localNotifications.cancel(id: _localCheckInNotificationId);
     if (!configuration.enabled) return true;
 
-    if (requestAlarmPermissions &&
-        !await requestNotificationPermission()) {
+    if (requestAlarmPermissions && !await requestNotificationPermission()) {
       return false;
     }
 
     var scheduleMode = AndroidScheduleMode.inexactAllowWhileIdle;
     if (Platform.isAndroid) {
-      final android = _localNotifications.resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
+      final android = _localNotifications
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
       if (requestAlarmPermissions) {
         await android?.requestExactAlarmsPermission();
         await android?.requestFullScreenIntentPermission();
@@ -183,9 +205,7 @@ class PushNotificationService {
       id: _localCheckInNotificationId,
       title: 'Safety check-in',
       body: 'Are you safe? Tap to confirm your safety.',
-      repeatDurationInterval: Duration(
-        minutes: configuration.intervalMinutes,
-      ),
+      repeatDurationInterval: Duration(minutes: configuration.intervalMinutes),
       notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(
           _localCheckInChannelId,
@@ -235,10 +255,13 @@ class PushNotificationService {
 
   static Future<void> _registerToken(String token) async {
     if (supabase.auth.currentUser == null) return;
-    await supabase.rpc('register_push_device', params: {
-      'p_token': token,
-      'p_platform': Platform.isIOS ? 'ios' : 'android',
-    });
+    await supabase.rpc(
+      'register_push_device',
+      params: {
+        'p_token': token,
+        'p_platform': Platform.isIOS ? 'ios' : 'android',
+      },
+    );
   }
 
   static Future<void> unregisterCurrentDevice() async {
@@ -252,8 +275,14 @@ class PushNotificationService {
   static Future<void> _showForegroundNotification(RemoteMessage message) async {
     if (message.data['type'] == 'safety_check_in') {
       await _showCheckInNotification(message);
-      _openCheckIn(message.data['check_in_id'] as String?,
-          message.data['trip_id'] as String?);
+      _openCheckIn(
+        message.data['check_in_id'] as String?,
+        message.data['trip_id'] as String?,
+      );
+      return;
+    }
+    if (message.data['type'] == 'incoming_call') {
+      await _showIncomingCallNotification(message);
       return;
     }
     final notification = message.notification;
@@ -276,6 +305,43 @@ class PushNotificationService {
     );
   }
 
+  static Future<void> _showIncomingCallNotification(
+    RemoteMessage message,
+  ) async {
+    await _localNotifications.show(
+      id: message.messageId.hashCode,
+      title: message.notification?.title ?? 'Incoming GoBuddy group call',
+      body: message.notification?.body ?? 'A trip member is calling.',
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'gobuddy_incoming_calls',
+          'Incoming group calls',
+          channelDescription: 'Ringing alerts for voice and video calls',
+          importance: Importance.max,
+          priority: Priority.max,
+          category: AndroidNotificationCategory.call,
+          fullScreenIntent: true,
+          playSound: true,
+          enableVibration: true,
+          audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+          visibility: NotificationVisibility.public,
+          timeoutAfter: 30000,
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentSound: true,
+          interruptionLevel: InterruptionLevel.timeSensitive,
+        ),
+      ),
+      payload: jsonEncode({
+        'type': 'incoming_call',
+        'trip_id': message.data['trip_id'],
+        'call_id': message.data['call_id'],
+        'call_type': message.data['call_type'],
+      }),
+    );
+  }
+
   static Future<void> _showCheckInNotification(RemoteMessage message) async {
     final payload = jsonEncode({
       'type': 'safety_check_in',
@@ -285,7 +351,8 @@ class PushNotificationService {
     await _localNotifications.show(
       id: message.messageId.hashCode,
       title: message.notification?.title ?? 'Safety check-in',
-      body: message.notification?.body ??
+      body:
+          message.notification?.body ??
           'Are you safe? Please respond within 15 minutes.',
       notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(
@@ -312,7 +379,8 @@ class PushNotificationService {
   }
 
   static Future<void> handleNotificationResponse(
-      NotificationResponse response) async {
+    NotificationResponse response,
+  ) async {
     final payload = response.payload;
     if (payload == null || payload.isEmpty) return;
     Map<String, dynamic>? data;
@@ -320,6 +388,10 @@ class PushNotificationService {
       data = Map<String, dynamic>.from(jsonDecode(payload) as Map);
     } catch (_) {
       _openTrip(payload);
+      return;
+    }
+    if (data['type'] == 'incoming_call') {
+      _openTrip(data['trip_id'] as String?);
       return;
     }
     if (data['type'] != 'safety_check_in') return;
@@ -330,24 +402,27 @@ class PushNotificationService {
     }
     if (response.actionId == _checkInAction && checkInId != null) {
       try {
-        await SupabaseSafetyCheckInRepository(supabase)
-            .respond(checkInId, SafetyCheckInStatus.safe);
+        await SupabaseSafetyCheckInRepository(
+          supabase,
+        ).respond(checkInId, SafetyCheckInStatus.safe);
         return;
       } catch (_) {
         // Open the prompt so the user can retry if the direct action failed.
       }
     }
-    _openCheckIn(
-      checkInId,
-      data['trip_id'] as String?,
-      localOnly: isLocal,
-    );
+    _openCheckIn(checkInId, data['trip_id'] as String?, localOnly: isLocal);
   }
 
   static void _openRemoteMessage(RemoteMessage message) {
     if (message.data['type'] == 'safety_check_in') {
-      _openCheckIn(message.data['check_in_id'] as String?,
-          message.data['trip_id'] as String?);
+      _openCheckIn(
+        message.data['check_in_id'] as String?,
+        message.data['trip_id'] as String?,
+      );
+      return;
+    }
+    if (message.data['type'] == 'incoming_call') {
+      _openTrip(message.data['trip_id'] as String?);
       return;
     }
     _openTrip(message.data['trip_id'] as String?);
@@ -373,7 +448,7 @@ class PushNotificationService {
 
   static void _openTrip(String? tripId) {
     if (tripId == null || tripId.isEmpty) return;
-    router.go('${Routes.groupCollaboration}?tripId=$tripId');
+    router.go(Routes.tripMessages(tripId));
   }
 
   static Future<void> dispose() async {

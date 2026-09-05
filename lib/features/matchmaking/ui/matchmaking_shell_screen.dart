@@ -141,13 +141,14 @@ class _MatchmakingShellScreenState
             (trip.isOwned || state.joinedTripIds.contains(trip.id)),
       );
       final now = DateTime.now();
-      final startedTrips = involvedTrips
-          .where(
-            (trip) =>
-                !trip.startsAt.isAfter(now) && now.isBefore(trip.endsAfter),
-          )
-          .toList()
-        ..sort((a, b) => a.startsAt.compareTo(b.startsAt));
+      final startedTrips =
+          involvedTrips
+              .where(
+                (trip) =>
+                    !trip.startsAt.isAfter(now) && now.isBefore(trip.endsAfter),
+              )
+              .toList()
+            ..sort((a, b) => a.startsAt.compareTo(b.startsAt));
       final preferences = await SharedPreferences.getInstance();
 
       for (final trip in startedTrips) {
@@ -172,9 +173,7 @@ class _MatchmakingShellScreenState
       if (nextStart != null && mounted) {
         _tripStartTimer = Timer(
           nextStart.difference(DateTime.now()),
-          () => _syncTripStartPrompts(
-            ref.read(matchmakingViewModelProvider),
-          ),
+          () => _syncTripStartPrompts(ref.read(matchmakingViewModelProvider)),
         );
       }
     } finally {
@@ -297,10 +296,8 @@ class _MatchmakingShellScreenState
             state.joinedTripIds.contains(state.selectedTrip!.id),
         onBack: () => viewModel.goTo(MatchmakingPage.discover),
         onRequest: () => viewModel.goTo(MatchmakingPage.request),
-        onOpenGroup: () => context.push(
-          '${Routes.groupCollaboration}?tripId='
-          '${Uri.encodeQueryComponent(state.selectedTrip!.id)}',
-        ),
+        onOpenGroup: () =>
+            context.push(Routes.tripTimeline(state.selectedTrip!.id)),
       ),
       MatchmakingPage.create => InteractiveTripFormPage(
         hostedTrips: state.ownedTrips,
@@ -331,9 +328,7 @@ class _MatchmakingShellScreenState
         onRemoveHosted: viewModel.deleteTrip,
         onLeaveTrip: viewModel.leaveTrip,
         onDismissRemovedTrip: viewModel.dismissRemovedTrip,
-        onOpenGroup: (id) => context.push(
-          '${Routes.groupCollaboration}?tripId=${Uri.encodeQueryComponent(id)}',
-        ),
+        onOpenTimeline: (id) => context.push(Routes.tripTimeline(id)),
         onRemoveRequest: viewModel.removeRequest,
       ),
       MatchmakingPage.request => RequestPage(
@@ -411,7 +406,7 @@ class _MatchmakingShellScreenState
                   case 2:
                     context.go(Routes.messages);
                   case 3:
-                    context.go(Routes.expenseDashboard);
+                    _showExpenseTripPicker(state.groupTrips);
                   default:
                     context.push(Routes.userAccount);
                 }
@@ -429,6 +424,50 @@ class _MatchmakingShellScreenState
             )
           : null,
     );
+  }
+
+  Future<void> _showExpenseTripPicker(List<MatchmakingTrip> trips) async {
+    if (trips.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Create or join a trip before adding expenses.'),
+          ),
+        );
+      return;
+    }
+    final tripId = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(title: Text('Choose a trip for expenses')),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: trips.length,
+                itemBuilder: (_, index) {
+                  final trip = trips[index];
+                  return ListTile(
+                    leading: const Icon(Icons.luggage_outlined),
+                    title: Text(trip.destination),
+                    subtitle: Text(trip.isOwned ? 'Hosting' : 'Joined'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.pop(sheetContext, trip.id),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || tripId == null) return;
+    context.push('${Routes.groupExpense}/${Uri.encodeComponent(tripId)}');
   }
 }
 
@@ -572,11 +611,7 @@ class DiscoverPage extends StatelessWidget {
               InkWell(
                 onTap: () => context.push(Routes.userAccount),
                 customBorder: const CircleBorder(),
-                child: Avatar(
-                  letter: 'M',
-                  size: 34,
-                  imageUrl: profilePhotoUrl,
-                ),
+                child: Avatar(letter: 'M', size: 34, imageUrl: profilePhotoUrl),
               ),
             ],
           ),
@@ -1246,7 +1281,7 @@ class TripDetailsPage extends StatelessWidget {
               OutlinedButton.icon(
                 onPressed: onOpenGroup,
                 icon: const Icon(Icons.groups_outlined),
-                label: const Text('Open group workspace'),
+                label: const Text('Open trip timeline'),
               ),
             ] else
               PrimaryButton(label: 'Request to Join', onTap: onRequest),
@@ -1865,7 +1900,7 @@ class MyTripsPage extends StatelessWidget {
   final List<MatchmakingTrip> trips, joinedTrips, removedTrips, allTrips;
   final List<JoinRequest> requests;
   final ValueChanged<String> onManage, onEdit, onFinish, onRemoveHosted;
-  final ValueChanged<String> onOpenGroup;
+  final ValueChanged<String> onOpenTimeline;
   final Future<void> Function(String) onLeaveTrip, onRemoveRequest;
   final Future<void> Function(String) onDismissRemovedTrip;
   const MyTripsPage({
@@ -1881,7 +1916,7 @@ class MyTripsPage extends StatelessWidget {
     required this.onFinish,
     required this.onRemoveHosted,
     required this.onEdit,
-    required this.onOpenGroup,
+    required this.onOpenTimeline,
     required this.onLeaveTrip,
     required this.onDismissRemovedTrip,
     required this.onRemoveRequest,
@@ -1945,6 +1980,7 @@ class MyTripsPage extends StatelessWidget {
           members: '${trip.groupMemberCount} joined',
           image: trip.imageUrl,
           status: _lifecycleLabel(trip),
+          onOpen: () => onOpenTimeline(trip.id),
           onEdit: () => onEdit(trip.id),
           onManage: () => onManage(trip.id),
           onFinish: trip.lifecycle == TripLifecycle.finished
@@ -1980,8 +2016,8 @@ class MyTripsPage extends StatelessWidget {
                 spacing: 4,
                 children: [
                   IconButton(
-                    tooltip: 'Open group',
-                    onPressed: () => onOpenGroup(trip.id),
+                    tooltip: 'Open messages',
+                    onPressed: () => context.push(Routes.tripMessages(trip.id)),
                     icon: const Icon(Icons.chat_bubble_outline_rounded),
                   ),
                   IconButton(
@@ -2001,7 +2037,7 @@ class MyTripsPage extends StatelessWidget {
                   ),
                 ],
               ),
-              onTap: () => onOpenGroup(trip.id),
+              onTap: () => onOpenTimeline(trip.id),
             ),
           ),
         for (final trip in removedTrips)
@@ -2895,6 +2931,7 @@ class CompactTrip extends StatelessWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onFinish;
   final VoidCallback? onRemove;
+  final VoidCallback? onOpen;
   const CompactTrip({
     super.key,
     required this.destination,
@@ -2906,6 +2943,7 @@ class CompactTrip extends StatelessWidget {
     this.onEdit,
     this.onFinish,
     this.onRemove,
+    this.onOpen,
   });
 
   Future<void> _confirmFinish(BuildContext context) async {
@@ -2938,47 +2976,50 @@ class CompactTrip extends StatelessWidget {
     clipBehavior: Clip.antiAlias,
     child: Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 92,
-                height: 92,
-                child: TravelImage(url: image, radius: 10),
-              ),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            destination,
-                            style: const TextStyle(
-                              fontFamily: 'Georgia',
-                              fontWeight: FontWeight.w600,
-                              color: _ink,
-                              fontSize: 18,
+        InkWell(
+          onTap: onOpen,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 92,
+                  height: 92,
+                  child: TravelImage(url: image, radius: 10),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              destination,
+                              style: const TextStyle(
+                                fontFamily: 'Georgia',
+                                fontWeight: FontWeight.w600,
+                                color: _ink,
+                                fontSize: 18,
+                              ),
                             ),
                           ),
-                        ),
-                        _Status(label: status),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(dates, style: _label),
-                    const SizedBox(height: 9),
-                    Text(
-                      members,
-                      style: const TextStyle(color: _muted, fontSize: 12),
-                    ),
-                  ],
+                          _Status(label: status),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(dates, style: _label),
+                      const SizedBox(height: 9),
+                      Text(
+                        members,
+                        style: const TextStyle(color: _muted, fontSize: 12),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         Container(

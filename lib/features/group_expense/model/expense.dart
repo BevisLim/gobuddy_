@@ -15,9 +15,9 @@ class Expense {
     required this.updatedAt,
   });
 
-  final int? expenseId;
-  final int tripId;
-  final int paidByUserId;
+  final String? expenseId;
+  final String tripId;
+  final String paidByUserId;
   final int categoryId;
   final String title;
   final double originalAmount;
@@ -30,9 +30,9 @@ class Expense {
   final DateTime updatedAt;
 
   Expense copyWith({
-    int? expenseId,
-    int? tripId,
-    int? paidByUserId,
+    String? expenseId,
+    String? tripId,
+    String? paidByUserId,
     int? categoryId,
     String? title,
     double? originalAmount,
@@ -78,9 +78,9 @@ class Expense {
       };
 
   factory Expense.fromMap(Map<String, Object?> map) => Expense(
-        expenseId: map['expense_id']! as int,
-        tripId: map['trip_id']! as int,
-        paidByUserId: map['paid_by_user_id']! as int,
+        expenseId: map['expense_id']!.toString(),
+        tripId: map['trip_id']!.toString(),
+        paidByUserId: map['paid_by_user_id']!.toString(),
         categoryId: map['category_id']! as int,
         title: map['title']! as String,
         originalAmount: (map['original_amount']! as num).toDouble(),

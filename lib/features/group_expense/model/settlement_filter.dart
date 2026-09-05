@@ -9,7 +9,7 @@ class SettlementFilterHelper {
     required List<Settlement> settlements,
     required SettlementFilter filter,
     required String query,
-    required String Function(int userId) travellerName,
+    required String Function(String userId) travellerName,
   }) {
     final normalizedQuery = query.trim().toLowerCase();
     return settlements.where((settlement) {

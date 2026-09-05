@@ -1,6 +1,6 @@
 import '../model/traveller.dart';
 
 abstract interface class TravellerRepository {
-  Future<List<Traveller>> getTravellersForTrip(int tripId);
-  Future<Traveller?> getTravellerById(int userId);
+  Future<List<Traveller>> getTravellersForTrip(String tripId);
+  Future<Traveller?> getTravellerById(String tripId, String userId);
 }

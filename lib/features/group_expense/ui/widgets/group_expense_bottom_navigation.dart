@@ -10,7 +10,7 @@ class GroupExpenseBottomNavigation extends StatelessWidget {
     required this.selectedIndex,
   });
 
-  final int tripId;
+  final String tripId;
   final int selectedIndex;
 
   @override
@@ -18,10 +18,10 @@ class GroupExpenseBottomNavigation extends StatelessWidget {
         selectedIndex: selectedIndex,
         onDestinationSelected: (index) {
           final route = switch (index) {
-            0 => Routes.expenseDashboard,
-            1 => '${Routes.outstandingBalance}/$tripId',
-            2 => '${Routes.settlementHistory}/$tripId',
-            _ => '${Routes.budgetAnalytics}/$tripId',
+            0 => '${Routes.groupExpense}/$tripId',
+            1 => '${Routes.groupExpense}/$tripId/${Routes.outstandingBalance}',
+            2 => '${Routes.groupExpense}/$tripId/${Routes.settlementHistory}',
+            _ => '${Routes.groupExpense}/$tripId/${Routes.budgetAnalytics}',
           };
           if (index != selectedIndex) context.go(route);
         },

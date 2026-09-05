@@ -72,4 +72,3 @@ revoke all on function public.delete_user_account(uuid) from public;
 revoke all on function public.delete_user_account(uuid) from anon;
 revoke all on function public.delete_user_account(uuid) from authenticated;
 grant execute on function public.delete_user_account(uuid) to service_role;
-

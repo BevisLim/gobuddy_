@@ -4,12 +4,16 @@ class ActivityProposalDialog extends StatefulWidget {
   const ActivityProposalDialog({
     required this.onPropose,
     required this.onCreatePoll,
+    this.proposalMode = true,
+    this.allowPoll = true,
     super.key,
   });
 
   final Future<void> Function(String title, String? location) onPropose;
   final Future<void> Function(String question, List<String> options)
   onCreatePoll;
+  final bool proposalMode;
+  final bool allowPoll;
 
   @override
   State<ActivityProposalDialog> createState() => _ActivityProposalDialogState();
@@ -74,7 +78,13 @@ class _ActivityProposalDialogState extends State<ActivityProposalDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: Text(_creatingPoll ? 'Create activity poll' : 'Propose activity'),
+    title: Text(
+      _creatingPoll
+          ? 'Create activity poll'
+          : widget.proposalMode
+          ? 'Propose activity'
+          : 'Add activity',
+    ),
     content: SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -103,14 +113,15 @@ class _ActivityProposalDialogState extends State<ActivityProposalDialog> {
             ),
           ],
           const SizedBox(height: 12),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: _creatingPoll,
-            onChanged: _submitting
-                ? null
-                : (value) => setState(() => _creatingPoll = value),
-            title: const Text('Create a voting poll instead'),
-          ),
+          if (widget.allowPoll)
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _creatingPoll,
+              onChanged: _submitting
+                  ? null
+                  : (value) => setState(() => _creatingPoll = value),
+              title: const Text('Create a voting poll instead'),
+            ),
         ],
       ),
     ),
@@ -121,7 +132,15 @@ class _ActivityProposalDialogState extends State<ActivityProposalDialog> {
       ),
       FilledButton(
         onPressed: _submitting ? null : _submit,
-        child: Text(_submitting ? 'Saving...' : 'Create'),
+        child: Text(
+          _submitting
+              ? 'Saving...'
+              : _creatingPoll
+              ? 'Create poll'
+              : widget.proposalMode
+              ? 'Submit proposal'
+              : 'Add activity',
+        ),
       ),
     ],
   );

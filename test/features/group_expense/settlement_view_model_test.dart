@@ -9,7 +9,6 @@ import 'package:flutter_mvvm_riverpod/features/group_expense/repository/sqlite_b
 import 'package:flutter_mvvm_riverpod/features/group_expense/repository/sqlite_expense_repository.dart';
 import 'package:flutter_mvvm_riverpod/features/group_expense/repository/sqlite_settlement_repository.dart';
 import 'package:flutter_mvvm_riverpod/features/group_expense/ui/view_model/settlement_view_model.dart';
-import 'package:flutter_mvvm_riverpod/features/group_expense/model/app_session.dart';
 import 'package:flutter_mvvm_riverpod/features/group_expense/model/settlement.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,13 +19,11 @@ void main() {
   late ProviderContainer container;
 
   ProviderContainer createContainer({
-    required int currentUserId,
+    required String currentUserId,
     ReceiptFileService? receiptFiles,
   }) =>
       ProviderContainer(overrides: [
-        appSessionProvider.overrideWithValue(
-          AppSession(currentTripId: 1, currentUserId: currentUserId),
-        ),
+        authenticatedUserIdProvider.overrideWithValue(currentUserId),
         expenseRepositoryProvider.overrideWith(
           (ref) async => SqliteExpenseRepository(database),
         ),
@@ -53,7 +50,7 @@ void main() {
       ),
     );
     await GroupExpenseDatabaseSchema.createAndSeed(database);
-    container = createContainer(currentUserId: 2);
+    container = createContainer(currentUserId: '2');
   });
 
   tearDown(() async {
@@ -63,15 +60,15 @@ void main() {
 
   test('payer submission stays pending and reserves outstanding debt',
       () async {
-    final provider = settlementViewModelProvider(1);
+    final provider = settlementViewModelProvider('1');
     final subscription = container.listen(provider, (_, __) {});
     addTearDown(subscription.close);
     final initial = await container.read(provider.future);
-    expect(initial.outstandingFor(2, 1), 143.25);
+    expect(initial.outstandingFor('2', '1'), 143.25);
 
     final saved = await container.read(provider.notifier).createSettlement(
-          payerId: 2,
-          payeeId: 1,
+          payerId: '2',
+          payeeId: '1',
           amount: '43.25',
           paymentMethod: 'DuitNow',
           settlementDate: DateTime(2025, 7, 29),
@@ -88,7 +85,7 @@ void main() {
       isTrue,
     );
     expect(state.suggestions.first.amount, 143.25);
-    expect(state.outstandingFor(2, 1), 100);
+    expect(state.outstandingFor('2', '1'), 100);
     expect(
         state.receipts.values
             .any((item) => item.imagePath == '/stored/payment.jpg'),
@@ -96,13 +93,13 @@ void main() {
   });
 
   test('rejects an amount above the live outstanding debt', () async {
-    final provider = settlementViewModelProvider(1);
+    final provider = settlementViewModelProvider('1');
     final subscription = container.listen(provider, (_, __) {});
     addTearDown(subscription.close);
     await container.read(provider.future);
     final saved = await container.read(provider.notifier).createSettlement(
-          payerId: 2,
-          payeeId: 1,
+          payerId: '2',
+          payeeId: '1',
           amount: '143.26',
           paymentMethod: 'Cash',
           settlementDate: DateTime(2025, 7, 29),
@@ -116,14 +113,14 @@ void main() {
 
   test('only payee confirmation completes payment and updates balances',
       () async {
-    final payerProvider = settlementViewModelProvider(1);
+    final payerProvider = settlementViewModelProvider('1');
     final payerSubscription = container.listen(payerProvider, (_, __) {});
     addTearDown(payerSubscription.close);
     await container.read(payerProvider.future);
     expect(
       await container.read(payerProvider.notifier).createSettlement(
-            payerId: 2,
-            payeeId: 1,
+            payerId: '2',
+            payeeId: '1',
             amount: '43.25',
             paymentMethod: 'DuitNow',
             settlementDate: DateTime(2025, 7, 29),
@@ -144,9 +141,9 @@ void main() {
       isFalse,
     );
 
-    final payeeContainer = createContainer(currentUserId: 1);
+    final payeeContainer = createContainer(currentUserId: '1');
     addTearDown(payeeContainer.dispose);
-    final payeeProvider = settlementViewModelProvider(1);
+    final payeeProvider = settlementViewModelProvider('1');
     final payeeSubscription = payeeContainer.listen(payeeProvider, (_, __) {});
     addTearDown(payeeSubscription.close);
     await payeeContainer.read(payeeProvider.future);
@@ -168,14 +165,14 @@ void main() {
   });
 
   test('a user cannot submit a settlement for another payer', () async {
-    final provider = settlementViewModelProvider(1);
+    final provider = settlementViewModelProvider('1');
     final subscription = container.listen(provider, (_, __) {});
     addTearDown(subscription.close);
     await container.read(provider.future);
 
     final saved = await container.read(provider.notifier).createSettlement(
-          payerId: 3,
-          payeeId: 1,
+          payerId: '3',
+          payeeId: '1',
           amount: '10',
           paymentMethod: 'Cash',
           settlementDate: DateTime(2025, 7, 29),
@@ -189,14 +186,14 @@ void main() {
   });
 
   test('rejects unsupported payment methods before persistence', () async {
-    final provider = settlementViewModelProvider(1);
+    final provider = settlementViewModelProvider('1');
     final subscription = container.listen(provider, (_, __) {});
     addTearDown(subscription.close);
     await container.read(provider.future);
 
     final saved = await container.read(provider.notifier).createSettlement(
-          payerId: 2,
-          payeeId: 1,
+          payerId: '2',
+          payeeId: '1',
           amount: '10',
           paymentMethod: 'Cryptocurrency',
           settlementDate: DateTime(2025, 7, 29),
@@ -214,9 +211,9 @@ void main() {
     final repository = SqliteSettlementRepository(database);
     final settlementId = await repository.createSettlement(
       Settlement(
-        tripId: 1,
-        payerId: 2,
-        payeeId: 1,
+        tripId: '1',
+        payerId: '2',
+        payeeId: '1',
         amount: 10,
         paymentMethod: 'Cash',
         settlementDate: DateTime(2025, 7, 29),
@@ -224,17 +221,17 @@ void main() {
         createdAt: DateTime(2025, 7, 29),
       ),
       receipt: SettlementReceipt(
-        settlementId: 0,
+        settlementId: '0',
         imagePath: '/stored/unremovable.jpg',
         uploadedAt: DateTime(2025, 7, 29),
       ),
     );
     container.dispose();
     container = createContainer(
-      currentUserId: 2,
+      currentUserId: '2',
       receiptFiles: _ThrowingReceiptFiles(),
     );
-    final provider = settlementViewModelProvider(1);
+    final provider = settlementViewModelProvider('1');
     final subscription = container.listen(provider, (_, __) {});
     addTearDown(subscription.close);
     await container.read(provider.future);
@@ -244,7 +241,7 @@ void main() {
 
     expect(deleted, isTrue);
     expect(
-      (await repository.getSettlementsForTrip(1))
+      (await repository.getSettlementsForTrip('1'))
           .any((item) => item.settlementId == settlementId),
       isFalse,
     );

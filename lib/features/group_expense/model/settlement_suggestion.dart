@@ -5,7 +5,7 @@ class SettlementSuggestion {
     required this.amount,
   });
 
-  final int payerId;
-  final int payeeId;
+  final String payerId;
+  final String payeeId;
   final double amount;
 }
