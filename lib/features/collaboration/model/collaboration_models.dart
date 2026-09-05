@@ -139,7 +139,6 @@ class TripActivity {
     required this.startTime,
     required this.location,
     required this.isPinned,
-    required this.isLocked,
   });
 
   final String id;
@@ -147,7 +146,6 @@ class TripActivity {
   final DateTime startTime;
   final String? location;
   final bool isPinned;
-  final bool isLocked;
 
   factory TripActivity.fromMap(Map<String, dynamic> map) => TripActivity(
     id: map['id'] as String,
@@ -155,7 +153,6 @@ class TripActivity {
     startTime: DateTime.parse(map['start_time'] as String).toLocal(),
     location: map['location'] as String?,
     isPinned: map['is_pinned'] as bool? ?? false,
-    isLocked: map['is_locked'] as bool? ?? false,
   );
 }
 

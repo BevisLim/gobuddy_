@@ -1958,17 +1958,28 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
         builder: (_) => ActivityProposalDialog(
           proposalMode: !state.canManageMembers,
           allowPoll: state.canManageMembers,
-          onPropose: (title, location) => state.canManageMembers
-              ? _viewModel.addActivity(
-                  title: title,
-                  location: location,
-                  startTime: day.add(const Duration(hours: 12, minutes: 30)),
-                )
-              : _viewModel.proposeActivity(
-                  title: title,
-                  location: location,
-                  startTime: day.add(const Duration(hours: 12, minutes: 30)),
-                ),
+          onPropose: (title, location, time) async {
+            final startTime = DateTime(
+              day.year,
+              day.month,
+              day.day,
+              time.hour,
+              time.minute,
+            );
+            if (state.canManageMembers) {
+              await _viewModel.addActivity(
+                title: title,
+                location: location,
+                startTime: startTime,
+              );
+              return true;
+            }
+            return _viewModel.proposeActivity(
+              title: title,
+              location: location,
+              startTime: startTime,
+            );
+          },
           onCreatePoll: (question, options) => _viewModel.createActivityPoll(
             question: question,
             options: options,
@@ -2074,7 +2085,23 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
     required bool accept,
   }) async {
     try {
-      await _viewModel.reviewActivityProposal(proposal, accept: accept);
+      final reviewed = await _viewModel.reviewActivityProposal(
+        proposal,
+        accept: accept,
+      );
+      if (!reviewed) {
+        if (sheetContext.mounted) {
+          ScaffoldMessenger.of(sheetContext).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Proposal review is temporarily unavailable. '
+                'Please apply the latest database update.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
       if (sheetContext.mounted) Navigator.pop(sheetContext);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2340,10 +2367,7 @@ class _TimelineActivityItem extends ConsumerWidget {
     final viewModel = ref.read(
       groupCollaborationViewModelProvider(state.tripId).notifier,
     );
-    final inProgress = activity.startTime.isBefore(DateTime.now());
-    final accent = inProgress
-        ? const Color(0xFF7C3AED)
-        : const Color(0xFFF59E0B);
+    const accent = Color(0xFF7C3AED);
     final creator = state.members
         .where((member) => member.userId == state.creatorId)
         .firstOrNull;
@@ -2393,15 +2417,6 @@ class _TimelineActivityItem extends ConsumerWidget {
                   children: [
                     Row(
                       children: [
-                        _TimelinePill(
-                          label: inProgress ? 'In Progress' : 'Upcoming',
-                          foreground: inProgress
-                              ? const Color(0xFF6D28D9)
-                              : const Color(0xFFB45309),
-                          background: inProgress
-                              ? const Color(0xFFF1EAFE)
-                              : const Color(0xFFFFF3D6),
-                        ),
                         const Spacer(),
                         _TimelinePill(
                           label: _clockTime(activity.startTime),
@@ -2422,8 +2437,6 @@ class _TimelineActivityItem extends ConsumerWidget {
                             ),
                           ),
                         ),
-                        if (activity.isLocked)
-                          const Icon(Icons.lock_outline, size: 17),
                       ],
                     ),
                     if (activity.location?.trim().isNotEmpty == true) ...[
@@ -2486,17 +2499,6 @@ class _TimelineActivityItem extends ConsumerWidget {
                             onTap: () => _runWorkspaceAction(
                               context,
                               () => viewModel.togglePin(activity),
-                            ),
-                          ),
-                        if (state.canManageMembers)
-                          _TimelineAction(
-                            icon: activity.isLocked
-                                ? Icons.lock_open_outlined
-                                : Icons.lock_outline,
-                            label: activity.isLocked ? 'Unlock' : 'Lock',
-                            onTap: () => _runWorkspaceAction(
-                              context,
-                              () => viewModel.toggleLock(activity),
                             ),
                           ),
                         if (state.canManageMembers)
@@ -2832,10 +2834,16 @@ class _TimelineTab extends ConsumerWidget {
             onPressed: () => showDialog<void>(
               context: context,
               builder: (_) => ActivityProposalDialog(
-                onPropose: (title, location) => viewModel.proposeActivity(
+                onPropose: (title, location, time) => viewModel.proposeActivity(
                   title: title,
                   location: location,
-                  startTime: days.last.add(const Duration(hours: 12)),
+                  startTime: DateTime(
+                    days.last.year,
+                    days.last.month,
+                    days.last.day,
+                    time.hour,
+                    time.minute,
+                  ),
                 ),
                 onCreatePoll: (question, options) => viewModel
                     .createActivityPoll(question: question, options: options),
@@ -2869,24 +2877,11 @@ class _TimelineTab extends ConsumerWidget {
                   leading: Icon(
                     Icons.circle,
                     size: 14,
-                    color: activity.startTime.isBefore(DateTime.now())
-                        ? Colors.green
-                        : Theme.of(context).colorScheme.primary,
+                    color: Theme.of(context).colorScheme.primary,
                   ),
-                  title: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          activity.title,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      _ActivityStatusChip(
-                        label: activity.startTime.isBefore(DateTime.now())
-                            ? 'In progress'
-                            : 'Upcoming',
-                      ),
-                    ],
+                  title: Text(
+                    activity.title,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   subtitle: Text(
                     '${_weekday(activity.startTime)}, ${_calendarDate(activity.startTime)} at ${_shortTime(activity.startTime)}${activity.location?.trim().isNotEmpty == true ? '\n${activity.location}' : ''}\n${state.comments.where((comment) => comment.activityId == activity.id).length} comment(s) · ${_rsvpSummary(state, activity.id)}',
@@ -2937,17 +2932,16 @@ class _TimelineTab extends ConsumerWidget {
                         icon: const Icon(Icons.comment_outlined, size: 16),
                         label: const Text('Comment'),
                       ),
-                      OutlinedButton.icon(
-                        onPressed: activity.isLocked && !state.isCreator
-                            ? null
-                            : () => _showEditActivityDialog(
-                                context,
-                                activity,
-                                viewModel,
-                              ),
-                        icon: const Icon(Icons.edit_outlined, size: 16),
-                        label: const Text('Edit'),
-                      ),
+                      if (state.canManageMembers)
+                        OutlinedButton.icon(
+                          onPressed: () => _showEditActivityDialog(
+                            context,
+                            activity,
+                            viewModel,
+                          ),
+                          icon: const Icon(Icons.edit_outlined, size: 16),
+                          label: const Text('Edit'),
+                        ),
                       OutlinedButton.icon(
                         onPressed: () => _runWorkspaceAction(
                           context,
@@ -2961,20 +2955,6 @@ class _TimelineTab extends ConsumerWidget {
                         ),
                         label: Text(activity.isPinned ? 'Pinned' : 'Pin'),
                       ),
-                      if (state.isCreator)
-                        OutlinedButton.icon(
-                          onPressed: () => _runWorkspaceAction(
-                            context,
-                            () => viewModel.toggleLock(activity),
-                          ),
-                          icon: Icon(
-                            activity.isLocked
-                                ? Icons.lock
-                                : Icons.lock_open_outlined,
-                            size: 16,
-                          ),
-                          label: Text(activity.isLocked ? 'Unlock' : 'Lock'),
-                        ),
                     ],
                   ),
                 ),
@@ -3007,25 +2987,6 @@ class _TimelineTab extends ConsumerWidget {
       ],
     );
   }
-}
-
-class _ActivityStatusChip extends StatelessWidget {
-  const _ActivityStatusChip({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.secondaryContainer,
-      borderRadius: BorderRadius.circular(20),
-    ),
-    child: Text(
-      label,
-      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-    ),
-  );
 }
 
 void _showNotifications(
