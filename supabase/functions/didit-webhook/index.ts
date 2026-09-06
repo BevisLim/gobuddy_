@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   providerStatuses,
   rejectionReason,
+  verifiedDateOfBirth,
   verifyDiditSignature,
 } from "../_shared/didit.ts";
 
@@ -34,6 +35,32 @@ Deno.serve(async (req: Request) => {
     ) {
       return new Response("Invalid session event", { status: 400 });
     }
+    let dateOfBirth = payload.status === "Approved"
+      ? verifiedDateOfBirth(payload.decision)
+      : null;
+    if (payload.status === "Approved" && dateOfBirth === null) {
+      const diditApiKey = Deno.env.get("DIDIT_API_KEY");
+      if (!diditApiKey) {
+        return new Response("Missing verification provider configuration", {
+          status: 500,
+        });
+      }
+      const decisionResponse = await fetch(
+        `https://verification.didit.me/v3/session/${encodeURIComponent(payload.session_id)}/decision/`,
+        { headers: { "x-api-key": diditApiKey } },
+      );
+      if (!decisionResponse.ok) {
+        return new Response("Unable to retrieve verified identity data", {
+          status: 503,
+        });
+      }
+      dateOfBirth = verifiedDateOfBirth(await decisionResponse.json());
+      if (dateOfBirth === null) {
+        return new Response("Approved identity document has no valid birthday", {
+          status: 422,
+        });
+      }
+    }
     const admin = createClient(url, key, { auth: { persistSession: false } });
     const { data, error } = await admin.rpc(
       "apply_identity_verification_event",
@@ -49,6 +76,7 @@ Deno.serve(async (req: Request) => {
           ? rejectionReason(payload.decision)
           : null,
         p_vendor_data: payload.vendor_data ?? null,
+        p_date_of_birth: dateOfBirth,
       },
     );
     if (error) {

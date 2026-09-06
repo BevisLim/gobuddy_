@@ -66,6 +66,7 @@ class MatchmakingNotificationsDialog extends StatelessWidget {
 
 class DiscoverPage extends StatelessWidget {
   final bool isAuthenticated, isLoading;
+  final bool isVerified;
   final String? errorMessage;
   final String filter;
   final List<MatchmakingTrip> trips;
@@ -85,6 +86,7 @@ class DiscoverPage extends StatelessWidget {
     super.key,
     required this.isAuthenticated,
     required this.isLoading,
+    required this.isVerified,
     required this.errorMessage,
     required this.filter,
     required this.trips,
@@ -188,6 +190,7 @@ class DiscoverPage extends StatelessWidget {
                   currency: currency,
                   currencyRate: currencyRate,
                   saved: savedTripIds.contains(trip.id),
+                  interactionsEnabled: isVerified,
                   onSave: () => onSave(trip.id),
                   onDetails: () => onDetails(trip.id),
                   onRequest: () => onRequest(trip.id),
@@ -293,6 +296,7 @@ class TripCard extends StatelessWidget {
   final MatchmakingTrip trip;
   final VoidCallback onDetails, onRequest, onSave;
   final bool saved;
+  final bool interactionsEnabled;
   final UserCurrency currency;
   final double currencyRate;
   const TripCard({
@@ -302,6 +306,7 @@ class TripCard extends StatelessWidget {
     required this.onRequest,
     required this.onSave,
     required this.saved,
+    this.interactionsEnabled = true,
     this.currency = UserCurrency.myr,
     this.currencyRate = 1,
   });
@@ -321,7 +326,7 @@ class TripCard extends StatelessWidget {
               Row(
                 children: [
                   _OtherUserAvatar(
-                    enabled: !trip.isOwned,
+                    enabled: interactionsEnabled && !trip.isOwned,
                     userId: trip.hostId,
                     displayName: trip.hostName,
                     child: Avatar(
@@ -389,7 +394,7 @@ class TripCard extends StatelessWidget {
           child: Row(
             children: [
               IconButton(
-                onPressed: onSave,
+                onPressed: interactionsEnabled ? onSave : null,
                 tooltip: saved ? 'Remove saved trip' : 'Save trip for later',
                 icon: Icon(
                   saved
@@ -404,11 +409,17 @@ class TripCard extends StatelessWidget {
               ),
               const SizedBox(width: 5),
               Expanded(
-                child: SmallOutline(label: 'View Details', onTap: onDetails),
+                child: SmallOutline(
+                  label: interactionsEnabled ? 'View Details' : 'Verify to view',
+                  onTap: interactionsEnabled ? onDetails : null,
+                ),
               ),
               const SizedBox(width: 7),
               Expanded(
-                child: SmallPrimary(label: 'Request to Join', onTap: onRequest),
+                child: SmallPrimary(
+                  label: interactionsEnabled ? 'Request to Join' : 'Locked',
+                  onTap: interactionsEnabled ? onRequest : null,
+                ),
               ),
             ],
           ),
