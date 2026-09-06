@@ -82,10 +82,11 @@ change without a stored URL can be replaced by starting verification again.
 ## Admin review
 
 Platform admins listed in `public.admin_users` see **Identity reviews** in the
-app's Settings screen. The queue contains only each user's latest Didit attempt
-when its provider status is `In Review`. Opening a case retrieves its decision
-report and evidence from Didit through `admin-moderation`; provider credentials
-and evidence URLs are never exposed to non-admin database clients.
+app's admin navigation. The queue is loaded from Didit's sessions API, accepts
+both `In Review` and `IN_REVIEW` provider formatting, and joins only matching
+review sessions to local verification attempts and user profiles. Opening a case retrieves its decision report and evidence from
+Didit through `admin-moderation`; provider credentials and evidence URLs are
+never exposed to non-admin database clients.
 
 Approve, reject, and request-resubmission actions call Didit's session status API
 and write a moderation audit entry. A rejection requires a user-facing reason.

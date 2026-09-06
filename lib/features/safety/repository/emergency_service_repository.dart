@@ -5,6 +5,7 @@ import 'package:emergency_helpline/emergency_helpline.dart' as helpline;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -240,13 +241,16 @@ class ApiEmergencyServiceRepository implements EmergencyServiceRepository {
     required String message,
   }) async {
     if (phoneNumbers.isEmpty) return;
-    final uri = Uri(
-      scheme: 'sms',
-      path: phoneNumbers.join(','),
-      queryParameters: {'body': message},
-    );
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      throw const EmergencyServiceException('Could not open your messaging app.');
+    try {
+      // An sms: URI can be claimed by WhatsApp and Telegram, but those apps
+      // may misinterpret an SMS-formatted or multi-recipient phone number as an
+      // unregistered account. A text share lets the selected app choose one of
+      // its own chats and works consistently across messaging applications.
+      await Share.share(message, subject: 'GoBuddy Emergency SOS');
+    } catch (_) {
+      throw const EmergencyServiceException(
+        'Could not open your messaging apps.',
+      );
     }
   }
 }

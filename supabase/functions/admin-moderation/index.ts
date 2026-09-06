@@ -52,6 +52,7 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { action, targetId } = body;
     const page = Number.isInteger(body.page) && body.page >= 0 ? body.page : 0;
+    if (action === "access") return reply({ isAdmin: true });
     if (action === "dashboard") {
       const counts: Record<string, number> = {};
       for (const status of ["pending", "reviewing", "resolved", "dismissed"]) {
@@ -90,25 +91,50 @@ Deno.serve(async (req) => {
       return reply({ items: checked(await query.range(page * 50, page * 50 + 49)), admins: admins.map(a => ({ id: a.user_id, name: names.find(n => n.id === a.user_id)?.display_name ?? a.user_id })) });
     }
     if (action === "identityReviews") {
-      const recentAttempts = checked(await client.from("identity_verifications")
-        .select("id,user_id,provider_session_id,provider_status,submitted_at")
-        .eq("provider", "didit").order("submitted_at", { ascending: false })
-        .limit(500));
-      const latestByUser = new Map();
-      for (const attempt of recentAttempts) {
-        if (!latestByUser.has(attempt.user_id)) latestByUser.set(attempt.user_id, attempt);
+      // Use Didit's current session status as the source of truth. Webhooks keep
+      // our local status useful elsewhere, but a delayed callback must not leave
+      // an already-decided case in the manual-review queue.
+      const diditPage = await diditRequest(
+        `/v3/sessions/?session_kind=user&limit=100&offset=${page * 100}`,
+      );
+      const diditSessions = diditPage && typeof diditPage === "object" &&
+          Array.isArray((diditPage as { results?: unknown }).results)
+        ? (diditPage as { results: Array<Record<string, unknown>> }).results
+        : [];
+      const reviewSessions = diditSessions.filter((session) =>
+        typeof session.status === "string" &&
+        session.status.replaceAll("_", " ").trim().toLowerCase() ===
+          "in review" &&
+        typeof session.session_id === "string"
+      );
+      const sessionIds = reviewSessions.map((session) =>
+        session.session_id as string
+      );
+      if (!sessionIds.length) {
+        return reply({ items: [], diditReviewCount: 0, unmatchedCount: 0 });
       }
-      const attempts = [...latestByUser.values()]
-        .filter((attempt) => attempt.provider_status === "In Review")
-        .slice(page * 50, page * 50 + 50);
-      const users = attempts.length ? checked(await client.from("user_accounts")
+      const attempts = checked(await client.from("identity_verifications")
+        .select("id,user_id,provider_session_id,provider_status,submitted_at")
+        .eq("provider", "didit").in("provider_session_id", sessionIds));
+      const attemptBySession = new Map(attempts.map((attempt) =>
+        [attempt.provider_session_id, attempt]
+      ));
+      const orderedAttempts = reviewSessions.flatMap((session) => {
+        const attempt = attemptBySession.get(session.session_id);
+        return attempt ? [{ ...attempt, provider_status: "In Review" }] : [];
+      });
+      const users = orderedAttempts.length ? checked(await client.from("user_accounts")
         .select("id,display_name,profile_photo_path")
-        .in("id", [...new Set(attempts.map((item) => item.user_id))])) : [];
-      return reply({ items: attempts.map((attempt) => ({
+        .in("id", [...new Set(orderedAttempts.map((item) => item.user_id))])) : [];
+      return reply({
+        diditReviewCount: reviewSessions.length,
+        unmatchedCount: reviewSessions.length - orderedAttempts.length,
+        items: orderedAttempts.map((attempt) => ({
         ...attempt,
         display_name: users.find((account) => account.id === attempt.user_id)?.display_name ?? "Unknown user",
         profile_photo_path: users.find((account) => account.id === attempt.user_id)?.profile_photo_path ?? null,
-      })) });
+        })),
+      });
     }
     if (typeof targetId !== "string" || !/^[0-9a-f-]{36}$/i.test(targetId)) return reply({ error: "A valid target is required" }, 400);
     if (action === "identityReview" || action === "identityDecision") {
@@ -122,7 +148,11 @@ Deno.serve(async (req) => {
         const decision = await diditRequest(`/v3/session/${encodeURIComponent(attempt.provider_session_id)}/decision/`);
         return reply({ attempt, account, decision });
       }
-      if (attempt.provider_status !== "In Review") {
+      if (
+        typeof attempt.provider_status !== "string" ||
+        attempt.provider_status.replaceAll("_", " ").trim().toLowerCase() !==
+          "in review"
+      ) {
         return reply({ error: "This verification is no longer in review" }, 409);
       }
       if (!["Approved", "Declined", "Resubmitted"].includes(body.decision)) {

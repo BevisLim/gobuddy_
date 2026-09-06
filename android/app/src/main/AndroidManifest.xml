@@ -56,8 +56,36 @@
                     android:scheme="gobuddy"
                     android:host="app"
                     android:pathPrefix="/identity-verification" />
+                <data
+                    android:scheme="gobuddy"
+                    android:host="app"
+                    android:pathPrefix="/safety/sos/confirm" />
             </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
+        <service
+            android:name=".SosTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_sos_tile"
+            android:label="Emergency SOS"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+        <receiver
+            android:name=".SosWidgetProvider"
+            android:exported="true"
+            android:label="@string/sos_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/sos_widget_info" />
+        </receiver>
         <activity
             android:name="com.yalantis.ucrop.UCropActivity"
             android:screenOrientation="portrait"
