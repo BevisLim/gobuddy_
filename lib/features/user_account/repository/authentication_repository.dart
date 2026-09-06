@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,6 +17,8 @@ AuthenticationRepository authenticationRepository(Ref ref) {
 
 class AuthenticationRepository {
   const AuthenticationRepository();
+
+  static Future<void>? _googleSignInInitialization;
 
   Future<void> sendRegistrationLink(String email) async {
     try {
@@ -188,6 +191,28 @@ class AuthenticationRepository {
       // A pending email-link registration must never send a Google user to
       // the email-only Set Password flow.
       await setRegistrationPending(false);
+
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        // The browser OAuth flow can leave a blank Samsung Internet tab when
+        // the custom-scheme redirect is handed back to Android. Use Google's
+        // native account picker on Android and give its ID token to Supabase.
+        await (_googleSignInInitialization ??= GoogleSignIn.instance.initialize(
+          serverClientId: Constants.googleWebClientId,
+        ));
+        final googleUser = await GoogleSignIn.instance.authenticate();
+        final idToken = googleUser.authentication.idToken;
+        if (idToken == null || idToken.isEmpty) {
+          throw Exception(
+            'Google did not return a sign-in token. Please try again.',
+          );
+        }
+        await supabase.auth.signInWithIdToken(
+          provider: OAuthProvider.google,
+          idToken: idToken,
+        );
+        return;
+      }
+
       final launched = await supabase.auth.signInWithOAuth(
         OAuthProvider.google,
         // On Flutter web, return to the port used by `flutter run` instead
@@ -196,6 +221,24 @@ class AuthenticationRepository {
       );
       if (!launched) {
         throw Exception('Unable to open Google sign-in. Please try again.');
+      }
+    } on GoogleSignInException catch (error) {
+      switch (error.code) {
+        case GoogleSignInExceptionCode.canceled:
+          throw Exception('Google sign-in was cancelled.');
+        case GoogleSignInExceptionCode.clientConfigurationError:
+        case GoogleSignInExceptionCode.providerConfigurationError:
+          throw Exception(
+            'Google sign-in is not configured for this Android app. '
+            'Add its package name and signing SHA fingerprints in Google Cloud.',
+          );
+        case GoogleSignInExceptionCode.interrupted:
+        case GoogleSignInExceptionCode.uiUnavailable:
+          throw Exception(
+            'Google sign-in is unavailable on this device. Please try again.',
+          );
+        default:
+          throw Exception('Unable to sign in with Google. Please try again.');
       }
     } on AuthException catch (error) {
       throw Exception(_friendlyGoogleSignInError(error));

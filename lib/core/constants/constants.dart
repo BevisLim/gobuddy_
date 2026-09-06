@@ -12,6 +12,10 @@ class Constants {
   static const String googleEmailScope = 'email';
   static const String googleUserInfoScope =
       'https://www.googleapis.com/auth/userinfo.profile';
+  // Google OAuth web client used to mint an ID token for Supabase. OAuth
+  // client IDs identify an application and are safe to include in the app.
+  static const String googleWebClientId =
+      '629920550859-237nfnfq28k8ej9tnpne1mnhqhsb7m5b.apps.googleusercontent.com';
   static const String defaultName = 'Guest';
   static const String termsOfService = 'https://areser.net';
   static const String privacyPolicy = 'https://areser.net';

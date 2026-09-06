@@ -10,6 +10,7 @@ import '../../../core/routing/routes.dart';
 import '../../common/ui/widgets/app_module_navigation.dart';
 import '../../matchmaking/ui/matchmaking_shell_screen.dart';
 import '../../matchmaking/ui/matchmaking_view_model.dart';
+import '../../travel_footprint/repository/travel_footprint_repository.dart';
 import '../model/user_account_model.dart';
 import '../repository/user_account_repository.dart';
 import 'edit_profile_view.dart';
@@ -680,7 +681,7 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
   }
 }
 
-class _ProfileStatsCard extends StatelessWidget {
+class _ProfileStatsCard extends ConsumerWidget {
   final VoidCallback onEdit;
   final IdentityVerificationStatus verificationStatus;
   final VoidCallback onVerify;
@@ -692,19 +693,31 @@ class _ProfileStatsCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context, WidgetRef ref) => Container(
     padding: const EdgeInsets.all(18),
     decoration: _cardDecoration(),
     child: Column(
       children: [
-        const Row(
+        Row(
           children: [
             Expanded(
-              child: _ProfileStat(number: '—', label: 'TRIPS'),
-            ),
-            SizedBox(height: 38, child: VerticalDivider(color: _border)),
-            Expanded(
-              child: _ProfileStat(number: '—', label: 'CITIES'),
+              child: InkWell(
+                onTap: () => context.push(Routes.travelFootprint),
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: _ProfileStat(
+                    number: ref
+                        .watch(travelFootprintProvider)
+                        .maybeWhen(
+                          data: (value) => '${value.cityCount}',
+                          orElse: () => '—',
+                        ),
+                    label: 'CITIES VISITED',
+                    showChevron: true,
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -755,7 +768,12 @@ class _ProfileStatsCard extends StatelessWidget {
 class _ProfileStat extends StatelessWidget {
   final String number;
   final String label;
-  const _ProfileStat({required this.number, required this.label});
+  final bool showChevron;
+  const _ProfileStat({
+    required this.number,
+    required this.label,
+    this.showChevron = false,
+  });
 
   @override
   Widget build(BuildContext context) => Column(
@@ -769,7 +787,14 @@ class _ProfileStat extends StatelessWidget {
           fontWeight: FontWeight.w600,
         ),
       ),
-      Text(label, style: _label),
+      Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: _label),
+          if (showChevron)
+            const Icon(Icons.chevron_right_rounded, size: 17, color: _violet),
+        ],
+      ),
     ],
   );
 }
