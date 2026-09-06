@@ -1,3 +1,4 @@
+import 'package:flutter_mvvm_riverpod/core/utils/password_policy.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -90,9 +91,8 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                   controller: _oldPasswordController,
                   obscure: _obscureOld,
                   onToggle: () => setState(() => _obscureOld = !_obscureOld),
-                  validator: (value) => (value ?? '').isEmpty
-                      ? 'Enter your old password'
-                      : null,
+                  validator: (value) =>
+                      (value ?? '').isEmpty ? 'Enter your old password' : null,
                 ),
                 const SizedBox(height: 20),
                 _PasswordField(
@@ -184,50 +184,28 @@ class _PasswordField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => TextFormField(
-        controller: controller,
-        obscureText: obscure,
-        validator: validator,
-        textInputAction: TextInputAction.next,
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hint,
-          filled: true,
-          fillColor: context.secondaryWidgetColor,
-          suffixIcon: IconButton(
-            tooltip: obscure ? 'Show password' : 'Hide password',
-            onPressed: onToggle,
-            icon: Icon(
-              obscure
-                  ? Icons.visibility_outlined
-                  : Icons.visibility_off_outlined,
-            ),
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
+    controller: controller,
+    obscureText: obscure,
+    validator: validator,
+    textInputAction: TextInputAction.next,
+    decoration: InputDecoration(
+      labelText: label,
+      hintText: hint,
+      filled: true,
+      fillColor: context.secondaryWidgetColor,
+      suffixIcon: IconButton(
+        tooltip: obscure ? 'Show password' : 'Hide password',
+        onPressed: onToggle,
+        icon: Icon(
+          obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
         ),
-      );
+      ),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+    ),
+  );
 }
 
-String? validateNewPassword(String? value) {
-  final password = value ?? '';
-  if (password.length < 8) {
-    return 'Password must be at least 8 characters';
-  }
-  if (!RegExp(r'[A-Z]').hasMatch(password)) {
-    return 'Password must contain an uppercase letter';
-  }
-  if (!RegExp(r'[a-z]').hasMatch(password)) {
-    return 'Password must contain a lowercase letter';
-  }
-  if (!RegExp(r'[0-9]').hasMatch(password)) {
-    return 'Password must contain a number';
-  }
-  if (!RegExp(r'[^A-Za-z0-9\s]').hasMatch(password)) {
-    return 'Password must contain a special character';
-  }
-  return null;
-}
+String? validateNewPassword(String? value) => validatePassword(value);
 
 String _readableError(Object error) {
   final message = error.toString();

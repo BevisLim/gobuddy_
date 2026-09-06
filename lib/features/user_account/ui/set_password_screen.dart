@@ -1,3 +1,4 @@
+import 'package:flutter_mvvm_riverpod/core/utils/password_policy.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -312,25 +313,7 @@ class _PasswordField extends StatelessWidget {
   );
 }
 
-String? _validatePassword(String? value) {
-  final password = value ?? '';
-  if (password.length < 8) {
-    return 'Password must be at least 8 characters';
-  }
-  if (!RegExp(r'[A-Z]').hasMatch(password)) {
-    return 'Password must contain an uppercase letter';
-  }
-  if (!RegExp(r'[a-z]').hasMatch(password)) {
-    return 'Password must contain a lowercase letter';
-  }
-  if (!RegExp(r'[0-9]').hasMatch(password)) {
-    return 'Password must contain a number';
-  }
-  if (!RegExp(r'[^A-Za-z0-9\s]').hasMatch(password)) {
-    return 'Password must contain a special character';
-  }
-  return null;
-}
+String? _validatePassword(String? value) => validatePassword(value);
 
 String _readableError(Object error) {
   final message = error.toString();

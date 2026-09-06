@@ -1,3 +1,4 @@
+import 'package:flutter_mvvm_riverpod/core/utils/password_policy.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -385,12 +386,7 @@ String? _validateEmail(String? value) {
   return null;
 }
 
-String? _validatePassword(String? value) {
-  if ((value?.length ?? 0) < 6) {
-    return 'Password must be at least 6 characters';
-  }
-  return null;
-}
+String? _validatePassword(String? value) => validatePassword(value);
 
 String _friendlyLoginError(AuthException error) {
   final message = error.message.toLowerCase();
