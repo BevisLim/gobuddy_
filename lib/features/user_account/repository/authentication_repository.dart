@@ -1,3 +1,5 @@
+import 'password_error.dart';
+import '../../../core/utils/password_policy.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
@@ -33,7 +35,7 @@ class AuthenticationRepository {
       );
       await setRegistrationPending(true, email: email.trim());
     } on AuthException catch (error) {
-      throw Exception(_friendlyRegistrationError(error));
+      throw Exception(friendlyRegistrationError(error));
     } on Exception {
       rethrow;
     } catch (_) {
@@ -57,13 +59,12 @@ class AuthenticationRepository {
       // the user explicitly signs in with the credentials they just created.
       await supabase.auth.signOut(scope: SignOutScope.local);
     } on AuthException catch (error) {
-      final message = error.message.toLowerCase();
-      if (message.contains('password')) {
-        throw Exception(
-          'Use at least 8 characters, including uppercase, lowercase, a number, and a special character.',
-        );
-      }
-      throw Exception('Unable to save your password. Please try again.');
+      throw Exception(
+        passwordErrorMessage(
+          error,
+          fallback: 'Unable to save your password. Please try again.',
+        ),
+      );
     } catch (_) {
       throw Exception('Unable to save your password. Please try again.');
     }
@@ -120,20 +121,12 @@ class AuthenticationRepository {
         // continuing into the authenticated app from the recovery flow.
       }
     } on AuthException catch (error) {
-      final message = error.message.toLowerCase();
-      if (message.contains('password') || message.contains('weak')) {
-        throw Exception(
-          'Use at least 8 characters, including uppercase, lowercase, a number, and a special character.',
-        );
-      }
-      if (message.contains('expired') ||
-          message.contains('invalid') ||
-          message.contains('session')) {
-        throw Exception(
-          'This password reset link is invalid or expired. Request a new link.',
-        );
-      }
-      throw Exception('Unable to reset your password. Please try again.');
+      throw Exception(
+        passwordErrorMessage(
+          error,
+          fallback: 'Unable to reset your password. Please try again.',
+        ),
+      );
     } catch (_) {
       throw Exception('Unable to reset your password. Please try again.');
     }
@@ -163,23 +156,18 @@ class AuthenticationRepository {
       await supabase.auth.updateUser(UserAttributes(password: newPassword));
     } on AuthException catch (error) {
       final message = error.message.toLowerCase();
-      if (message.contains('invalid login') ||
+      if (error.code == 'invalid_credentials' ||
+          message.contains('invalid login') ||
           message.contains('invalid credentials') ||
           message.contains('email or password')) {
         throw Exception('Your old password is incorrect.');
       }
-      if (message.contains('same password') ||
-          message.contains('different from the old')) {
-        throw Exception(
-          'Your new password must be different from your old password.',
-        );
-      }
-      if (message.contains('password') || message.contains('weak')) {
-        throw Exception(
-          'Use at least 8 characters, including uppercase, lowercase, a number, and a special character.',
-        );
-      }
-      throw Exception('Unable to change your password. Please try again.');
+      throw Exception(
+        passwordErrorMessage(
+          error,
+          fallback: 'Unable to change your password. Please try again.',
+        ),
+      );
     } catch (error) {
       if (error is Exception) rethrow;
       throw Exception('Unable to change your password. Please try again.');
@@ -225,7 +213,11 @@ class AuthenticationRepository {
     } on GoogleSignInException catch (error) {
       switch (error.code) {
         case GoogleSignInExceptionCode.canceled:
-          throw Exception('Google sign-in was cancelled.');
+          // Credential Manager also reports configuration failures as canceled.
+          throw Exception(
+            'Google sign-in did not complete. Please try again. '
+            'If this keeps happening after selecting your account, contact support.',
+          );
         case GoogleSignInExceptionCode.clientConfigurationError:
         case GoogleSignInExceptionCode.providerConfigurationError:
           throw Exception(
@@ -394,17 +386,44 @@ class AuthenticationRepository {
   }
 }
 
-String _friendlyRegistrationError(AuthException error) {
+@visibleForTesting
+String friendlyRegistrationError(AuthException error) {
   final message = error.message.toLowerCase();
+  switch (error.code) {
+    case 'over_email_send_rate_limit':
+    case 'over_request_rate_limit':
+      return 'Too many verification requests. Please wait before trying again.';
+    case 'email_address_not_authorized':
+      return 'We cannot send verification emails to this address right now. Please contact support.';
+    case 'email_address_invalid':
+      return 'Please enter a valid email address.';
+    case 'email_exists':
+    case 'user_already_exists':
+      return 'An account with this email already exists. Please log in instead.';
+    case 'signup_disabled':
+    case 'otp_disabled':
+    case 'email_provider_disabled':
+      return 'Email registration is currently unavailable. Please try again later.';
+  }
+  if (error.statusCode == '429' ||
+      message.contains('rate limit') ||
+      message.contains('too many requests') ||
+      message.contains('after') && message.contains('seconds')) {
+    return 'Too many verification requests. Please wait before trying again.';
+  }
+  if (message.contains('email') && message.contains('not authorized')) {
+    return 'We cannot send verification emails to this address right now. Please contact support.';
+  }
   if (message.contains('already registered') ||
       message.contains('already exists') ||
       message.contains('user already')) {
     return 'An account with this email already exists. Please log in instead.';
   }
-  if (message.contains('password')) {
-    return 'Use at least 8 characters, including uppercase, lowercase, a number, and a special character.';
+  if (error.code == 'weak_password') {
+    return passwordRequirementsMessage;
   }
-  if (message.contains('email')) {
+  if (message.contains('invalid email') ||
+      message.contains('email address') && message.contains('invalid')) {
     return 'Please enter a valid email address.';
   }
   if (message.contains('network') ||
@@ -417,8 +436,11 @@ String _friendlyRegistrationError(AuthException error) {
 
 String _friendlyGoogleSignInError(AuthException error) {
   final message = error.message.toLowerCase();
-  if (message.contains('cancel') || message.contains('denied')) {
+  if (message.contains('cancel')) {
     return 'Google sign-in was cancelled.';
+  }
+  if (message.contains('denied')) {
+    return 'Google sign-in access was denied. Please try again or use another account.';
   }
   if (message.contains('network') ||
       message.contains('socket') ||
