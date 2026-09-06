@@ -12,11 +12,11 @@ type NotificationRow = {
 
 type WebhookPayload = {
   type: "INSERT";
-  table: "matchmaking_notifications";
+  table: "notifications" | "matchmaking_notifications";
   record: NotificationRow;
 };
 
-Deno.serve(async (request) => {
+async function handlePushNotification(request: Request): Promise<Response> {
   if (request.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
   }
@@ -62,6 +62,7 @@ Deno.serve(async (request) => {
   const metadata = notification.metadata ?? {};
   const notificationType = String(metadata.type ?? "update");
   const isIncomingCall = notificationType === "incoming_call";
+  const isGroupMessage = notificationType === "group_message";
   for (const device of devices) {
     const response = await fetch(endpoint, {
       method: "POST",
@@ -83,6 +84,7 @@ Deno.serve(async (request) => {
             call_id: String(metadata.call_id ?? ""),
             call_type: String(metadata.call_type ?? ""),
             caller_id: String(metadata.caller_id ?? ""),
+            message_id: String(metadata.message_id ?? ""),
           },
           android: {
             priority: "high",
@@ -92,6 +94,12 @@ Deno.serve(async (request) => {
                 sound: "default",
                 notification_priority: "PRIORITY_MAX",
                 visibility: "PUBLIC",
+              }
+              : isGroupMessage
+              ? {
+                channel_id: "gobuddy_messages",
+                sound: "default",
+                notification_priority: "PRIORITY_HIGH",
               }
               : undefined,
           },
@@ -127,4 +135,18 @@ Deno.serve(async (request) => {
     await supabase.from("push_device_tokens").delete().in("token", invalidTokens);
   }
   return Response.json({ sent, failed: devices.length - sent });
+}
+
+Deno.serve(async (request) => {
+  try {
+    return await handlePushNotification(request);
+  } catch (error) {
+    const message = error instanceof Error
+      ? error.message
+      : typeof error === "object"
+      ? JSON.stringify(error)
+      : String(error);
+    console.error("Push notification handler failed", message);
+    return Response.json({ error: message }, { status: 500 });
+  }
 });

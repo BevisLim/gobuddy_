@@ -248,16 +248,21 @@ class CollaborationRepository {
 
   Future<List<dynamic>> _loadTimelineDays(String tripId) async {
     try {
-      return await _client
-          .from('trip_timeline_days')
-          // trip_timeline_days uses (trip_id, day_date) as its database key.
-          // Keep both values in the response so timeline tabs always originate
-          // from a real persisted record rather than a generated list index.
-          .select('trip_id, day_date')
-          .eq('trip_id', tripId)
-          .order('day_date')
-          .timeout(const Duration(seconds: 3));
+      return await _client.rpc(
+        'get_trip_timeline_days',
+        params: {'p_trip_id': tripId},
+      );
     } on PostgrestException catch (error) {
+      // Older deployments do not have the member-validated read RPC yet.
+      // Fall back to the table query until the migration reaches them.
+      if (error.code == 'PGRST202' ||
+          error.message.contains('get_trip_timeline_days')) {
+        return await _client
+            .from('trip_timeline_days')
+            .select('trip_id, day_date')
+            .eq('trip_id', tripId)
+            .order('day_date');
+      }
       // Keep existing workspaces usable while the optional timeline-days
       // migration is being deployed. Other collaboration data must not be
       // blocked by a missing new table.
@@ -267,8 +272,6 @@ class CollaborationRepository {
         return const [];
       }
       rethrow;
-    } on TimeoutException {
-      return const [];
     }
   }
 

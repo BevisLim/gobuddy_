@@ -89,6 +89,17 @@ class PushNotificationService {
           AndroidFlutterLocalNotificationsPlugin
         >()
         ?.createNotificationChannel(channel);
+    const messageChannel = AndroidNotificationChannel(
+      'gobuddy_messages',
+      'Group messages',
+      description: 'New messages from your GoBuddy trip groups',
+      importance: Importance.high,
+    );
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.createNotificationChannel(messageChannel);
     const safetyChannel = AndroidNotificationChannel(
       'gobuddy_safety_check_ins',
       'Safety check-ins',
@@ -301,19 +312,22 @@ class PushNotificationService {
     }
     final notification = message.notification;
     if (notification == null) return;
+    final isGroupMessage = message.data['type'] == 'group_message';
     await _localNotifications.show(
       id: message.messageId.hashCode,
       title: notification.title,
       body: notification.body,
-      notificationDetails: const NotificationDetails(
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
-          'gobuddy_updates',
-          'GoBuddy updates',
-          channelDescription: 'Join requests and collaboration updates',
+          isGroupMessage ? 'gobuddy_messages' : 'gobuddy_updates',
+          isGroupMessage ? 'Group messages' : 'GoBuddy updates',
+          channelDescription: isGroupMessage
+              ? 'New messages from your GoBuddy trip groups'
+              : 'Join requests and collaboration updates',
           importance: Importance.high,
           priority: Priority.high,
         ),
-        iOS: DarwinNotificationDetails(),
+        iOS: const DarwinNotificationDetails(),
       ),
       payload: message.data['type'] == 'identity_verification'
           ? jsonEncode({'type': 'identity_verification'})
