@@ -1,16 +1,10 @@
-import 'dart:convert';
-
-import 'package:crypto/crypto.dart';
-import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/foundation.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
-import 'package:flutter_mvvm_riverpod/generated/locale_keys.g.dart';
 import 'package:flutter_mvvm_riverpod/features/common/remote/supabase_client.dart';
 
 part 'authentication_repository.g.dart';
@@ -259,50 +253,6 @@ class AuthenticationRepository {
       throw Exception(
         'Unable to load your profile. Check your connection and try again.',
       );
-    }
-  }
-
-  Future<AuthResponse> signInWithApple() async {
-    // TODO: fake data
-    return AuthResponse(
-      user: User(
-        id: '',
-        appMetadata: {},
-        userMetadata: {},
-        aud: '',
-        createdAt: '',
-        email: 'henry@apple.com',
-      ),
-    );
-
-    // ignore: dead_code
-    try {
-      final rawNonce = supabase.auth.generateRawNonce();
-      final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
-
-      final credential = await SignInWithApple.getAppleIDCredential(
-        scopes: [
-          AppleIDAuthorizationScopes.email,
-          AppleIDAuthorizationScopes.fullName,
-        ],
-        nonce: hashedNonce,
-      );
-
-      final idToken = credential.identityToken;
-      if (idToken == null) {
-        throw Exception(LocaleKeys.idTokenNotFound.tr());
-      }
-
-      final result = await supabase.auth.signInWithIdToken(
-        provider: OAuthProvider.apple,
-        idToken: idToken,
-        nonce: rawNonce,
-      );
-      return result;
-    } on AuthException catch (error) {
-      throw Exception(error.message);
-    } catch (error) {
-      throw Exception(LocaleKeys.unexpectedErrorOccurred.tr());
     }
   }
 
