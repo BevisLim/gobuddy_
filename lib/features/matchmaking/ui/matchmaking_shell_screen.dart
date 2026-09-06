@@ -56,6 +56,8 @@ class _MatchmakingShellScreenState
   RealtimeChannel? _tripsChannel;
   StreamSubscription<AuthState>? _authSubscription;
   String? _subscribedUserId;
+  int _subscriptionRevision = 0;
+  Timer? _realtimeRefreshTimer;
   Timer? _tripStartTimer;
   bool _checkingTripStarts = false;
   bool _tripStartSyncPending = false;
@@ -84,6 +86,7 @@ class _MatchmakingShellScreenState
   Future<void> _subscribeToTrips(String? userId) async {
     final client = _realtimeClient;
     if (!mounted || client == null || userId == _subscribedUserId) return;
+    final subscriptionRevision = ++_subscriptionRevision;
 
     final previousChannel = _tripsChannel;
     _tripsChannel = null;
@@ -91,28 +94,46 @@ class _MatchmakingShellScreenState
     if (previousChannel != null) {
       await client.removeChannel(previousChannel);
     }
-    if (!mounted || userId == null) return;
+    if (!mounted ||
+        subscriptionRevision != _subscriptionRevision ||
+        userId == null) {
+      return;
+    }
 
     _subscribedUserId = userId;
-    _tripsChannel = client
+    void refreshForCurrentSubscription() {
+      if (mounted &&
+          subscriptionRevision == _subscriptionRevision &&
+          userId == _subscribedUserId) {
+        _scheduleTripsRefresh();
+      }
+    }
+
+    final channel = client
         .channel('matchmaking-trips-$userId')
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'matchmaking_trips',
-          callback: (_) => _refreshTrips(),
+          callback: (_) => refreshForCurrentSubscription(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'matchmaking_trip_styles',
+          callback: (_) => refreshForCurrentSubscription(),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'matchmaking_saved_trips',
-          callback: (_) => _refreshTrips(),
+          callback: (_) => refreshForCurrentSubscription(),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'matchmaking_join_requests',
-          callback: (_) => _refreshTrips(),
+          callback: (_) => refreshForCurrentSubscription(),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
@@ -123,32 +144,38 @@ class _MatchmakingShellScreenState
             column: 'user_id',
             value: userId,
           ),
-          callback: (_) => _refreshTrips(),
+          callback: (_) => refreshForCurrentSubscription(),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'matchmaking_trip_members',
-          callback: (_) => _refreshTrips(),
+          callback: (_) => refreshForCurrentSubscription(),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'trip_members',
-          callback: (_) => _refreshTrips(),
+          callback: (_) => refreshForCurrentSubscription(),
         )
         .subscribe((status, error) {
           if (status == RealtimeSubscribeStatus.subscribed) {
             // Close the gap between the initial query and channel readiness.
-            _refreshTrips();
+            refreshForCurrentSubscription();
           }
         });
+    if (!mounted || subscriptionRevision != _subscriptionRevision) {
+      await client.removeChannel(channel);
+      return;
+    }
+    _tripsChannel = channel;
   }
 
-  void _refreshTrips() {
-    if (mounted) {
-      ref.read(matchmakingViewModelProvider.notifier).refresh();
-    }
+  void _scheduleTripsRefresh() {
+    _realtimeRefreshTimer?.cancel();
+    _realtimeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
+      if (mounted) ref.read(matchmakingViewModelProvider.notifier).refresh();
+    });
   }
 
   Future<void> _syncTripStartPrompts(MatchmakingState state) async {
@@ -264,6 +291,8 @@ class _MatchmakingShellScreenState
   void dispose() {
     _authSubscription?.cancel();
     _tripStartTimer?.cancel();
+    _realtimeRefreshTimer?.cancel();
+    _subscriptionRevision++;
     final channel = _tripsChannel;
     final client = _realtimeClient;
     if (channel != null && client != null) client.removeChannel(channel);

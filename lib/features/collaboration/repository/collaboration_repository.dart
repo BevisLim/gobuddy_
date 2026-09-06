@@ -380,6 +380,17 @@ class CollaborationRepository {
           ..onPostgresChanges(
             event: PostgresChangeEvent.all,
             schema: 'public',
+            table: 'trip_timeline_days',
+            callback: (payload) {
+              final record = payload.newRecord.isNotEmpty
+                  ? payload.newRecord
+                  : payload.oldRecord;
+              if (record['trip_id'] == tripId) onChange();
+            },
+          )
+          ..onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
             table: 'matchmaking_trip_members',
             filter: PostgresChangeFilter(
               type: PostgresChangeFilterType.eq,
