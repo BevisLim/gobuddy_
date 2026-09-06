@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
-import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../common/ui/widgets/common_header.dart';
@@ -99,7 +96,9 @@ class _SosScreenState extends ConsumerState<SosScreen>
                         icon: Icons.location_on_outlined,
                         label: 'Broadcast GPS\nnow',
                         color: AppColors.brandSurface,
-                        onTap: () => context.push(Routes.liveLocation),
+                        onTap: state.isLocating
+                            ? null
+                            : viewModel.alertContacts,
                       ),
                     ),
                   ],
