@@ -9,7 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_mvvm_riverpod/features/common/remote/supabase_client.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration_models.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/repository/collaboration_repository.dart';
-import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/view_model/matchmaking_view_model.dart';
+import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/matchmaking_view_model.dart';
 
 final groupCollaborationViewModelProvider =
     AsyncNotifierProvider.family<
@@ -288,10 +288,36 @@ class GroupCollaborationViewModel
   Future<int> deleteTimelineDay(DateTime day) async {
     final current = _requireMemberManager();
     final selectedDay = DateTime(day.year, day.month, day.day);
-    final deletedActivities = await _repository.deleteTimelineDay(
-      current.tripId,
-      selectedDay,
-    );
+    DateTime? persistedDay;
+    for (final candidate in current.timelineDays) {
+      if (_sameCalendarDay(candidate, selectedDay)) {
+        persistedDay = candidate;
+        break;
+      }
+    }
+    if (persistedDay == null) {
+      ref.invalidateSelf();
+      throw StateError(
+        'This timeline day no longer exists. The schedule has been refreshed.',
+      );
+    }
+
+    late final int deletedActivities;
+    try {
+      deletedActivities = await _repository.deleteTimelineDay(
+        current.tripId,
+        persistedDay,
+      );
+    } on PostgrestException catch (error) {
+      if (error.code == 'P0001' &&
+          error.message.toLowerCase().contains('timeline day not found')) {
+        ref.invalidateSelf();
+        throw StateError(
+          'This timeline day no longer exists. The schedule has been refreshed.',
+        );
+      }
+      rethrow;
+    }
     final dateLabel =
         '${selectedDay.day}/${selectedDay.month}/${selectedDay.year}';
     try {

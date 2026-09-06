@@ -7,8 +7,8 @@ import 'package:go_router/go_router.dart';
 import '../../../core/routing/routes.dart';
 import '../model/matchmaking_models.dart';
 import 'matchmaking_shell_screen.dart';
-import 'view_model/matchmaking_view_model.dart';
-import 'widgets/saved_trip_card.dart';
+import 'matchmaking_view_model.dart';
+import 'saved_trip_card.dart';
 
 class SavedTripsScreen extends ConsumerStatefulWidget {
   const SavedTripsScreen({super.key});
