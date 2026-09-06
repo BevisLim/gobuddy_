@@ -25,22 +25,26 @@ class AdminIdentityReviewRepository {
 
   Future<bool> isAdmin() async {
     try {
-      final data = await _invoke({'action': 'access'});
-      return data['isAdmin'] == true;
-    } on AdminIdentityReviewException {
+      final access = await _client.rpc<String>('get_account_access');
+      return access == 'admin';
+    } on PostgrestException {
       return false;
     }
   }
 
-  Future<List<AdminIdentityReview>> fetchQueue() async {
+  Future<AdminIdentityReviewQueue> fetchQueue() async {
     final data = await _invoke({'action': 'identityReviews'});
-    return (data['items'] as List? ?? const [])
+    final items = (data['items'] as List? ?? const [])
         .map(
           (item) => AdminIdentityReview.fromJson(
             Map<String, dynamic>.from(item as Map),
           ),
         )
         .toList(growable: false);
+    return AdminIdentityReviewQueue(
+      items: items,
+      unmatchedCount: (data['unmatchedCount'] as num?)?.toInt() ?? 0,
+    );
   }
 
   Future<AdminIdentityReviewDetails> fetchDetails(String verificationId) async {
@@ -69,6 +73,16 @@ class AdminIdentityReviewRepository {
       'reason': reason,
     });
   }
+}
+
+class AdminIdentityReviewQueue {
+  const AdminIdentityReviewQueue({
+    required this.items,
+    required this.unmatchedCount,
+  });
+
+  final List<AdminIdentityReview> items;
+  final int unmatchedCount;
 }
 
 class AdminIdentityReview {
