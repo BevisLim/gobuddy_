@@ -11,6 +11,7 @@ Future<void> showSafetyCheckInPrompt(
   String? checkInId,
   String? tripId,
   bool createRecord = true,
+  Future<void> Function()? onResponded,
 }) async {
   if (!context.mounted) return;
   var promptId = checkInId;
@@ -34,13 +35,15 @@ Future<void> showSafetyCheckInPrompt(
     barrierDismissible: false,
     builder: (_) => _SafetyCheckInDialog(
       checkInId: resolvedPromptId,
+      onResponded: onResponded,
     ),
   );
 }
 
 class _SafetyCheckInDialog extends StatefulWidget {
-  const _SafetyCheckInDialog({required this.checkInId});
+  const _SafetyCheckInDialog({required this.checkInId, this.onResponded});
   final String? checkInId;
+  final Future<void> Function()? onResponded;
 
   @override
   State<_SafetyCheckInDialog> createState() => _SafetyCheckInDialogState();
@@ -60,6 +63,7 @@ class _SafetyCheckInDialogState extends State<_SafetyCheckInDialog> {
         final repository = SupabaseSafetyCheckInRepository(supabase);
         await repository.respond(widget.checkInId!, status);
       }
+      await widget.onResponded?.call();
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
       Navigator.pop(context);

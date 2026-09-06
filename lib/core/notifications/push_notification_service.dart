@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -20,7 +21,7 @@ import '../../firebase_options.dart';
 
 const _checkInAction = 'safety_check_in_safe';
 const _localCheckInNotificationId = 74001;
-const _localCheckInChannelId = 'gobuddy_safety_check_in_alarm_v2';
+const _localCheckInChannelId = 'gobuddy_safety_check_in_alarm_v3';
 
 @pragma('vm:entry-point')
 Future<void> notificationTapBackground(NotificationResponse response) async {
@@ -206,7 +207,7 @@ class PushNotificationService {
       title: 'Safety check-in',
       body: 'Are you safe? Tap to confirm your safety.',
       repeatDurationInterval: Duration(minutes: configuration.intervalMinutes),
-      notificationDetails: const NotificationDetails(
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           _localCheckInChannelId,
           'Safety check-in alarms',
@@ -216,20 +217,28 @@ class PushNotificationService {
           priority: Priority.max,
           category: AndroidNotificationCategory.alarm,
           fullScreenIntent: true,
+          autoCancel: false,
+          ongoing: true,
           playSound: true,
           enableVibration: true,
           audioAttributesUsage: AudioAttributesUsage.alarm,
+          // Android's alarm-clock behaviour: keep replaying the channel sound
+          // until the notification is explicitly acknowledged.
+          additionalFlags: Int32List.fromList(const [4]),
           visibility: NotificationVisibility.public,
           actions: [
             AndroidNotificationAction(
               _checkInAction,
               "I'm safe",
-              showsUserInterface: true,
+              showsUserInterface: false,
+              // Let Android dismiss only the currently displayed alarm. Do
+              // not call the plugin's cancel API here because that also
+              // removes the stored periodic schedule.
               cancelNotification: true,
             ),
           ],
         ),
-        iOS: DarwinNotificationDetails(
+        iOS: const DarwinNotificationDetails(
           categoryIdentifier: 'safety_check_in',
           presentAlert: true,
           presentSound: true,
@@ -237,7 +246,11 @@ class PushNotificationService {
         ),
       ),
       androidScheduleMode: scheduleMode,
-      payload: jsonEncode({'type': 'safety_check_in', 'local': true}),
+      payload: jsonEncode({
+        'type': 'safety_check_in',
+        'local': true,
+        'notification_id': _localCheckInNotificationId,
+      }),
     );
     return true;
   }
@@ -274,10 +287,11 @@ class PushNotificationService {
 
   static Future<void> _showForegroundNotification(RemoteMessage message) async {
     if (message.data['type'] == 'safety_check_in') {
-      await _showCheckInNotification(message);
+      final notificationId = await _showCheckInNotification(message);
       _openCheckIn(
         message.data['check_in_id'] as String?,
         message.data['trip_id'] as String?,
+        notificationId: notificationId,
       );
       return;
     }
@@ -344,19 +358,15 @@ class PushNotificationService {
     );
   }
 
-  static Future<void> _showCheckInNotification(RemoteMessage message) async {
-    final payload = jsonEncode({
-      'type': 'safety_check_in',
-      'check_in_id': message.data['check_in_id'],
-      'trip_id': message.data['trip_id'],
-    });
+  static Future<int> _showCheckInNotification(RemoteMessage message) async {
+    final notificationId = message.messageId.hashCode;
     await _localNotifications.show(
-      id: message.messageId.hashCode,
+      id: notificationId,
       title: message.notification?.title ?? 'Safety check-in',
       body:
           message.notification?.body ??
           'Are you safe? Please respond within 15 minutes.',
-      notificationDetails: const NotificationDetails(
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           'gobuddy_safety_check_ins',
           'Safety check-ins',
@@ -365,19 +375,37 @@ class PushNotificationService {
           importance: Importance.max,
           priority: Priority.max,
           category: AndroidNotificationCategory.alarm,
+          fullScreenIntent: true,
+          autoCancel: false,
+          ongoing: true,
+          playSound: true,
+          enableVibration: true,
+          audioAttributesUsage: AudioAttributesUsage.alarm,
+          additionalFlags: Int32List.fromList(const [4]),
           actions: [
             AndroidNotificationAction(
               _checkInAction,
               "I'm safe",
-              showsUserInterface: true,
-              cancelNotification: true,
+              showsUserInterface: false,
+              cancelNotification: false,
             ),
           ],
         ),
-        iOS: DarwinNotificationDetails(categoryIdentifier: 'safety_check_in'),
+        iOS: const DarwinNotificationDetails(
+          categoryIdentifier: 'safety_check_in',
+          presentAlert: true,
+          presentSound: true,
+          interruptionLevel: InterruptionLevel.timeSensitive,
+        ),
       ),
-      payload: payload,
+      payload: jsonEncode({
+        'type': 'safety_check_in',
+        'check_in_id': message.data['check_in_id'],
+        'trip_id': message.data['trip_id'],
+        'notification_id': notificationId,
+      }),
     );
+    return notificationId;
   }
 
   static Future<void> handleNotificationResponse(
@@ -403,7 +431,10 @@ class PushNotificationService {
     if (data['type'] != 'safety_check_in') return;
     final checkInId = data['check_in_id'] as String?;
     final isLocal = data['local'] == true;
+    final notificationId = data['notification_id'] as int? ?? response.id;
     if (response.actionId == _checkInAction && isLocal) {
+      // Android's action receiver has already dismissed the visible alarm.
+      // The periodic schedule remains registered for every future interval.
       return;
     }
     if (response.actionId == _checkInAction && checkInId != null) {
@@ -411,12 +442,18 @@ class PushNotificationService {
         await SupabaseSafetyCheckInRepository(
           supabase,
         ).respond(checkInId, SafetyCheckInStatus.safe);
+        await _silenceCheckInAlarm(notificationId);
         return;
       } catch (_) {
         // Open the prompt so the user can retry if the direct action failed.
       }
     }
-    _openCheckIn(checkInId, data['trip_id'] as String?, localOnly: isLocal);
+    _openCheckIn(
+      checkInId,
+      data['trip_id'] as String?,
+      localOnly: isLocal,
+      notificationId: notificationId,
+    );
   }
 
   static void _openRemoteMessage(RemoteMessage message) {
@@ -442,18 +479,65 @@ class PushNotificationService {
     String? checkInId,
     String? tripId, {
     bool localOnly = false,
+    int? notificationId,
   }) {
-    Future<void>.delayed(const Duration(milliseconds: 300), () {
-      final context = rootNavigatorKey.currentContext;
-      if (context != null && context.mounted) {
-        showSafetyCheckInPrompt(
-          context,
-          checkInId: checkInId,
-          tripId: tripId,
-          createRecord: !localOnly,
+    unawaited(
+      _openCheckInAfterStartup(
+        checkInId,
+        tripId,
+        localOnly: localOnly,
+        notificationId: notificationId,
+      ),
+    );
+  }
+
+  static Future<void> _openCheckInAfterStartup(
+    String? checkInId,
+    String? tripId, {
+    required bool localOnly,
+    required int? notificationId,
+  }) async {
+    // A cold notification launch initially builds the splash route. Showing a
+    // dialog on that route makes it disappear when the splash timer navigates
+    // to the real destination. Wait until startup navigation has settled.
+    while (router.routeInformationProvider.value.uri.path == Routes.splash) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+
+    final context = rootNavigatorKey.currentContext;
+    if (context == null || !context.mounted) return;
+    await showSafetyCheckInPrompt(
+      context,
+      checkInId: checkInId,
+      tripId: tripId,
+      createRecord: !localOnly,
+      onResponded: () => _silenceCheckInAlarm(
+        notificationId,
+        rescheduleLocal: localOnly,
+      ),
+    );
+  }
+
+  static Future<void> _silenceCheckInAlarm(
+    int? notificationId, {
+    bool rescheduleLocal = false,
+  }) async {
+    if (notificationId != null) {
+      await _localNotifications.cancel(id: notificationId);
+    }
+    // Cancelling the displayed periodic notification may also remove its next
+    // occurrence. Start a fresh interval only after the user has responded.
+    if (rescheduleLocal) {
+      final configuration =
+          await SharedPreferencesSafetyCheckInConfigurationRepository().load();
+      if (configuration.enabled) {
+        await scheduleSafetyCheckIns(
+          configuration,
+          requestAlarmPermissions: false,
         );
       }
-    });
+    }
   }
 
   static void _openTrip(String? tripId) {

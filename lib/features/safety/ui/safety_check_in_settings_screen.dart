@@ -56,7 +56,7 @@ class _SafetyCheckInSettingsScreenState
                   ),
                   title: Text('Safety Check-In', style: AppTheme.title16),
                   subtitle: Text(
-                    'Automatically remind me to confirm that I am safe.',
+                    'Ring like an alarm until I confirm that I am safe.',
                     style: AppTheme.body14.copyWith(
                       color: context.secondaryTextColor,
                     ),
@@ -138,7 +138,7 @@ class _SafetyCheckInSettingsScreenState
                   leading: const Icon(Icons.info_outline),
                   title: Text('How it works', style: AppTheme.title16),
                   subtitle: Text(
-                    'You will receive a safety check-in reminder based on the selected interval.',
+                    'At each interval, an alarm stays active until you tap I\'m safe or Need help.',
                     style: AppTheme.body14.copyWith(
                       color: context.secondaryTextColor,
                     ),
