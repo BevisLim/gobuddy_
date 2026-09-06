@@ -18,6 +18,7 @@ class MatchmakingTrip {
     required this.hostInitials,
     this.hostProfilePhotoUrl,
     required this.imageUrl,
+    this.galleryImageUrls = const [],
     required this.gender,
     required this.minAge,
     required this.maxAge,
@@ -31,6 +32,7 @@ class MatchmakingTrip {
   });
 
   final String id, destination, hostId, hostName, hostInitials, imageUrl;
+  final List<String> galleryImageUrls;
   final String? hostProfilePhotoUrl;
   final DateTime startDate, endDate;
   final DateTime? startTime;
@@ -76,6 +78,7 @@ class MatchmakingTrip {
     int? joined,
     int? groupMemberCount,
     TripStatus? status,
+    List<String>? galleryImageUrls,
   }) => MatchmakingTrip(
     id: id,
     destination: destination ?? this.destination,
@@ -89,6 +92,7 @@ class MatchmakingTrip {
     hostInitials: hostInitials,
     hostProfilePhotoUrl: hostProfilePhotoUrl,
     imageUrl: imageUrl,
+    galleryImageUrls: galleryImageUrls ?? this.galleryImageUrls,
     gender: gender ?? this.gender,
     minAge: minAge ?? this.minAge,
     maxAge: maxAge ?? this.maxAge,

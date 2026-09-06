@@ -280,6 +280,18 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
     fileName: fileName,
   );
 
+  Future<String> uploadTripGalleryPhoto(
+    String tripId,
+    Uint8List bytes,
+    String fileName,
+    int index,
+  ) => _repository.uploadTripGalleryPhoto(
+    tripId: tripId,
+    bytes: bytes,
+    fileName: fileName,
+    index: index,
+  );
+
   Future<void> _deletePersistedTrip(String id) async {
     try {
       await _repository.deleteTrip(id);

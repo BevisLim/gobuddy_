@@ -1,9 +1,109 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/model/matchmaking_models.dart';
+import 'package:flutter_mvvm_riverpod/features/matchmaking/repository/destination_image_service.dart';
+import 'package:flutter_mvvm_riverpod/features/matchmaking/repository/location_search_service.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/matchmaking_shell_screen.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('discovery card swipes through its real image count', (
+    tester,
+  ) async {
+    final trip = MatchmakingTrip(
+      id: 'gallery-trip',
+      destination: 'Tioman',
+      startDate: DateTime.now().add(const Duration(days: 10)),
+      endDate: DateTime.now().add(const Duration(days: 13)),
+      budget: 1000,
+      styles: const {'Nature'},
+      hostId: 'host',
+      hostName: 'Host',
+      hostInitials: 'H',
+      imageUrl: 'https://example.com/cover.jpg',
+      galleryImageUrls: const [
+        'https://example.com/photo-1.jpg',
+        'https://example.com/photo-2.jpg',
+      ],
+      gender: 'Any',
+      minAge: 18,
+      maxAge: 60,
+      vacancies: 4,
+      description: 'Island trip',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: TripCard(
+              trip: trip,
+              onDetails: () {},
+              onRequest: () {},
+              onSave: () {},
+              saved: false,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Verified'), findsNothing);
+    expect(find.text('1 / 3'), findsOneWidget);
+    await tester.fling(find.byType(PageView), const Offset(-700, 0), 1200);
+    await tester.pumpAndSettle();
+    expect(find.text('2 / 3'), findsOneWidget);
+  });
+
+  testWidgets('destination suggestions can be selected or ignored', (
+    tester,
+  ) async {
+    final imageService = _FakeDestinationImageService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: InteractiveTripFormPage(
+            onBack: () {},
+            onPublish: (_) {},
+            onUploadImage: (_, _, _) async => '',
+            onUploadGalleryImage: (_, _, _, _) async => '',
+            hostedTrips: const [],
+            locationSearchService: _FakeLocationSearchService(),
+            destinationImageService: imageService,
+          ),
+        ),
+      ),
+    );
+
+    final destination = find.byType(TextFormField).first;
+    await tester.enterText(destination, 'Ku');
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Use "Ku"'), findsOneWidget);
+
+    await tester.enterText(destination, 'Kuala');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump();
+
+    expect(find.text('Kuala Lumpur, Malaysia'), findsOneWidget);
+    expect(find.text('Kuala Selangor, Selangor, Malaysia'), findsOneWidget);
+    expect(imageService.callCount, 0);
+
+    await tester.tap(find.text('Kuala Lumpur, Malaysia'));
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pump();
+    expect(
+      tester.widget<TextFormField>(destination).controller!.text,
+      'Kuala Lumpur, Malaysia',
+    );
+    expect(imageService.callCount, 1);
+    await tester.tap(destination);
+    await tester.enterText(destination, 'My custom destination');
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(
+      tester.widget<TextFormField>(destination).controller!.text,
+      'My custom destination',
+    );
+  });
+
   testWidgets('create trip calendar opens when the current date is occupied', (
     tester,
   ) async {
@@ -34,6 +134,7 @@ void main() {
             onBack: () {},
             onPublish: (_) {},
             onUploadImage: (_, _, _) async => '',
+            onUploadGalleryImage: (_, _, _, _) async => '',
             hostedTrips: [occupiedTrip],
           ),
         ),
@@ -49,4 +150,22 @@ void main() {
     expect(find.byType(DatePickerDialog), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+}
+
+class _FakeLocationSearchService extends LocationSearchService {
+  @override
+  Future<List<String>> search(String query) async => const [
+    'Kuala Lumpur, Malaysia',
+    'Kuala Selangor, Selangor, Malaysia',
+  ];
+}
+
+class _FakeDestinationImageService extends DestinationImageService {
+  int callCount = 0;
+
+  @override
+  Future<String?> findImageUrl(String destination) async {
+    callCount++;
+    return 'https://example.com/kuala-lumpur.jpg';
+  }
 }
