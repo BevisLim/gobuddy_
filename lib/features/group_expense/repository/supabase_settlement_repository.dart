@@ -115,12 +115,23 @@ class SupabaseSettlementRepository implements SettlementRepository {
       _guard(() async {
         final receipt = await getReceipt(tripId, settlementId);
         if (receipt != null) await receipts.deleteReceipt(receipt.imagePath);
-        await client
+        final deletedRows = await client
             .from('settlements')
             .delete()
             .eq('trip_id', tripId)
-            .eq('id', settlementId);
+            .eq('id', settlementId)
+            .select('id');
+        requireDeletedSettlement(deletedRows);
       });
+
+  static void requireDeletedSettlement(List<dynamic> deletedRows) {
+    if (deletedRows.isEmpty) {
+      throw const GroupExpenseRepositoryException(
+        'The settlement was not deleted. Refresh and try again.',
+        code: 'delete_failed',
+      );
+    }
+  }
   @override
   Future<SettlementReceipt?> getReceipt(String tripId, String settlementId) =>
       _guard(() async {

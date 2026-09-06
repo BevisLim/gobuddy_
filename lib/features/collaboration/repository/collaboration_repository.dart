@@ -7,14 +7,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_mvvm_riverpod/features/common/remote/supabase_client.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration_models.dart';
 
-const _activityProposalMigrationMessage =
-    'Activity proposals are not enabled yet. Apply Supabase migration '
-    '20260902150000_activity_proposal_approval.sql.';
-
 bool _isActivityProposalSchemaMissing(PostgrestException error) =>
     error.code == 'PGRST205' ||
+    error.code == 'PGRST204' ||
     error.code == '42P01' ||
-    error.message.contains('trip_activity_proposals');
+    error.message.toLowerCase().contains('trip_activity_proposals');
 
 final collaborationRepositoryProvider = Provider<CollaborationRepository>(
   (ref) => CollaborationRepository(supabase),
@@ -24,6 +21,7 @@ class CollaborationRepository {
   CollaborationRepository(this._client);
 
   final SupabaseClient _client;
+  final Set<String> _activityProposalEnabledTrips = <String>{};
 
   Future<GroupCollaborationState> loadWorkspace({
     required String tripId,
@@ -55,7 +53,6 @@ class CollaborationRepository {
           .from('trip_activities')
           .select()
           .eq('trip_id', tripId)
-          .order('is_pinned', ascending: false)
           .order('start_time'),
       _client
           .from('trip_files')
@@ -274,17 +271,20 @@ class CollaborationRepository {
 
   Future<List<dynamic>> _loadActivityProposals(String tripId) async {
     try {
-      return await _client
+      final proposals = await _client
           .from('trip_activity_proposals')
           .select()
           .eq('trip_id', tripId)
           .order('created_at', ascending: false)
           .timeout(const Duration(seconds: 3));
+      _activityProposalEnabledTrips.add(tripId);
+      return proposals;
     } on PostgrestException catch (error) {
       // Proposals were added after the original collaboration workspace.
       // A deployment that has not applied that optional migration must still
       // be able to open the trip timeline and use the existing features.
       if (_isActivityProposalSchemaMissing(error)) {
+        _activityProposalEnabledTrips.remove(tripId);
         return const [];
       }
       rethrow;
@@ -456,6 +456,20 @@ class CollaborationRepository {
             callback: (_) => onChange(),
           );
 
+    if (_activityProposalEnabledTrips.contains(tripId)) {
+      channel.onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'trip_activity_proposals',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'trip_id',
+          value: tripId,
+        ),
+        callback: (_) => onChange(),
+      );
+    }
+
     channel.subscribe((status, error) {
       debugPrint(
         '[group_call] workspace_room_status trip_id=$tripId '
@@ -556,7 +570,7 @@ class CollaborationRepository {
     'location': location,
   });
 
-  Future<void> submitActivityProposal({
+  Future<bool> submitActivityProposal({
     required String tripId,
     required String proposedBy,
     required String title,
@@ -574,15 +588,22 @@ class CollaborationRepository {
             : location!.trim(),
         'status': 'pending_approval',
       });
+      _activityProposalEnabledTrips.add(tripId);
+      return true;
     } on PostgrestException catch (error) {
       if (_isActivityProposalSchemaMissing(error)) {
-        throw StateError(_activityProposalMigrationMessage);
+        _activityProposalEnabledTrips.remove(tripId);
+        debugPrint(
+          '[activity_proposals] Schema unavailable; proposal was not submitted. '
+          'code=${error.code}',
+        );
+        return false;
       }
       rethrow;
     }
   }
 
-  Future<void> reviewActivityProposal({
+  Future<bool> reviewActivityProposal({
     required String proposalId,
     required bool accept,
   }) async {
@@ -594,12 +615,17 @@ class CollaborationRepository {
           'p_decision': accept ? 'accepted' : 'rejected',
         },
       );
+      return true;
     } on PostgrestException catch (error) {
       if (_isActivityProposalSchemaMissing(error) ||
           error.code == 'PGRST202' ||
           error.code == '42883' ||
           error.message.contains('review_trip_activity_proposal')) {
-        throw StateError(_activityProposalMigrationMessage);
+        debugPrint(
+          '[activity_proposals] Review function unavailable. '
+          'code=${error.code}',
+        );
+        return false;
       }
       rethrow;
     }

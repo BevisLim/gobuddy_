@@ -394,6 +394,9 @@ String? _validatePassword(String? value) {
 
 String _friendlyLoginError(AuthException error) {
   final message = error.message.toLowerCase();
+  if (message.contains('banned') || error.code == 'user_banned') {
+    return 'Your account has been banned.';
+  }
   if (message.contains('email not confirmed') ||
       message.contains('email_not_confirmed')) {
     return 'Please confirm your email before signing in.';

@@ -9,9 +9,8 @@ final userSafetyRepositoryProvider = Provider<UserSafetyRepository>(
 );
 
 final isUserBlockedProvider = FutureProvider.family<bool, String>(
-  (ref, targetUserId) => ref
-      .read(userSafetyRepositoryProvider)
-      .isUserBlocked(targetUserId),
+  (ref, targetUserId) =>
+      ref.read(userSafetyRepositoryProvider).isUserBlocked(targetUserId),
 );
 
 abstract interface class UserSafetyRepository {
@@ -59,15 +58,17 @@ class SupabaseUserSafetyRepository implements UserSafetyRepository {
   @override
   Future<List<BlockedUser>> getBlockedUsers() async {
     final rows = await _client.rpc<List<dynamic>>('get_blocked_users');
-    return rows.map((value) {
-      final row = Map<String, dynamic>.from(value as Map);
-      return BlockedUser(
-        userId: row['user_id'] as String,
-        displayName: row['display_name'] as String? ?? 'GoBuddy user',
-        avatarUrl: row['avatar_url'] as String?,
-        blockedAt: DateTime.parse(row['blocked_at'] as String).toLocal(),
-      );
-    }).toList(growable: false);
+    return rows
+        .map((value) {
+          final row = Map<String, dynamic>.from(value as Map);
+          return BlockedUser(
+            userId: row['user_id'] as String,
+            displayName: row['display_name'] as String? ?? 'GoBuddy user',
+            avatarUrl: row['avatar_url'] as String?,
+            blockedAt: DateTime.parse(row['blocked_at'] as String).toLocal(),
+          );
+        })
+        .toList(growable: false);
   }
 
   @override
@@ -76,11 +77,13 @@ class SupabaseUserSafetyRepository implements UserSafetyRepository {
     if (targetUserId.isEmpty || targetUserId == currentUserId) {
       throw const UserSafetyException('You cannot block this user.');
     }
-    await _client.from('user_blocks').upsert(
-      {'blocker_id': currentUserId, 'blocked_id': targetUserId},
-      onConflict: 'blocker_id,blocked_id',
-      ignoreDuplicates: true,
-    );
+    await _client
+        .from('user_blocks')
+        .upsert(
+          {'blocker_id': currentUserId, 'blocked_id': targetUserId},
+          onConflict: 'blocker_id,blocked_id',
+          ignoreDuplicates: true,
+        );
   }
 
   @override
@@ -103,31 +106,34 @@ class SupabaseUserSafetyRepository implements UserSafetyRepository {
     if (targetUserId.isEmpty || targetUserId == currentUserId) {
       throw const UserSafetyException('You cannot report this user.');
     }
-    if (cleanDescription != null && cleanDescription.length > 1000) {
+    final validation = UserReportReason.validate(reason, description);
+    if (validation != null) throw UserSafetyException(validation);
+    try {
+      final row = await _client
+          .from('user_reports')
+          .insert({
+            'reporter_id': currentUserId,
+            'reported_user_id': targetUserId,
+            'reason': reason.name,
+            'description': cleanDescription?.isEmpty ?? true
+                ? null
+                : cleanDescription,
+          })
+          .select()
+          .single();
+      return UserReport(
+        id: row['id'] as String,
+        reporterId: row['reporter_id'] as String,
+        reportedUserId: row['reported_user_id'] as String,
+        reason: UserReportReason.values.byName(row['reason'] as String),
+        description: row['description'] as String?,
+        createdAt: DateTime.parse(row['created_at'] as String).toLocal(),
+        status: row['status'] as String,
+      );
+    } catch (_) {
       throw const UserSafetyException(
-        'Report details must be 1000 characters or fewer.',
+        'Unable to submit your report. Please try again.',
       );
     }
-    final row = await _client
-        .from('user_reports')
-        .insert({
-          'reporter_id': currentUserId,
-          'reported_user_id': targetUserId,
-          'reason': reason.name,
-          'description': cleanDescription?.isEmpty ?? true
-              ? null
-              : cleanDescription,
-        })
-        .select()
-        .single();
-    return UserReport(
-      id: row['id'] as String,
-      reporterId: row['reporter_id'] as String,
-      reportedUserId: row['reported_user_id'] as String,
-      reason: UserReportReason.values.byName(row['reason'] as String),
-      description: row['description'] as String?,
-      createdAt: DateTime.parse(row['created_at'] as String).toLocal(),
-      status: row['status'] as String,
-    );
   }
 }

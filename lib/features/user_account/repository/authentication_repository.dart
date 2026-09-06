@@ -151,7 +151,9 @@ class AuthenticationRepository {
       throw Exception('Your session has expired. Please sign in again.');
     }
     if (oldPassword == newPassword) {
-      throw Exception('Your new password must be different from your old password.');
+      throw Exception(
+        'Your new password must be different from your old password.',
+      );
     }
 
     try {
@@ -242,6 +244,11 @@ class AuthenticationRepository {
     }
 
     try {
+      // Admins do not need a traveller profile. Route guards enforce access.
+      final access = await supabase.rpc<String>('get_account_access');
+      if (access == 'admin' || access == 'banned' || access == 'suspended') {
+        return true;
+      }
       final profile = await supabase
           .from('user_accounts')
           .select('onboarding_completed')
@@ -352,7 +359,9 @@ class AuthenticationRepository {
     } on FunctionException catch (error) {
       final data = error.details;
       final message = data is Map ? data['error']?.toString() : null;
-      throw Exception(message ?? 'Unable to delete your account. Please try again.');
+      throw Exception(
+        message ?? 'Unable to delete your account. Please try again.',
+      );
     } on Exception {
       rethrow;
     } catch (_) {

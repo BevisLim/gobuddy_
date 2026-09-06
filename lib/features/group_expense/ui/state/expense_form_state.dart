@@ -7,6 +7,7 @@ import '../../model/traveller.dart';
 class ExpenseFormState {
   const ExpenseFormState({
     required this.tripId,
+    required this.currentUserId,
     required this.baseCurrency,
     this.expense,
     this.categories = const [],
@@ -21,6 +22,7 @@ class ExpenseFormState {
   });
 
   final String tripId;
+  final String? currentUserId;
   final String baseCurrency;
   final Expense? expense;
   final List<ExpenseCategory> categories;
@@ -32,6 +34,14 @@ class ExpenseFormState {
   final bool isDeleted;
   final String? errorMessage;
   final String? successMessage;
+
+  String? get defaultPayerId {
+    final userId = currentUserId;
+    if (userId == null) return null;
+    return travellers.any((traveller) => traveller.userId == userId)
+        ? userId
+        : null;
+  }
 
   ExpenseFormState copyWith({
     Expense? expense,
@@ -48,6 +58,7 @@ class ExpenseFormState {
   }) =>
       ExpenseFormState(
         tripId: tripId,
+        currentUserId: currentUserId,
         baseCurrency: baseCurrency,
         expense: expense ?? this.expense,
         categories: categories,

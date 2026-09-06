@@ -349,8 +349,7 @@ class _ExpenseFormState extends ConsumerState<ExpenseForm> {
     final expense = state.expense;
     if (expense == null) {
       _currency = state.baseCurrency;
-      _payerId =
-          state.travellers.isEmpty ? null : state.travellers.first.userId;
+      _payerId = state.defaultPayerId;
       _selectedParticipants.addAll(state.travellers.map((item) => item.userId));
       return;
     }

@@ -30,10 +30,13 @@ class TripLiveLocationsScreen extends ConsumerStatefulWidget {
 class _TripLiveLocationsScreenState
     extends ConsumerState<TripLiveLocationsScreen> {
   Timer? _freshnessTimer;
+  Timer? _autoFollowTimer;
   late final Stream<List<SharedLiveLocation>> _locations;
   final MapController _mapController = MapController();
   String? _selectedUserId;
   LatLng? _lastFollowedPoint;
+  SharedLiveLocation? _latestSelectedShare;
+  bool _autoFollowPaused = false;
 
   @override
   void initState() {
@@ -49,6 +52,7 @@ class _TripLiveLocationsScreenState
   @override
   void dispose() {
     _freshnessTimer?.cancel();
+    _autoFollowTimer?.cancel();
     _mapController.dispose();
     super.dispose();
   }
@@ -112,6 +116,10 @@ class _TripLiveLocationsScreenState
                       options: MapOptions(
                         initialCenter: _point(initialShare),
                         initialZoom: 16,
+                        onPointerDown: (_, _) => _pauseAutoFollow(),
+                        onPositionChanged: (_, hasGesture) {
+                          if (hasGesture) _pauseAutoFollow();
+                        },
                       ),
                       children: [
                         TileLayer(
@@ -128,6 +136,20 @@ class _TripLiveLocationsScreenState
                           onSelected: _selectShare,
                         ),
                       ],
+                    ),
+                    Positioned(
+                      left: 8,
+                      top: 8,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        child: _autoFollowPaused && _selectedUserId != null
+                            ? const Chip(
+                                key: ValueKey('auto-follow-paused'),
+                                avatar: Icon(Icons.pan_tool_outlined, size: 16),
+                                label: Text('Auto-follow paused'),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
                     ),
                     Positioned(
                       right: 6,
@@ -184,18 +206,43 @@ class _TripLiveLocationsScreenState
       LatLng(share.latitude, share.longitude);
 
   void _selectShare(SharedLiveLocation share) {
-    setState(() => _selectedUserId = share.userId);
-    final point = _point(share);
-    _lastFollowedPoint = point;
-    _mapController.move(point, 17);
+    _autoFollowTimer?.cancel();
+    setState(() {
+      _selectedUserId = share.userId;
+      _autoFollowPaused = false;
+    });
+    _latestSelectedShare = share;
+    _moveToShare(share);
   }
 
   void _followSelected(SharedLiveLocation share) {
+    _latestSelectedShare = share;
+    if (_autoFollowPaused) return;
     final point = _point(share);
     if (point == _lastFollowedPoint) return;
-    _lastFollowedPoint = point;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _mapController.move(point, 17);
+      if (mounted && !_autoFollowPaused) _moveToShare(share);
+    });
+  }
+
+  void _moveToShare(SharedLiveLocation share) {
+    final point = _point(share);
+    _lastFollowedPoint = point;
+    // Recenter without changing the zoom level chosen by the user.
+    _mapController.move(point, _mapController.camera.zoom);
+  }
+
+  void _pauseAutoFollow() {
+    if (_selectedUserId == null) return;
+    _autoFollowTimer?.cancel();
+    if (!_autoFollowPaused && mounted) {
+      setState(() => _autoFollowPaused = true);
+    }
+    _autoFollowTimer = Timer(const Duration(minutes: 3), () {
+      if (!mounted) return;
+      setState(() => _autoFollowPaused = false);
+      final share = _latestSelectedShare;
+      if (share != null) _moveToShare(share);
     });
   }
 

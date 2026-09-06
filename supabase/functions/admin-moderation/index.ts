@@ -52,7 +52,6 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { action, targetId } = body;
     const page = Number.isInteger(body.page) && body.page >= 0 ? body.page : 0;
-    if (action === "access") return reply({ isAdmin: true });
     if (action === "dashboard") {
       const counts: Record<string, number> = {};
       for (const status of ["pending", "reviewing", "resolved", "dismissed"]) {
@@ -156,6 +155,7 @@ Deno.serve(async (req) => {
       }));
       return reply({ success: true });
     }
+    if (typeof targetId !== "string" || !/^[0-9a-f-]{36}$/i.test(targetId)) return reply({ error: "A valid target is required" }, 400);
     if (action === "report") {
       const report = checked(await client.from("admin_report_summary").select("*").eq("id", targetId).single());
       const history = checked(await client.from("moderation_audit").select("*").or(`report_id.eq.${targetId},target_id.eq.${targetId}`).order("created_at"));

@@ -29,6 +29,7 @@ class ExpenseViewModel extends _$ExpenseViewModel {
     required String tripId,
     String? expenseId,
   }) async {
+    final currentUserId = ref.watch(authenticatedUserIdProvider);
     final repositoryFuture = ref.watch(expenseRepositoryProvider.future);
     final travellerRepositoryFuture =
         ref.watch(travellerRepositoryProvider.future);
@@ -51,6 +52,7 @@ class ExpenseViewModel extends _$ExpenseViewModel {
         : await _repository.getReceipt(tripId, expenseId);
     return ExpenseFormState(
       tripId: tripId,
+      currentUserId: currentUserId,
       baseCurrency: budget?.baseCurrency ?? 'MYR',
       categories: categories,
       travellers: travellers,

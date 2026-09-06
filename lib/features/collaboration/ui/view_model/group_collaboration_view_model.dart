@@ -204,23 +204,24 @@ class GroupCollaborationViewModel
     ref.invalidateSelf();
   }
 
-  Future<void> proposeActivity({
+  Future<bool> proposeActivity({
     required String title,
     required DateTime startTime,
     String? location,
   }) async {
     final current = _current;
-    if (current == null) return;
+    if (current == null) return false;
     if (current.canManageMembers) {
       throw StateError('Admins should add activities directly.');
     }
-    await _repository.submitActivityProposal(
+    final submitted = await _repository.submitActivityProposal(
       tripId: current.tripId,
       proposedBy: current.currentUserId,
       title: title,
       startTime: startTime,
       location: location,
     );
+    if (!submitted) return false;
     await _repository.recordEvent(
       tripId: current.tripId,
       actorId: current.currentUserId,
@@ -228,17 +229,19 @@ class GroupCollaborationViewModel
       summary: 'An activity was proposed for admin review: ${title.trim()}.',
     );
     ref.invalidateSelf();
+    return true;
   }
 
-  Future<void> reviewActivityProposal(
+  Future<bool> reviewActivityProposal(
     TripActivityProposal proposal, {
     required bool accept,
   }) async {
     final current = _requireMemberManager();
-    await _repository.reviewActivityProposal(
+    final reviewed = await _repository.reviewActivityProposal(
       proposalId: proposal.id,
       accept: accept,
     );
+    if (!reviewed) return false;
     await _repository.recordEvent(
       tripId: current.tripId,
       actorId: current.currentUserId,
@@ -250,6 +253,7 @@ class GroupCollaborationViewModel
           : 'Activity proposal rejected: ${proposal.title}.',
     );
     ref.invalidateSelf();
+    return true;
   }
 
   Future<void> addTimelineDay(DateTime day) async {
@@ -327,14 +331,6 @@ class GroupCollaborationViewModel
       summary:
           '${activity.title} was ${activity.isPinned ? 'unpinned' : 'pinned'}.',
     );
-    ref.invalidateSelf();
-  }
-
-  Future<void> toggleLock(TripActivity activity) async {
-    _requireMemberManager();
-    await _repository.updateActivity(activity.id, {
-      'is_locked': !activity.isLocked,
-    });
     ref.invalidateSelf();
   }
 
