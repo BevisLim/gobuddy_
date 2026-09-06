@@ -39,6 +39,7 @@ import '../../features/safety/ui/add_emergency_contact_screen.dart';
 import '../../features/safety/ui/emergency_contacts_screen.dart';
 import '../../features/safety/ui/live_location_screen.dart';
 import '../../features/safety/ui/sos_screen.dart';
+import '../../features/safety/ui/sos_shortcut_screen.dart';
 import '../../features/safety/ui/safety_check_in_settings_screen.dart';
 
 import 'routes.dart';
@@ -435,6 +436,11 @@ final GoRouter router = GoRouter(
     GoRoute(
       path: Routes.sos,
       pageBuilder: (context, state) => state.slidePage(const SosScreen()),
+    ),
+    GoRoute(
+      path: Routes.sosShortcut,
+      pageBuilder: (context, state) =>
+          state.navigationPage(const SosShortcutScreen()),
     ),
     GoRoute(
       path: Routes.groupCollaboration,

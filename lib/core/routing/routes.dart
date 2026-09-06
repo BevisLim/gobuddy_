@@ -46,6 +46,7 @@ class Routes {
   static const addEmergencyContact = '/safety/emergency-contacts/add';
   static const liveLocation = '/safety/live-location';
   static const sos = '/safety/sos';
+  static const sosShortcut = '/safety/sos/confirm';
 
   static String tripTimeline(String tripId) =>
       '$trip/${Uri.encodeComponent(tripId)}/timeline';
