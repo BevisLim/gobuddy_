@@ -8,8 +8,8 @@ void main() {
   final trip = MatchmakingTrip(
     id: 'trip-id',
     destination: 'Osaka, Japan',
-    startDate: DateTime(2026, 9, 2),
-    endDate: DateTime(2026, 9, 8),
+    startDate: DateTime.now().add(const Duration(days: 10)),
+    endDate: DateTime.now().add(const Duration(days: 16)),
     budget: 10000,
     styles: const {'Culture'},
     hostId: 'owner-id',

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -65,10 +66,23 @@ class UserAccountScreen extends ConsumerStatefulWidget {
   ConsumerState<UserAccountScreen> createState() => _UserAccountScreenState();
 }
 
-class _UserAccountScreenState extends ConsumerState<UserAccountScreen> {
+class _UserAccountScreenState extends ConsumerState<UserAccountScreen>
+    with WidgetsBindingObserver {
+  Timer? _verificationTimer;
+  bool _isForeground = true;
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _verificationTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (_isForeground &&
+          ref.read(userAccountViewModelProvider).user?.verificationStatus ==
+              IdentityVerificationStatus.pending) {
+        ref
+            .read(userAccountViewModelProvider.notifier)
+            .refreshVerificationStatus();
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         // The account sub-pages are held in a long-lived provider. Reset only
@@ -79,6 +93,23 @@ class _UserAccountScreenState extends ConsumerState<UserAccountScreen> {
         viewModel.refresh();
       }
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _isForeground = state == AppLifecycleState.resumed;
+    if (state == AppLifecycleState.resumed) {
+      ref
+          .read(userAccountViewModelProvider.notifier)
+          .refreshVerificationStatus();
+    }
+  }
+
+  @override
+  void dispose() {
+    _verificationTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   @override
@@ -253,8 +284,16 @@ class _AccountDashboardView extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             child: _ProfileStatsCard(
               onEdit: () => onNavigate(UserAccountPage.editProfile),
-              isVerified: user.isVerified,
+              verificationStatus: user.verificationStatus,
               onVerify: onVerify,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: _AccountMenuTile(
+              icon: Icons.favorite_outline,
+              title: 'Saved Trips',
+              onTap: () => context.push(Routes.savedTrips),
             ),
           ),
           Padding(
@@ -643,12 +682,12 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
 
 class _ProfileStatsCard extends StatelessWidget {
   final VoidCallback onEdit;
-  final bool isVerified;
+  final IdentityVerificationStatus verificationStatus;
   final VoidCallback onVerify;
 
   const _ProfileStatsCard({
     required this.onEdit,
-    required this.isVerified,
+    required this.verificationStatus,
     required this.onVerify,
   });
 
@@ -686,7 +725,7 @@ class _ProfileStatsCard extends StatelessWidget {
             ),
           ),
         ),
-        if (!isVerified) ...[
+        if (verificationStatus != IdentityVerificationStatus.verified) ...[
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
@@ -694,9 +733,11 @@ class _ProfileStatsCard extends StatelessWidget {
             child: OutlinedButton.icon(
               onPressed: onVerify,
               icon: const Icon(Icons.verified_user_outlined),
-              label: const Text(
-                'Verify Identity',
-                style: TextStyle(fontWeight: FontWeight.w700),
+              label: Text(
+                verificationStatus == IdentityVerificationStatus.pending
+                    ? 'Verification Pending'
+                    : 'Verify Identity',
+                style: const TextStyle(fontWeight: FontWeight.w700),
               ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: _violet,

@@ -6,6 +6,8 @@ class Constants {
   static const String supabaseLoginCallback = 'gobuddy://auth-callback/';
   static const String supabasePasswordRecoveryCallback =
       'gobuddy://reset-password/';
+  static const String identityVerificationCallback =
+      'gobuddy://app/identity-verification';
   static const String supabaseProfileTable = 'profile';
   static const String googleEmailScope = 'email';
   static const String googleUserInfoScope =

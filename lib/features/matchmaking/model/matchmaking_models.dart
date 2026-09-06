@@ -61,6 +61,15 @@ class MatchmakingTrip {
         spotsLeft > 0;
   }
 
+  String? get unavailableReason {
+    if (status == TripStatus.draft) return 'Unavailable';
+    if (status == TripStatus.closed) return 'Trip closed';
+    if (lifecycle == TripLifecycle.finished) return 'Trip ended';
+    if (lifecycle == TripLifecycle.ongoing) return 'Trip started';
+    if (spotsLeft == 0) return 'Full';
+    return null;
+  }
+
   MatchmakingTrip copyWith({
     String? destination,
     DateTime? startDate,

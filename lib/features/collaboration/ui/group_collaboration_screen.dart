@@ -752,6 +752,13 @@ class _MembersInfoTab extends ConsumerWidget {
         const SizedBox(height: 8),
         ...state.members.map(
           (member) => ListTile(
+            onTap: member.userId == state.currentUserId
+                ? () => context.push(Routes.userAccount)
+                : () => _showMemberSafetyActions(
+                    context: context,
+                    ref: ref,
+                    member: member,
+                  ),
             leading: _MemberAvatar(
               member: member,
               currentUserId: state.currentUserId,
@@ -874,7 +881,9 @@ class _MemberAvatar extends StatelessWidget {
             : displayName[0].toUpperCase(),
       ),
     );
-    if (member.userId == currentUserId) return avatar;
+    if (member.userId == currentUserId) {
+      return Tooltip(message: 'Open your profile', child: avatar);
+    }
 
     return Tooltip(
       message: 'User options',

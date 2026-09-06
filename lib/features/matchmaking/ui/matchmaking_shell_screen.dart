@@ -84,6 +84,12 @@ class _MatchmakingShellScreenState
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
+          table: 'matchmaking_saved_trips',
+          callback: (_) => _refreshTrips(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
           table: 'matchmaking_join_requests',
           callback: (_) => _refreshTrips(),
         )
@@ -512,6 +518,16 @@ class MatchmakingNotificationsDialog extends StatelessWidget {
                     ),
                   ),
                   subtitle: Text(notification.body),
+                  trailing: notification.isIdentityVerification
+                      ? const Icon(Icons.chevron_right)
+                      : null,
+                  onTap: notification.isIdentityVerification
+                      ? () {
+                          final navigation = GoRouter.of(context);
+                          Navigator.pop(context);
+                          navigation.push(Routes.identityVerification);
+                        }
+                      : null,
                 );
               },
             ),
@@ -889,6 +905,7 @@ class TripCard extends StatelessWidget {
             children: [
               IconButton(
                 onPressed: onSave,
+                tooltip: saved ? 'Remove saved trip' : 'Save trip for later',
                 icon: Icon(
                   saved
                       ? Icons.favorite_rounded
@@ -1172,11 +1189,13 @@ class _InteractiveFilterPageState extends State<InteractiveFilterPage> {
 class TripDetailsPage extends StatelessWidget {
   final MatchmakingTrip trip;
   final bool canOpenGroup;
+  final bool canRequest;
   final VoidCallback onBack, onRequest, onOpenGroup;
   const TripDetailsPage({
     super.key,
     required this.trip,
     required this.canOpenGroup,
+    this.canRequest = true,
     required this.onBack,
     required this.onRequest,
     required this.onOpenGroup,
@@ -1284,7 +1303,11 @@ class TripDetailsPage extends StatelessWidget {
                 label: const Text('Open trip timeline'),
               ),
             ] else
-              PrimaryButton(label: 'Request to Join', onTap: onRequest),
+              PrimaryButton(
+                onTap: trip.isDiscoverable && canRequest ? onRequest : null,
+                label: trip.unavailableReason ??
+                    (canRequest ? 'Request to Join' : 'Join unavailable'),
+              ),
           ],
         ),
       ),

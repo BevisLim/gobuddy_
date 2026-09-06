@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +10,7 @@ import 'package:flutter_mvvm_riverpod/core/theme/app_colors.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_theme.dart';
 import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import 'view_model/user_account_view_model.dart';
+import '../model/user_account_model.dart';
 
 class IdentityVerificationScreen extends ConsumerStatefulWidget {
   const IdentityVerificationScreen({super.key, this.fromOnboarding = false});
@@ -21,12 +23,50 @@ class IdentityVerificationScreen extends ConsumerStatefulWidget {
 }
 
 class _IdentityVerificationScreenState
-    extends ConsumerState<IdentityVerificationScreen> {
-  bool _didOpenVerification = false;
+    extends ConsumerState<IdentityVerificationScreen>
+    with WidgetsBindingObserver {
+  Timer? _statusTimer;
+  bool _isForeground = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _refreshStatus();
+    });
+    _statusTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (_isForeground &&
+          ref.read(userAccountViewModelProvider).user?.verificationStatus ==
+              IdentityVerificationStatus.pending) {
+        _refreshStatus();
+      }
+    });
+  }
+
+  void _refreshStatus() => unawaited(
+    ref.read(userAccountViewModelProvider.notifier).refreshVerificationStatus(),
+  );
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _isForeground = state == AppLifecycleState.resumed;
+    if (_isForeground) _refreshStatus();
+  }
+
+  @override
+  void dispose() {
+    _statusTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final isStarting = ref.watch(userAccountViewModelProvider).isLoading;
+    final status =
+        ref.watch(userAccountViewModelProvider).user?.verificationStatus ??
+        IdentityVerificationStatus.unverified;
 
     return PopScope(
       canPop: !widget.fromOnboarding,
@@ -42,8 +82,8 @@ class _IdentityVerificationScreenState
             onPressed: isStarting
                 ? null
                 : () => widget.fromOnboarding
-                    ? context.go(Routes.main)
-                    : Navigator.maybePop(context),
+                      ? context.go(Routes.main)
+                      : Navigator.maybePop(context),
           ),
           title: Text('Identity Verification', style: AppTheme.title20),
           backgroundColor: AppColors.brandBackground,
@@ -60,87 +100,122 @@ class _IdentityVerificationScreenState
                   child: SingleChildScrollView(
                     child: Column(
                       children: [
-                      const SizedBox(height: 16),
-                      Container(
-                        width: 104,
-                        height: 104,
-                        decoration: BoxDecoration(
-                          color: AppColors.brandBorder.withValues(alpha: .3),
-                          shape: BoxShape.circle,
+                        const SizedBox(height: 16),
+                        Container(
+                          width: 104,
+                          height: 104,
+                          decoration: BoxDecoration(
+                            color: AppColors.brandBorder.withValues(alpha: .3),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.verified_user_outlined,
+                            color: AppColors.brandSurface,
+                            size: 52,
+                          ),
                         ),
-                        child: const Icon(
-                          Icons.verified_user_outlined,
-                          color: AppColors.brandSurface,
-                          size: 52,
+                        const SizedBox(height: 28),
+                        Text(
+                          switch (status) {
+                            IdentityVerificationStatus.unverified =>
+                              'Identity unverified',
+                            IdentityVerificationStatus.pending =>
+                              'Verification pending',
+                            IdentityVerificationStatus.verified =>
+                              'Identity verified',
+                          },
+                          textAlign: TextAlign.center,
+                          style: AppTheme.title32.copyWith(
+                            color: AppColors.brandPrimary,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 28),
-                      Text(
-                        _didOpenVerification
-                            ? 'Verification started'
-                            : 'Verify your identity',
-                        textAlign: TextAlign.center,
-                        style: AppTheme.title32.copyWith(
-                          color: AppColors.brandPrimary,
+                        const SizedBox(height: 12),
+                        Text(
+                          switch (status) {
+                            IdentityVerificationStatus.unverified =>
+                              'Verify your identity document and face with Didit. '
+                                  'If a previous attempt was rejected, check your notifications for the reason before trying again.',
+                            IdentityVerificationStatus.pending =>
+                              'Complete any remaining steps in Didit. We will notify you when your status changes.',
+                            IdentityVerificationStatus.verified =>
+                              'Your identity has been verified. Your verified badge is now visible on your profile.',
+                          },
+                          textAlign: TextAlign.center,
+                          style: AppTheme.body16.copyWith(
+                            color: AppColors.brandTextMuted,
+                            height: 1.5,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        _didOpenVerification
-                            ? 'Complete the verification in the Didit page. '
-                                'Your status will update after it is reviewed.'
-                            : 'You will continue to Didit to securely verify '
-                                'your identity document and face.',
-                        textAlign: TextAlign.center,
-                        style: AppTheme.body16.copyWith(
-                          color: AppColors.brandTextMuted,
-                          height: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-                      const _VerificationDetailsCard(),
+                        const SizedBox(height: 32),
+                        const _VerificationDetailsCard(),
                       ],
                     ),
                   ),
                 ),
                 const SizedBox(height: 20),
+                TextButton.icon(
+                  onPressed: isStarting
+                      ? null
+                      : () async {
+                          await ref
+                              .read(userAccountViewModelProvider.notifier)
+                              .refreshVerificationStatus(showError: true);
+                          if (!context.mounted) return;
+                          final error = ref
+                              .read(userAccountViewModelProvider)
+                              .error;
+                          if (error != null) context.showErrorSnackBar(error);
+                        },
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Refresh status'),
+                ),
                 SizedBox(
                   width: double.infinity,
                   height: 52,
                   child: FilledButton(
-                  onPressed: isStarting ? null : _startVerification,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.brandSurface,
-                    foregroundColor: AppColors.brandBackground,
-                    disabledBackgroundColor: AppColors.brandBorder,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                    onPressed: isStarting
+                        ? null
+                        : status == IdentityVerificationStatus.verified
+                        ? () => widget.fromOnboarding
+                              ? context.go(Routes.main)
+                              : Navigator.maybePop(context)
+                        : _startVerification,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.brandSurface,
+                      foregroundColor: AppColors.brandBackground,
+                      disabledBackgroundColor: AppColors.brandBorder,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                     ),
-                  ),
-                  child: isStarting
-                      ? const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SizedBox.square(
-                              dimension: 20,
-                              child: CircularProgressIndicator(
-                                color: AppColors.brandBackground,
-                                strokeWidth: 2,
+                    child: isStarting
+                        ? const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox.square(
+                                dimension: 20,
+                                child: CircularProgressIndicator(
+                                  color: AppColors.brandBackground,
+                                  strokeWidth: 2,
+                                ),
                               ),
-                            ),
-                            SizedBox(width: 12),
-                            Text(
-                              'Starting verification...',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                          ],
-                        )
-                      : Text(
-                          _didOpenVerification
-                              ? 'Open Verification Again'
-                              : 'Verify Identity',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
+                              SizedBox(width: 12),
+                              Text(
+                                'Starting verification...',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ],
+                          )
+                        : Text(
+                            switch (status) {
+                              IdentityVerificationStatus.unverified =>
+                                'Verify Identity',
+                              IdentityVerificationStatus.pending =>
+                                'Continue Verification',
+                              IdentityVerificationStatus.verified => 'Done',
+                            },
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
                   ),
                 ),
               ],
@@ -171,9 +246,10 @@ class _IdentityVerificationScreenState
         mode: LaunchMode.externalApplication,
       );
       if (!launched) {
-        throw const FormatException('The verification URL could not be opened.');
+        throw const FormatException(
+          'The verification URL could not be opened.',
+        );
       }
-      if (mounted) setState(() => _didOpenVerification = true);
     } catch (error, stackTrace) {
       debugPrint('Unable to open Didit verification URL: $error');
       debugPrintStack(stackTrace: stackTrace);

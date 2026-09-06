@@ -1,0 +1,3 @@
+[functions.didit-webhook]
+# Didit authenticates using an HMAC signature, not a Supabase user JWT.
+verify_jwt = false
