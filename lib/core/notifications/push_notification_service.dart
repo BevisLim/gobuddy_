@@ -301,7 +301,9 @@ class PushNotificationService {
         ),
         iOS: DarwinNotificationDetails(),
       ),
-      payload: message.data['trip_id'] as String?,
+      payload: message.data['type'] == 'identity_verification'
+          ? jsonEncode({'type': 'identity_verification'})
+          : message.data['trip_id'] as String?,
     );
   }
 
@@ -390,6 +392,10 @@ class PushNotificationService {
       _openTrip(payload);
       return;
     }
+    if (data['type'] == 'identity_verification') {
+      router.push(Routes.identityVerification);
+      return;
+    }
     if (data['type'] == 'incoming_call') {
       _openTrip(data['trip_id'] as String?);
       return;
@@ -414,6 +420,10 @@ class PushNotificationService {
   }
 
   static void _openRemoteMessage(RemoteMessage message) {
+    if (message.data['type'] == 'identity_verification') {
+      router.push(Routes.identityVerification);
+      return;
+    }
     if (message.data['type'] == 'safety_check_in') {
       _openCheckIn(
         message.data['check_in_id'] as String?,

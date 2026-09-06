@@ -41,6 +41,16 @@ class MatchmakingNotificationsDialog extends StatelessWidget {
                     ),
                   ),
                   subtitle: Text(notification.body),
+                  trailing: notification.isIdentityVerification
+                      ? const Icon(Icons.chevron_right)
+                      : null,
+                  onTap: notification.isIdentityVerification
+                      ? () {
+                          final navigation = GoRouter.of(context);
+                          Navigator.pop(context);
+                          navigation.push(Routes.identityVerification);
+                        }
+                      : null,
                 );
               },
             ),
@@ -380,6 +390,7 @@ class TripCard extends StatelessWidget {
             children: [
               IconButton(
                 onPressed: onSave,
+                tooltip: saved ? 'Remove saved trip' : 'Save trip for later',
                 icon: Icon(
                   saved
                       ? Icons.favorite_rounded

@@ -16,6 +16,7 @@ class MatchmakingState {
     this.dismissedGroupIds = const {},
     this.notifications = const [],
     this.savedTripIds = const {},
+    this.savingTripIds = const {},
     this.isLoading = false,
     this.errorMessage,
     this.successMessage,
@@ -35,6 +36,18 @@ class MatchmakingState {
   final Set<String> dismissedGroupIds;
   final List<MatchmakingNotification> notifications;
   final Set<String> savedTripIds;
+  final Set<String> savingTripIds;
+  List<MatchmakingTrip> get savedTrips => trips
+      .where((trip) => savedTripIds.contains(trip.id))
+      .toList(growable: false);
+
+  bool hasJoinRequest(String tripId) => _hasActiveRequestFor(tripId);
+  bool canRequestTrip(MatchmakingTrip trip) =>
+      isAuthenticated &&
+      !trip.isOwned &&
+      trip.isDiscoverable &&
+      !joinedTripIds.contains(trip.id) &&
+      !_hasActiveRequestFor(trip.id);
   final bool isLoading;
   final String? errorMessage;
   final String? successMessage;
@@ -163,6 +176,7 @@ class MatchmakingState {
     Set<String>? dismissedGroupIds,
     List<MatchmakingNotification>? notifications,
     Set<String>? savedTripIds,
+    Set<String>? savingTripIds,
     bool? isLoading,
     String? errorMessage,
     String? successMessage,
@@ -186,6 +200,7 @@ class MatchmakingState {
     dismissedGroupIds: dismissedGroupIds ?? this.dismissedGroupIds,
     notifications: notifications ?? this.notifications,
     savedTripIds: savedTripIds ?? this.savedTripIds,
+    savingTripIds: savingTripIds ?? this.savingTripIds,
     isLoading: isLoading ?? this.isLoading,
     errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
     successMessage: clearSuccess ? null : successMessage ?? this.successMessage,

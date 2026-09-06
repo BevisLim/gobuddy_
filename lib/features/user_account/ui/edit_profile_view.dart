@@ -123,7 +123,11 @@ class _EditProfileViewState extends State<EditProfileView> {
                   ),
                   _SettingsRow(
                     label: 'Verification',
-                    value: widget.user.isVerified ? 'Verified' : 'Not verified',
+                    value: switch (widget.user.verificationStatus) {
+                      IdentityVerificationStatus.unverified => 'Unverified',
+                      IdentityVerificationStatus.pending => 'Pending',
+                      IdentityVerificationStatus.verified => 'Verified',
+                    },
                     placeholder: 'Not verified',
                     trailingIcon: widget.user.isVerified
                         ? Icons.verified_rounded

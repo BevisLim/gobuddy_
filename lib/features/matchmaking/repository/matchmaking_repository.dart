@@ -48,6 +48,7 @@ class MatchmakingRepository {
         .select('trip_id')
         .eq('user_id', user.id);
     final joinedIds = {for (final row in joinedRows) row['trip_id'] as String};
+    final savedIds = await fetchSavedTripIds();
     final tripQueries = <Future<List<Map<String, dynamic>>>>[
       supabase
           .from('matchmaking_trips')
@@ -69,6 +70,17 @@ class MatchmakingRepository {
             .from('matchmaking_trips')
             .select()
             .inFilter('id', joinedIds.toList(growable: false))
+            .order('created_at'),
+      );
+    }
+    // Saved trips remain visible after filling up, starting, or closing, and
+    // must not depend on the discovery feed's date filter or 50-trip limit.
+    if (savedIds.isNotEmpty) {
+      tripQueries.add(
+        supabase
+            .from('matchmaking_trips')
+            .select()
+            .inFilter('id', savedIds.toList(growable: false))
             .order('created_at'),
       );
     }

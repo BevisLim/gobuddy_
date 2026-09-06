@@ -3,6 +3,7 @@ part of 'matchmaking_shell_screen.dart';
 class TripDetailsPage extends StatelessWidget {
   final MatchmakingTrip trip;
   final bool canOpenGroup;
+  final bool canRequest;
   final UserCurrency currency;
   final double currencyRate;
   final VoidCallback onBack, onRequest, onOpenGroup;
@@ -10,6 +11,7 @@ class TripDetailsPage extends StatelessWidget {
     super.key,
     required this.trip,
     required this.canOpenGroup,
+    this.canRequest = true,
     this.currency = UserCurrency.myr,
     this.currencyRate = 1,
     required this.onBack,
@@ -143,7 +145,12 @@ class TripDetailsPage extends StatelessWidget {
                 label: const Text('Open trip timeline'),
               ),
             ] else
-              PrimaryButton(label: 'Request to Join', onTap: onRequest),
+              PrimaryButton(
+                onTap: trip.isDiscoverable && canRequest ? onRequest : null,
+                label:
+                    trip.unavailableReason ??
+                    (canRequest ? 'Request to Join' : 'Join unavailable'),
+              ),
           ],
         ),
       ),

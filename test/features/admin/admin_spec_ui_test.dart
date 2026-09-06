@@ -140,6 +140,7 @@ void main() {
       await setup(tester, SpecRepository(), const AdminScreen(), capture: key);
       expect(find.byType(NavigationRail), findsOneWidget);
       expect(find.text('Activity Logs'), findsOneWidget);
+      expect(find.text('Review Verification'), findsOneWidget);
       expect(find.text('Suspended Users'), findsOneWidget);
       expect(find.byType(DataTable), findsOneWidget);
       expect(find.text('Report ID'), findsOneWidget);
@@ -180,6 +181,7 @@ void main() {
     await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
     expect(find.text('Activity Logs'), findsOneWidget);
+    expect(find.text('Review Verification'), findsOneWidget);
     expect(find.textContaining('Safety'), findsNothing);
     expect(tester.takeException(), isNull);
   });

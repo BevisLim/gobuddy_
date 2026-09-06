@@ -8,7 +8,12 @@ import 'package:flutter_mvvm_riverpod/core/theme/app_colors.dart';
 import 'package:flutter_mvvm_riverpod/core/theme/app_theme.dart';
 import 'package:flutter_mvvm_riverpod/features/common/ui/providers/app_theme_mode_provider.dart';
 import 'package:flutter_mvvm_riverpod/features/common/ui/widgets/common_dialog.dart';
+import 'package:flutter_mvvm_riverpod/features/admin/repository/identity_review_repository.dart';
 import '../view_model/settings_view_model.dart';
+
+final _adminAccessProvider = FutureProvider.autoDispose<bool>(
+  (ref) => const AdminIdentityReviewRepository().isAdmin(),
+);
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -18,6 +23,7 @@ class SettingsScreen extends ConsumerWidget {
     final settings = ref.watch(settingsViewModelProvider);
     final value = settings.value;
     final themeMode = ref.watch(appThemeModeProvider).value ?? ThemeMode.system;
+    final isAdmin = ref.watch(_adminAccessProvider).value ?? false;
 
     return Scaffold(
       backgroundColor: context.secondaryBackgroundColor,
@@ -166,6 +172,23 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 28),
+                if (isAdmin) ...[
+                  const _SectionHeader(
+                    title: 'Administration',
+                    description: 'Review cases that require a manual decision',
+                  ),
+                  const SizedBox(height: 12),
+                  _SettingsCard(
+                    child: _SettingsTile(
+                      icon: Icons.admin_panel_settings_outlined,
+                      title: 'Identity reviews',
+                      subtitle: 'Approve or reject Didit cases in review',
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => context.push(Routes.identityReviews),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                ],
                 _SectionHeader(
                   title: 'Delete Account',
                   color: AppColors.rambutan100,
@@ -197,8 +220,9 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   Future<void> _signOut(BuildContext context, WidgetRef ref) async {
-    final success =
-        await ref.read(settingsViewModelProvider.notifier).signOut();
+    final success = await ref
+        .read(settingsViewModelProvider.notifier)
+        .signOut();
     if (!context.mounted) return;
     if (success) {
       context.go(Routes.login);
@@ -213,7 +237,8 @@ class SettingsScreen extends ConsumerWidget {
       context: context,
       builder: (_) => CommonDialog(
         title: 'Delete Account?',
-        content: 'Are you sure you want to permanently delete your account? '
+        content:
+            'Are you sure you want to permanently delete your account? '
             'This action cannot be undone.',
         primaryButtonLabel: 'Delete Account',
         primaryButtonBackground: AppColors.rambutan100,
@@ -224,8 +249,9 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   Future<void> _confirmDeletion(BuildContext context, WidgetRef ref) async {
-    final deleted =
-        await ref.read(settingsViewModelProvider.notifier).deleteAccount();
+    final deleted = await ref
+        .read(settingsViewModelProvider.notifier)
+        .deleteAccount();
     if (!context.mounted) return;
     if (deleted) {
       context.go(Routes.login);
@@ -237,11 +263,7 @@ class SettingsScreen extends ConsumerWidget {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({
-    required this.title,
-    this.description,
-    this.color,
-  });
+  const _SectionHeader({required this.title, this.description, this.color});
 
   final String title;
   final String? description;
@@ -262,9 +284,7 @@ class _SectionHeader extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             description!,
-            style: AppTheme.body14.copyWith(
-              color: context.secondaryTextColor,
-            ),
+            style: AppTheme.body14.copyWith(color: context.secondaryTextColor),
           ),
         ],
       ],
@@ -297,7 +317,6 @@ class _SettingsTile extends StatelessWidget {
     required this.trailing,
     this.subtitle,
     this.iconColor,
-    this.titleColor,
     this.onTap,
   });
 
@@ -306,7 +325,6 @@ class _SettingsTile extends StatelessWidget {
   final String? subtitle;
   final Widget trailing;
   final Color? iconColor;
-  final Color? titleColor;
   final VoidCallback? onTap;
 
   @override
@@ -314,14 +332,8 @@ class _SettingsTile extends StatelessWidget {
     return ListTile(
       minTileHeight: 64,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      leading: Icon(
-        icon,
-        color: iconColor ?? AppColors.brandSurface,
-      ),
-      title: Text(
-        title,
-        style: AppTheme.title16.copyWith(color: titleColor),
-      ),
+      leading: Icon(icon, color: iconColor ?? AppColors.brandSurface),
+      title: Text(title, style: AppTheme.title16),
       subtitle: subtitle == null
           ? null
           : Text(
