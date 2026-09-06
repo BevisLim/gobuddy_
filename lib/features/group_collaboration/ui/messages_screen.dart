@@ -11,7 +11,7 @@ import 'package:flutter_mvvm_riverpod/core/theme/app_theme.dart';
 import 'package:flutter_mvvm_riverpod/features/common/remote/supabase_client.dart';
 import 'package:flutter_mvvm_riverpod/features/common/ui/widgets/app_module_navigation.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/model/matchmaking_models.dart';
-import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/view_model/matchmaking_view_model.dart';
+import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/matchmaking_view_model.dart';
 
 class MessagesScreen extends ConsumerStatefulWidget {
   const MessagesScreen({super.key});

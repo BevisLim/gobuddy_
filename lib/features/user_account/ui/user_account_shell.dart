@@ -8,7 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/routing/routes.dart';
 import '../../common/ui/widgets/app_module_navigation.dart';
 import '../../matchmaking/ui/matchmaking_shell_screen.dart';
-import '../../matchmaking/ui/view_model/matchmaking_view_model.dart';
+import '../../matchmaking/ui/matchmaking_view_model.dart';
 import '../model/user_account_model.dart';
 import '../repository/user_account_repository.dart';
 import 'edit_profile_view.dart';

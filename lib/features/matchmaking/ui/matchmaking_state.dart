@@ -1,6 +1,6 @@
-import '../../model/matchmaking_models.dart';
-import '../../model/matchmaking_notification.dart';
-import '../../model/matchmaking_page.dart';
+import '../model/matchmaking_models.dart';
+import '../model/matchmaking_notification.dart';
+import '../model/matchmaking_page.dart';
 
 class MatchmakingState {
   const MatchmakingState({

@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/view_model/group_collaboration_view_model.dart';
-import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/view_model/matchmaking_view_model.dart';
+import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/matchmaking_view_model.dart';
 import '../../repository/authentication_repository.dart';
 import '../state/settings_state.dart';
 import 'user_account_view_model.dart';

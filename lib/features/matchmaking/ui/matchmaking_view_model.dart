@@ -3,12 +3,12 @@ import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../model/matchmaking_models.dart';
-import '../../model/matchmaking_validation.dart';
-import '../../model/matchmaking_notification.dart';
-import '../../model/matchmaking_page.dart';
-import '../../repository/matchmaking_repository.dart';
-import '../state/matchmaking_state.dart';
+import '../model/matchmaking_models.dart';
+import '../model/matchmaking_validation.dart';
+import '../model/matchmaking_notification.dart';
+import '../model/matchmaking_page.dart';
+import '../repository/matchmaking_repository.dart';
+import 'matchmaking_state.dart';
 
 final matchmakingInitialPageProvider = Provider<MatchmakingPage>(
   (ref) => MatchmakingPage.discover,

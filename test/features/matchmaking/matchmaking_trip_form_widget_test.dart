@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/model/matchmaking_models.dart';
+import 'package:flutter_mvvm_riverpod/features/matchmaking/model/user_currency.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/repository/destination_image_service.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/repository/location_search_service.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/matchmaking_shell_screen.dart';
@@ -36,6 +37,8 @@ void main() {
           body: SingleChildScrollView(
             child: TripCard(
               trip: trip,
+              currency: const UserCurrency('USD', r'$'),
+              currencyRate: 0.25,
               onDetails: () {},
               onRequest: () {},
               onSave: () {},
@@ -48,14 +51,13 @@ void main() {
 
     expect(find.text('Verified'), findsNothing);
     expect(find.text('1 / 3'), findsOneWidget);
+    expect(find.text(r'$ 250'), findsOneWidget);
     await tester.fling(find.byType(PageView), const Offset(-700, 0), 1200);
     await tester.pumpAndSettle();
     expect(find.text('2 / 3'), findsOneWidget);
   });
 
-  testWidgets('destination suggestions can be selected or ignored', (
-    tester,
-  ) async {
+  testWidgets('destination must be selected from suggestions', (tester) async {
     final imageService = _FakeDestinationImageService();
     await tester.pumpWidget(
       MaterialApp(
@@ -77,7 +79,7 @@ void main() {
     await tester.enterText(destination, 'Ku');
     await tester.pump();
     await tester.pump();
-    expect(find.text('Use "Ku"'), findsOneWidget);
+    expect(find.text('Use "Ku"'), findsNothing);
 
     await tester.enterText(destination, 'Kuala');
     await tester.pump(const Duration(milliseconds: 500));
@@ -94,6 +96,12 @@ void main() {
       tester.widget<TextFormField>(destination).controller!.text,
       'Kuala Lumpur, Malaysia',
     );
+    expect(
+      tester.widget<TextFormField>(destination).validator!(
+        'Kuala Lumpur, Malaysia',
+      ),
+      isNull,
+    );
     expect(imageService.callCount, 1);
     await tester.tap(destination);
     await tester.enterText(destination, 'My custom destination');
@@ -101,6 +109,12 @@ void main() {
     expect(
       tester.widget<TextFormField>(destination).controller!.text,
       'My custom destination',
+    );
+    expect(
+      tester.widget<TextFormField>(destination).validator!(
+        'My custom destination',
+      ),
+      'Choose a destination from the suggestions',
     );
   });
 
