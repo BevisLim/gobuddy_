@@ -1633,21 +1633,9 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
     for (final day in state.timelineDays) {
       addUnique(day);
     }
-    final tripStart = state.tripStartDate;
-    final tripEnd = state.tripEndDate;
-    if (tripStart != null && tripEnd != null) {
-      var day = DateTime(tripStart.year, tripStart.month, tripStart.day);
-      final lastDay = DateTime(tripEnd.year, tripEnd.month, tripEnd.day);
-      var added = 0;
-      while (!day.isAfter(lastDay) && added < 366) {
-        addUnique(day);
-        day = day.add(const Duration(days: 1));
-        added++;
-      }
-    }
-    for (final activity in state.activities) {
-      addUnique(activity.startTime);
-    }
+    // Only persisted trip_timeline_days records are deletable day tabs. The
+    // previous date-range/activity fallback produced visible tabs with no
+    // matching database key, causing delete_trip_timeline_day to raise P0001.
     if (_pendingDay != null) addUnique(_pendingDay!);
     values.removeWhere(
       (day) => _locallyDeletedDays.any((deleted) => _sameDay(day, deleted)),
@@ -1687,7 +1675,7 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
         : activities
               .where((activity) => _sameDay(activity.startTime, selectedDate))
               .toList();
-    final durationDays = state.tripDurationDays ?? days.length;
+    final durationDays = days.length;
     final pendingProposals = state.pendingActivityProposals;
     const purple = Color(0xFF7C3AED);
 

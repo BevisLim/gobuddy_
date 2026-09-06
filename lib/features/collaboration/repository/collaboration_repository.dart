@@ -250,7 +250,10 @@ class CollaborationRepository {
     try {
       return await _client
           .from('trip_timeline_days')
-          .select('day_date')
+          // trip_timeline_days uses (trip_id, day_date) as its database key.
+          // Keep both values in the response so timeline tabs always originate
+          // from a real persisted record rather than a generated list index.
+          .select('trip_id, day_date')
           .eq('trip_id', tripId)
           .order('day_date')
           .timeout(const Duration(seconds: 3));
@@ -640,13 +643,21 @@ class CollaborationRepository {
         '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}',
   });
 
-  Future<int> deleteTimelineDay(String tripId, DateTime day) async {
-    final dayStart = DateTime(day.year, day.month, day.day);
-    final dayEnd = DateTime(day.year, day.month, day.day + 1);
+  Future<int> deleteTimelineDay(String tripId, DateTime persistedDay) async {
+    final dayStart = DateTime(
+      persistedDay.year,
+      persistedDay.month,
+      persistedDay.day,
+    );
+    final dayEnd = DateTime(
+      persistedDay.year,
+      persistedDay.month,
+      persistedDay.day + 1,
+    );
     final dayDate =
-        '${day.year.toString().padLeft(4, '0')}-'
-        '${day.month.toString().padLeft(2, '0')}-'
-        '${day.day.toString().padLeft(2, '0')}';
+        '${persistedDay.year.toString().padLeft(4, '0')}-'
+        '${persistedDay.month.toString().padLeft(2, '0')}-'
+        '${persistedDay.day.toString().padLeft(2, '0')}';
     final result = await _client.rpc(
       'delete_trip_timeline_day',
       params: {
