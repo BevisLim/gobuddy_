@@ -21,6 +21,7 @@ abstract interface class LiveLocationRepository {
   });
   Future<void> updateLocation(String shareId, LocationData location);
   Future<void> stopShare(String shareId);
+  Future<void> stopTripShare({required String userId, required String tripId});
   Stream<List<SharedLiveLocation>> watchTripShares(String tripId);
 }
 
@@ -102,6 +103,34 @@ class SupabaseLiveLocationRepository implements LiveLocationRepository {
       'stop_live_location_share',
       params: {'p_share_id': shareId},
     );
+  }
+
+  @override
+  Future<void> stopTripShare({
+    required String userId,
+    required String tripId,
+  }) async {
+    _requireUser(userId);
+    try {
+      await _client.rpc(
+        'stop_trip_live_location_share',
+        params: {'p_trip_id': tripId},
+      );
+    } on PostgrestException catch (error) {
+      // Older deployments do not have the trip-scoped RPC yet. Resolve the
+      // user's active share and use the existing single-share RPC so the stop
+      // button remains functional while the migration is being rolled out.
+      if (error.code != 'PGRST202') rethrow;
+      final rows = await _client
+          .from('live_location_shares')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('trip_id', tripId)
+          .eq('is_active', true);
+      for (final row in rows) {
+        await stopShare(row['id'] as String);
+      }
+    }
   }
 
   @override

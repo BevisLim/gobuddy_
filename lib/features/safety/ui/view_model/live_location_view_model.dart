@@ -52,8 +52,8 @@ class LiveLocationViewModel extends Notifier<LiveLocationState> {
   void setDuration(Duration duration) =>
       state = state.copyWith(duration: duration, clearError: true);
 
-  Future<void> startSharing() async {
-    final tripId = state.selectedTripId;
+  Future<void> startSharing({String? tripId}) async {
+    tripId ??= state.selectedTripId;
     if (tripId == null) {
       state = state.copyWith(error: 'Choose an active trip first.');
       return;
@@ -85,6 +85,7 @@ class LiveLocationViewModel extends Notifier<LiveLocationState> {
             location: firstLocation,
           );
       state = state.copyWith(
+        selectedTripId: tripId,
         location: firstLocation,
         expiresAt: expiresAt,
         isStarting: false,
@@ -139,6 +140,29 @@ class LiveLocationViewModel extends Notifier<LiveLocationState> {
       clearShare: true,
       clearError: true,
     );
+  }
+
+  Future<void> stopSharingForTrip(String tripId) async {
+    try {
+      await ref.read(liveLocationRepositoryProvider).stopTripShare(
+            userId: _userId(),
+            tripId: tripId,
+          );
+      if (state.selectedTripId == tripId) {
+        _expiryTimer?.cancel();
+        _expiryTimer = null;
+        await _positionSubscription?.cancel();
+        _positionSubscription = null;
+        _shareId = null;
+      }
+      state = state.copyWith(
+        isSharing: false,
+        clearShare: true,
+        clearError: true,
+      );
+    } catch (error) {
+      state = state.copyWith(error: 'Could not stop sharing: $error');
+    }
   }
 
   void clearError() => state = state.copyWith(clearError: true);

@@ -9,6 +9,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../collaboration/model/collaboration_models.dart';
 import '../model/shared_live_location.dart';
 import '../repository/live_location_repository.dart';
+import 'state/live_location_state.dart';
+import 'view_model/live_location_view_model.dart';
 
 class TripLiveLocationsScreen extends ConsumerStatefulWidget {
   const TripLiveLocationsScreen({
@@ -59,8 +61,61 @@ class _TripLiveLocationsScreenState
 
   @override
   Widget build(BuildContext context) {
+    final sharingState = ref.watch(liveLocationViewModelProvider);
+    final sharingViewModel = ref.read(liveLocationViewModelProvider.notifier);
+    ref.listen(
+      liveLocationViewModelProvider.select((value) => value.error),
+      (previous, next) {
+        if (next == null || next == previous) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(next)));
+        sharingViewModel.clearError();
+      },
+    );
+    final sharingThisTrip = sharingState.isSharing &&
+        sharingState.selectedTripId == widget.tripId;
+    final sharingAnotherTrip = sharingState.isSharing && !sharingThisTrip;
+    final tripCanShare = sharingState.trips.any(
+      (trip) => trip.id == widget.tripId,
+    );
     return Scaffold(
       appBar: AppBar(title: const Text('Live locations')),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: FilledButton.icon(
+          onPressed: sharingState.isLoading ||
+                  sharingState.isStarting ||
+                  sharingAnotherTrip ||
+                  (!tripCanShare && !sharingThisTrip)
+              ? null
+              : sharingThisTrip
+                  ? () => sharingViewModel.stopSharingForTrip(widget.tripId)
+                  : () => _startSharing(
+                      sharingViewModel,
+                      sharingState.duration,
+                    ),
+          icon: sharingState.isStarting
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(
+                  sharingThisTrip
+                      ? Icons.location_off_outlined
+                      : Icons.location_on_outlined,
+                ),
+          label: Text(
+            sharingState.isStarting
+                ? 'Getting your location…'
+                : sharingThisTrip
+                    ? 'Stop sharing my location'
+                    : sharingAnotherTrip
+                        ? 'Stop your other share first'
+                        : !tripCanShare
+                            ? 'This trip is not active'
+                            : 'Start sharing my location',
+          ),
+        ),
+      ),
       body: StreamBuilder<List<SharedLiveLocation>>(
         stream: _locations,
         builder: (context, snapshot) {
@@ -250,6 +305,74 @@ class _TripLiveLocationsScreenState
     Uri.parse('https://www.openstreetmap.org/copyright'),
     mode: LaunchMode.externalApplication,
   );
+
+  Future<void> _startSharing(
+    LiveLocationViewModel viewModel,
+    Duration currentDuration,
+  ) async {
+    var selectedDuration = currentDuration;
+    final duration = await showDialog<Duration>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          icon: const Icon(Icons.location_on_outlined),
+          title: const Text('Share with this trip group?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'GoBuddy will share your precise location, including while '
+                'the screen is locked. You can stop sharing here at any time.',
+              ),
+              const SizedBox(height: 20),
+              DropdownButtonFormField<Duration>(
+                initialValue: selectedDuration,
+                decoration: const InputDecoration(
+                  labelText: 'Sharing time',
+                  prefixIcon: Icon(Icons.timer_outlined),
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: Duration(hours: 1),
+                    child: Text('1 hour'),
+                  ),
+                  DropdownMenuItem(
+                    value: Duration(hours: 8),
+                    child: Text('8 hours'),
+                  ),
+                  DropdownMenuItem(
+                    value: untilTripEndsDuration,
+                    child: Text('Until trip ends'),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    setDialogState(() => selectedDuration = value);
+                  }
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(dialogContext, selectedDuration),
+              child: const Text('Start sharing'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (duration != null && mounted) {
+      viewModel.setDuration(duration);
+      await viewModel.startSharing(tripId: widget.tripId);
+    }
+  }
 }
 
 class _AnimatedLocationMarkers extends StatefulWidget {
