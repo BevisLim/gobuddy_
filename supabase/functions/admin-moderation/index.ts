@@ -13,6 +13,28 @@ const checked = <T>(result: { data: T; error: unknown }): T => {
   return result.data;
 };
 
+const diditRequest = async (path: string, init: RequestInit = {}) => {
+  const apiKey = Deno.env.get("DIDIT_API_KEY");
+  if (!apiKey) throw new Error("DIDIT_API_KEY is not configured");
+  const response = await fetch(`https://verification.didit.me${path}`, {
+    ...init,
+    signal: AbortSignal.timeout(25000),
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      ...init.headers,
+    },
+  });
+  const text = await response.text();
+  let data: unknown = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+  if (!response.ok) {
+    console.error("Didit moderation request failed", response.status);
+    throw new Error(`Didit returned ${response.status}`);
+  }
+  return data;
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers });
   if (req.method !== "POST") return reply({ error: "Method not allowed" }, 405);
@@ -66,6 +88,72 @@ Deno.serve(async (req) => {
       const admins = checked(await client.from("admin_users").select("user_id"));
       const names = admins.length ? checked(await client.from("user_accounts").select("id,display_name").in("id", admins.map(a => a.user_id))) : [];
       return reply({ items: checked(await query.range(page * 50, page * 50 + 49)), admins: admins.map(a => ({ id: a.user_id, name: names.find(n => n.id === a.user_id)?.display_name ?? a.user_id })) });
+    }
+    if (action === "identityReviews") {
+      const recentAttempts = checked(await client.from("identity_verifications")
+        .select("id,user_id,provider_session_id,provider_status,submitted_at")
+        .eq("provider", "didit").order("submitted_at", { ascending: false })
+        .limit(500));
+      const latestByUser = new Map();
+      for (const attempt of recentAttempts) {
+        if (!latestByUser.has(attempt.user_id)) latestByUser.set(attempt.user_id, attempt);
+      }
+      const attempts = [...latestByUser.values()]
+        .filter((attempt) => attempt.provider_status === "In Review")
+        .slice(page * 50, page * 50 + 50);
+      const users = attempts.length ? checked(await client.from("user_accounts")
+        .select("id,display_name,profile_photo_path")
+        .in("id", [...new Set(attempts.map((item) => item.user_id))])) : [];
+      return reply({ items: attempts.map((attempt) => ({
+        ...attempt,
+        display_name: users.find((account) => account.id === attempt.user_id)?.display_name ?? "Unknown user",
+        profile_photo_path: users.find((account) => account.id === attempt.user_id)?.profile_photo_path ?? null,
+      })) });
+    }
+    if (typeof targetId !== "string" || !/^[0-9a-f-]{36}$/i.test(targetId)) return reply({ error: "A valid target is required" }, 400);
+    if (action === "identityReview" || action === "identityDecision") {
+      const attempt = checked(await client.from("identity_verifications")
+        .select("id,user_id,provider_session_id,provider_status,submitted_at")
+        .eq("id", targetId).eq("provider", "didit").single());
+      const account = checked(await client.from("user_accounts")
+        .select("id,display_name,profile_photo_path,date_of_birth")
+        .eq("id", attempt.user_id).single());
+      if (action === "identityReview") {
+        const decision = await diditRequest(`/v3/session/${encodeURIComponent(attempt.provider_session_id)}/decision/`);
+        return reply({ attempt, account, decision });
+      }
+      if (attempt.provider_status !== "In Review") {
+        return reply({ error: "This verification is no longer in review" }, 409);
+      }
+      if (!["Approved", "Declined", "Resubmitted"].includes(body.decision)) {
+        return reply({ error: "Choose Approve, Reject, or Request resubmission" }, 400);
+      }
+      const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+      if (!reason || reason.length > 1000) return reply({ error: "Enter a review note (1-1000 characters)" }, 400);
+      await diditRequest(`/v3/session/${encodeURIComponent(attempt.provider_session_id)}/update-status/`, {
+        method: "PATCH",
+        body: JSON.stringify({ new_status: body.decision, comment: reason }),
+      });
+      if (body.decision === "Resubmitted") {
+        checked(await client.from("matchmaking_notifications").insert({
+          user_id: attempt.user_id,
+          trip_id: null,
+          title: "Identity verification needs more information",
+          body: `Please complete your identity verification again. Instructions: ${reason}`,
+          metadata: {
+            type: "identity_verification",
+            verification_status: "pending",
+            reason,
+          },
+        }));
+      }
+      checked(await client.from("moderation_audit").insert({
+        actor_id: user.id,
+        action: `identity_${String(body.decision).toLowerCase()}`,
+        target_id: attempt.user_id,
+        reason: JSON.stringify({ reason, verification_id: attempt.id, session_id: attempt.provider_session_id }),
+      }));
+      return reply({ success: true });
     }
     if (typeof targetId !== "string" || !/^[0-9a-f-]{36}$/i.test(targetId)) return reply({ error: "A valid target is required" }, 400);
     if (action === "report") {

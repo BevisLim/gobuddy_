@@ -31,9 +31,11 @@ class Routes {
   static const settlementHistory = 'settlements';
   static const budgetAnalytics = 'analytics';
   static const userAccount = '/user_account';
+  static const savedTrips = '/user_account/saved-trips';
   static const publicProfile = '/profile';
   static const groupCollaboration = '/group-collaboration';
   static const identityVerification = '/identity-verification';
+  static const identityReviews = '/admin/identity-reviews';
   static const settings = '/settings';
   static const changePassword = '/settings/change-password';
   static const safetyCheckInSettings = '/settings/safety-check-in';

@@ -6,6 +6,7 @@ import 'package:flutter_mvvm_riverpod/features/collaboration/ui/group_collaborat
 import '../../features/user_account/ui/login_confirmation.dart';
 import '../../features/user_account/ui/welcome_screen.dart';
 import '../../features/matchmaking/ui/matchmaking_shell_screen.dart';
+import '../../features/matchmaking/ui/saved_trips_screen.dart';
 import '../../features/matchmaking/ui/view_model/matchmaking_view_model.dart';
 import '../../features/matchmaking/model/matchmaking_page.dart';
 import '../../features/group_collaboration/ui/messages_screen.dart';
@@ -23,6 +24,7 @@ import '../../features/user_account/ui/user_account_shell.dart';
 import '../../features/user_account/ui/app_launching_screen.dart';
 import '../../features/user_account/ui/forgot_password_screen.dart';
 import '../../features/user_account/ui/identity_verification_screen.dart';
+import '../../features/admin/ui/identity_reviews_screen.dart';
 import '../../features/user_account/ui/settings/blocked_users_screen.dart';
 import '../../features/user_account/ui/settings/change_password_screen.dart';
 import '../../features/user_account/ui/settings/settings_screen.dart';
@@ -364,6 +366,11 @@ final GoRouter router = GoRouter(
           state.navigationPage(const UserAccountScreen()),
     ),
     GoRoute(
+      path: Routes.savedTrips,
+      pageBuilder: (context, state) =>
+          state.slidePage(const SavedTripsScreen()),
+    ),
+    GoRoute(
       path: '${Routes.publicProfile}/:userId',
       pageBuilder: (context, state) => state.slidePage(
         PublicUserProfileScreen(userId: state.pathParameters['userId']!),
@@ -376,6 +383,11 @@ final GoRouter router = GoRouter(
           fromOnboarding: state.uri.queryParameters['onboarding'] == 'true',
         ),
       ),
+    ),
+    GoRoute(
+      path: Routes.identityReviews,
+      pageBuilder: (context, state) =>
+          state.slidePage(const IdentityReviewsScreen()),
     ),
     GoRoute(
       path: Routes.settings,

@@ -290,16 +290,55 @@ class UserAccountViewModel extends Notifier<UserAccountState> {
     }
   }
 
+  bool _refreshingVerification = false;
+  int _verificationRevision = 0;
+
+  Future<void> refreshVerificationStatus({bool showError = false}) async {
+    final user = state.user;
+    if (user == null || state.isLoading || _refreshingVerification) return;
+    _refreshingVerification = true;
+    final revision = _verificationRevision;
+    try {
+      final status = await ref
+          .read(userAccountRepositoryProvider)
+          .fetchVerificationStatus();
+      if (state.user?.uid == user.uid && revision == _verificationRevision) {
+        state = state.copyWith(
+          user: state.user!.copyWith(verificationStatus: status),
+          clearError: true,
+        );
+      }
+    } catch (_) {
+      if (showError) {
+        state = state.copyWith(
+          error: 'Unable to refresh verification status. Please try again.',
+        );
+      }
+    } finally {
+      _refreshingVerification = false;
+    }
+  }
+
   Future<String?> startIdentityVerification() async {
     final user = state.user;
     if (user == null || state.isLoading) return null;
+    if (user.isVerified) {
+      state = state.copyWith(error: 'Your identity is already verified.');
+      return null;
+    }
+    _verificationRevision++;
 
     state = state.copyWith(isLoading: true, clearError: true);
     final repository = ref.read(userAccountRepositoryProvider);
 
     try {
       final verificationUrl = await repository.createDiditSession();
-      state = state.copyWith(isLoading: false);
+      state = state.copyWith(
+        isLoading: false,
+        user: state.user?.copyWith(
+          verificationStatus: IdentityVerificationStatus.pending,
+        ),
+      );
       return verificationUrl;
     } catch (error) {
       state = state.copyWith(error: error.toString(), isLoading: false);

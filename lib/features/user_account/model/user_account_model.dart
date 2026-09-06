@@ -1,5 +1,17 @@
 enum UserAccountPage { profile, editProfile, security }
 
+enum IdentityVerificationStatus {
+  unverified,
+  pending,
+  verified;
+
+  static IdentityVerificationStatus fromValue(Object? value) => switch (value) {
+    'pending' => pending,
+    'verified' => verified,
+    _ => unverified,
+  };
+}
+
 class UserAccount {
   final String uid;
   final String email;
@@ -13,7 +25,9 @@ class UserAccount {
   final DateTime? joinedAt;
   final String? nationality;
   final String bio;
-  final bool isVerified;
+  final IdentityVerificationStatus verificationStatus;
+  bool get isVerified =>
+      verificationStatus == IdentityVerificationStatus.verified;
   final List<String> galleryPhotos;
 
   const UserAccount({
@@ -29,9 +43,14 @@ class UserAccount {
     this.joinedAt,
     this.nationality,
     this.bio = '',
-    this.isVerified = false,
+    bool isVerified = false,
+    IdentityVerificationStatus? verificationStatus,
     this.galleryPhotos = const [],
-  });
+  }) : verificationStatus =
+           verificationStatus ??
+           (isVerified
+               ? IdentityVerificationStatus.verified
+               : IdentityVerificationStatus.unverified);
 
   UserAccount copyWith({
     String? uid,
@@ -47,6 +66,7 @@ class UserAccount {
     String? nationality,
     String? bio,
     bool? isVerified,
+    IdentityVerificationStatus? verificationStatus,
     List<String>? galleryPhotos,
   }) {
     return UserAccount(
@@ -62,7 +82,13 @@ class UserAccount {
       joinedAt: joinedAt ?? this.joinedAt,
       nationality: nationality ?? this.nationality,
       bio: bio ?? this.bio,
-      isVerified: isVerified ?? this.isVerified,
+      verificationStatus:
+          verificationStatus ??
+          (isVerified == null
+              ? this.verificationStatus
+              : isVerified
+              ? IdentityVerificationStatus.verified
+              : IdentityVerificationStatus.unverified),
       galleryPhotos: galleryPhotos ?? this.galleryPhotos,
     );
   }

@@ -102,7 +102,9 @@ class UserAccountRepository {
         dateOfBirth: _parseDate(row['date_of_birth']),
         joinedAt: _parseDate(row['created_at']),
         bio: (row['bio'] as String?)?.trim() ?? '',
-        isVerified: row['verification_status'] == 'verified',
+        verificationStatus: IdentityVerificationStatus.fromValue(
+          row['verification_status'],
+        ),
         galleryPhotos: galleryPhotos,
       );
     } on UserAccountLoadException {
@@ -315,7 +317,9 @@ class UserAccountRepository {
         dateOfBirth: _parseDate(row['date_of_birth']),
         joinedAt: _parseDate(row['created_at']),
         bio: (row['bio'] as String?)?.trim() ?? '',
-        isVerified: row['verification_status'] == 'verified',
+        verificationStatus: IdentityVerificationStatus.fromValue(
+          row['verification_status'],
+        ),
         galleryPhotos: await _fetchGalleryPhotos(id),
       );
     } on UserAccountLoadException {
@@ -589,6 +593,19 @@ class UserAccountRepository {
     return objectPath;
   }
 
+  Future<IdentityVerificationStatus> fetchVerificationStatus() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      throw const IdentityVerificationException('Please sign in again.');
+    }
+    final row = await supabase
+        .from('user_accounts')
+        .select('verification_status')
+        .eq('id', user.id)
+        .single();
+    return IdentityVerificationStatus.fromValue(row['verification_status']);
+  }
+
   Future<String> createDiditSession() async {
     if (supabase.auth.currentSession == null) {
       throw const IdentityVerificationException(
@@ -616,7 +633,10 @@ class UserAccountRepository {
       }
 
       final uri = Uri.tryParse(value.trim());
-      if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
+      if (uri == null ||
+          uri.scheme != 'https' ||
+          uri.userInfo.isNotEmpty ||
+          !(uri.host == 'didit.me' || uri.host.endsWith('.didit.me'))) {
         throw const IdentityVerificationException(
           'The verification service returned an invalid link.',
         );
@@ -625,6 +645,11 @@ class UserAccountRepository {
     } on IdentityVerificationException {
       rethrow;
     } on FunctionException catch (error) {
+      if (error.status == 409) {
+        throw const IdentityVerificationException(
+          'Verification is already active or complete. Refresh your status and try again if needed.',
+        );
+      }
       throw IdentityVerificationException(
         error.status == 401
             ? 'Your session has expired. Please sign in again.'

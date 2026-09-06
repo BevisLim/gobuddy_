@@ -7,6 +7,7 @@ class MatchmakingNotification {
     this.tripId,
     this.readAt,
     this.dismissedAt,
+    this.type,
   });
 
   final String id;
@@ -16,6 +17,8 @@ class MatchmakingNotification {
   final DateTime createdAt;
   final DateTime? readAt;
   final DateTime? dismissedAt;
+  final String? type;
+  bool get isIdentityVerification => type == 'identity_verification';
 
   bool get isUnread => readAt == null;
 
@@ -25,6 +28,7 @@ class MatchmakingNotification {
         title: map['title'] as String,
         body: map['body'] as String,
         tripId: map['trip_id'] as String?,
+        type: (map['metadata'] as Map?)?['type'] as String?,
         createdAt: DateTime.parse(map['created_at'] as String),
         readAt: map['read_at'] == null
             ? null

@@ -20,6 +20,8 @@ final matchmakingViewModelProvider =
     );
 
 class MatchmakingViewModel extends Notifier<MatchmakingState> {
+  int _savedRevision = 0;
+  Future<void>? _savedRefresh;
   MatchmakingRepository get _repository =>
       ref.read(matchmakingRepositoryProvider);
   @override
@@ -57,6 +59,7 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
       state = state.copyWith(isLoading: true, clearError: true);
     }
     try {
+      final savedRevision = _savedRevision;
       final trips = await _repository.fetchTrips();
       final savedIds = await _repository.fetchSavedTripIds();
       final requests = await _repository.fetchJoinRequests();
@@ -100,7 +103,10 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
         dismissedGroupIds: dismissedGroupIds,
         applicants: applicants,
         notifications: notifications,
-        savedTripIds: savedIds,
+        savedTripIds:
+            savedRevision == _savedRevision && state.savingTripIds.isEmpty
+            ? savedIds
+            : state.savedTripIds,
         isLoading: false,
         clearError: true,
       );
@@ -149,6 +155,7 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
               createdAt: notification.createdAt,
               readAt: notification.readAt ?? now,
               dismissedAt: notification.dismissedAt,
+              type: notification.type,
             ),
         ],
       );
@@ -188,22 +195,125 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
     page: MatchmakingPage.applicant,
   );
 
-  void toggleSavedTrip(String id) {
+  Future<bool> toggleSavedTrip(String id) =>
+      setTripSaved(id, saved: !state.savedTripIds.contains(id));
+
+  Future<bool> setTripSaved(String id, {required bool saved}) async {
+    if (!_repository.hasAuthenticatedUser) {
+      state = state.copyWith(errorMessage: 'Please sign in to save trips.');
+      return false;
+    }
+    if (state.savingTripIds.contains(id)) return false;
+    final userId = _repository.currentUserId;
+    final wasSaved = state.savedTripIds.contains(id);
     final ids = {...state.savedTripIds};
-    ids.contains(id) ? ids.remove(id) : ids.add(id);
-    state = state.copyWith(savedTripIds: ids);
-    if (_repository.hasAuthenticatedUser) {
-      unawaited(_saveBookmark(id, ids.contains(id)));
+    saved ? ids.add(id) : ids.remove(id);
+    _savedRevision++;
+    state = state.copyWith(
+      savedTripIds: ids,
+      savingTripIds: {...state.savingTripIds, id},
+      clearError: true,
+    );
+    try {
+      await _repository.setTripSaved(id, saved: saved);
+      return true;
+    } catch (error) {
+      if (_repository.currentUserId != userId) return false;
+      final ids = {...state.savedTripIds};
+      wasSaved ? ids.add(id) : ids.remove(id);
+      state = state.copyWith(savedTripIds: ids, errorMessage: error.toString());
+      return false;
+    } finally {
+      _savedRevision++;
+      if (_repository.currentUserId == userId) {
+        state = state.copyWith(
+          savingTripIds: {...state.savingTripIds}..remove(id),
+        );
+      }
     }
   }
 
-  Future<void> _saveBookmark(String id, bool saved) async {
+  Future<void> refreshSavedTrips() => _savedRefresh ??= _loadSavedTrips()
+      .whenComplete(() => _savedRefresh = null);
+
+  Future<void> _loadSavedTrips() async {
+    if (!_repository.hasAuthenticatedUser) {
+      state = MatchmakingState(availableFilters: _repository.discoveryFilters);
+      return;
+    }
+    final userId = _repository.currentUserId;
+    final revision = _savedRevision;
+    if (state.currentUserId != userId) {
+      state = MatchmakingState(currentUserId: userId,
+          availableFilters: _repository.discoveryFilters);
+    }
+    state = state.copyWith(isLoading: true, clearError: true);
     try {
-      await _repository.setTripSaved(id, saved: saved);
+      final trips = await _repository.fetchTrips();
+      final ids = await _repository.fetchSavedTripIds();
+      final joined = await _repository.fetchJoinedTripIds();
+      final requests = await _repository.fetchJoinRequests();
+      if (_repository.currentUserId != userId) return;
+      state = state.copyWith(
+        trips: trips,
+        currentUserId: userId,
+        savedTripIds: revision == _savedRevision && state.savingTripIds.isEmpty
+            ? ids
+            : state.savedTripIds,
+        joinedTripIds: joined,
+        requests: requests,
+        isLoading: false,
+      );
     } catch (error) {
-      final ids = {...state.savedTripIds};
-      saved ? ids.remove(id) : ids.add(id);
-      state = state.copyWith(savedTripIds: ids, errorMessage: error.toString());
+      if (_repository.currentUserId == userId) {
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: error.toString(),
+        );
+      }
+    }
+  }
+
+  Future<bool> joinSavedTrip(String id, String message) async {
+    if (!_repository.hasAuthenticatedUser || state.isLoading) return false;
+    final userId = _repository.currentUserId;
+    try {
+      final text = MatchmakingValidation.normalizeRequestMessage(message);
+      await refreshSavedTrips();
+      if (_repository.currentUserId != userId) return false;
+      if (state.errorMessage != null) return false;
+      final trip = state.trips.where((trip) => trip.id == id).firstOrNull;
+      if (trip == null || !state.canRequestTrip(trip)) {
+        state = state.copyWith(
+          errorMessage:
+              trip?.unavailableReason ??
+              'This trip is unavailable or you already have a join request.',
+        );
+        return false;
+      }
+      state = state.copyWith(isLoading: true, clearError: true);
+      await _repository.sendJoinRequest(id, text);
+      if (_repository.currentUserId != userId) return false;
+      // Record success before refreshing so a slow refresh cannot allow a
+      // second request. Saving remains independent of joining.
+      state = state.copyWith(
+        requests: [
+          ...state.requests,
+          JoinRequest(
+            id: 'sent-$id',
+            tripId: id,
+            applicantId: userId,
+            message: text,
+          ),
+        ],
+        isLoading: false,
+        successMessage: 'Join request sent.',
+      );
+      return true;
+    } catch (error) {
+      if (_repository.currentUserId != userId) return false;
+      state = state.copyWith(isLoading: false, errorMessage: error.toString());
+      return false;
     }
   }
 
