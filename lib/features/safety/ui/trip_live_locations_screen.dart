@@ -39,13 +39,16 @@ class _TripLiveLocationsScreenState
   LatLng? _lastFollowedPoint;
   SharedLiveLocation? _latestSelectedShare;
   bool _autoFollowPaused = false;
+  bool _isStoppingShare = false;
+  bool _shareStoppedLocally = false;
 
   @override
   void initState() {
     super.initState();
     _locations = ref
         .read(liveLocationRepositoryProvider)
-        .watchTripShares(widget.tripId);
+        .watchTripShares(widget.tripId)
+        .asBroadcastStream();
     _freshnessTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
@@ -71,50 +74,68 @@ class _TripLiveLocationsScreenState
         sharingViewModel.clearError();
       },
     );
-    final sharingThisTrip = sharingState.isSharing &&
-        sharingState.selectedTripId == widget.tripId;
-    final sharingAnotherTrip = sharingState.isSharing && !sharingThisTrip;
     final tripCanShare = sharingState.trips.any(
       (trip) => trip.id == widget.tripId,
     );
     return Scaffold(
       appBar: AppBar(title: const Text('Live locations')),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        child: FilledButton.icon(
-          onPressed: sharingState.isLoading ||
-                  sharingState.isStarting ||
-                  sharingAnotherTrip ||
-                  (!tripCanShare && !sharingThisTrip)
-              ? null
-              : sharingThisTrip
-                  ? () => sharingViewModel.stopSharingForTrip(widget.tripId)
-                  : () => _startSharing(
-                      sharingViewModel,
-                      sharingState.duration,
+      bottomNavigationBar: StreamBuilder<List<SharedLiveLocation>>(
+        stream: _locations,
+        builder: (context, snapshot) {
+          final hasPersistedShare = snapshot.data?.any(
+                (share) =>
+                    share.userId == widget.currentUserId &&
+                    share.isActiveAt(DateTime.now()),
+              ) ??
+              false;
+          final sharingThisTrip =
+              (hasPersistedShare && !_shareStoppedLocally) ||
+              (sharingState.isSharing &&
+                  sharingState.selectedTripId == widget.tripId);
+          final sharingAnotherTrip =
+              sharingState.isSharing && !sharingThisTrip;
+          return SafeArea(
+            minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: FilledButton.icon(
+              onPressed: !snapshot.hasData ||
+                      sharingState.isLoading ||
+                      sharingState.isStarting ||
+                      _isStoppingShare ||
+                      sharingAnotherTrip ||
+                      (!tripCanShare && !sharingThisTrip)
+                  ? null
+                  : sharingThisTrip
+                      ? () => _stopSharing(sharingViewModel)
+                      : () => _startSharing(
+                          sharingViewModel,
+                          sharingState.duration,
+                        ),
+              icon: sharingState.isStarting || _isStoppingShare
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      sharingThisTrip
+                          ? Icons.location_off_outlined
+                          : Icons.location_on_outlined,
                     ),
-          icon: sharingState.isStarting
-              ? const SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : Icon(
-                  sharingThisTrip
-                      ? Icons.location_off_outlined
-                      : Icons.location_on_outlined,
-                ),
-          label: Text(
-            sharingState.isStarting
-                ? 'Getting your location…'
-                : sharingThisTrip
-                    ? 'Stop sharing my location'
-                    : sharingAnotherTrip
-                        ? 'Stop your other share first'
-                        : !tripCanShare
-                            ? 'This trip is not active'
-                            : 'Start sharing my location',
-          ),
-        ),
+              label: Text(
+                _isStoppingShare
+                    ? 'Stopping sharing…'
+                    : sharingState.isStarting
+                    ? 'Getting your location…'
+                    : sharingThisTrip
+                        ? 'Stop sharing my location'
+                        : sharingAnotherTrip
+                            ? 'Stop your other share first'
+                            : !tripCanShare
+                                ? 'This trip is not active'
+                                : 'Start sharing my location',
+              ),
+            ),
+          );
+        },
       ),
       body: StreamBuilder<List<SharedLiveLocation>>(
         stream: _locations,
@@ -135,7 +156,12 @@ class _TripLiveLocationsScreenState
           }
           final now = DateTime.now();
           final active = snapshot.data!
-              .where((share) => share.isActiveAt(now))
+              .where(
+                (share) =>
+                    share.isActiveAt(now) &&
+                    !(_shareStoppedLocally &&
+                        share.userId == widget.currentUserId),
+              )
               .toList(growable: false);
           if (active.isEmpty) {
             return const Center(
@@ -369,9 +395,20 @@ class _TripLiveLocationsScreenState
       ),
     );
     if (duration != null && mounted) {
+      setState(() => _shareStoppedLocally = false);
       viewModel.setDuration(duration);
       await viewModel.startSharing(tripId: widget.tripId);
     }
+  }
+
+  Future<void> _stopSharing(LiveLocationViewModel viewModel) async {
+    setState(() => _isStoppingShare = true);
+    final stopped = await viewModel.stopSharingForTrip(widget.tripId);
+    if (!mounted) return;
+    setState(() {
+      _isStoppingShare = false;
+      if (stopped) _shareStoppedLocally = true;
+    });
   }
 }
 

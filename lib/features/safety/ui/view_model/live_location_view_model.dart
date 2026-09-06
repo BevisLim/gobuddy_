@@ -142,7 +142,7 @@ class LiveLocationViewModel extends Notifier<LiveLocationState> {
     );
   }
 
-  Future<void> stopSharingForTrip(String tripId) async {
+  Future<bool> stopSharingForTrip(String tripId) async {
     try {
       await ref.read(liveLocationRepositoryProvider).stopTripShare(
             userId: _userId(),
@@ -160,8 +160,10 @@ class LiveLocationViewModel extends Notifier<LiveLocationState> {
         clearShare: true,
         clearError: true,
       );
+      return true;
     } catch (error) {
       state = state.copyWith(error: 'Could not stop sharing: $error');
+      return false;
     }
   }
 
