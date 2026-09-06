@@ -299,12 +299,20 @@ class UserAccountViewModel extends Notifier<UserAccountState> {
     _refreshingVerification = true;
     final revision = _verificationRevision;
     try {
-      final status = await ref
-          .read(userAccountRepositoryProvider)
-          .fetchVerificationStatus();
+      final repository = ref.read(userAccountRepositoryProvider);
+      final status = await repository.fetchVerificationStatus();
       if (state.user?.uid == user.uid && revision == _verificationRevision) {
+        // Approval can also replace date_of_birth with the value extracted
+        // from the verified identity document, so refresh the whole account.
+        final refreshedUser = status == IdentityVerificationStatus.verified
+            ? await repository.fetchCurrentAccount()
+            : state.user!.copyWith(verificationStatus: status);
+        if (state.user?.uid != user.uid ||
+            revision != _verificationRevision) {
+          return;
+        }
         state = state.copyWith(
-          user: state.user!.copyWith(verificationStatus: status),
+          user: refreshedUser,
           clearError: true,
         );
       }

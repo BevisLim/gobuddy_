@@ -21,7 +21,6 @@ class EditProfileView extends StatefulWidget {
     required this.onSave,
     required this.onSelectImage,
     required this.onDeleteImage,
-    required this.onVerify,
   });
 
   final UserAccount user;
@@ -30,7 +29,6 @@ class EditProfileView extends StatefulWidget {
   final ValueChanged<UserAccountProfileUpdate> onSave;
   final Future<String?> Function(ImageSource source) onSelectImage;
   final Future<bool> Function() onDeleteImage;
-  final VoidCallback onVerify;
 
   @override
   State<EditProfileView> createState() => _EditProfileViewState();
@@ -120,23 +118,6 @@ class _EditProfileViewState extends State<EditProfileView> {
                         ? 'Birthday unavailable'
                         : 'Complete verification',
                     locked: true,
-                  ),
-                  _SettingsRow(
-                    label: 'Verification',
-                    value: switch (widget.user.verificationStatus) {
-                      IdentityVerificationStatus.unverified => 'Unverified',
-                      IdentityVerificationStatus.pending => 'Pending',
-                      IdentityVerificationStatus.verified => 'Verified',
-                    },
-                    placeholder: 'Not verified',
-                    trailingIcon: widget.user.isVerified
-                        ? Icons.verified_rounded
-                        : Icons.chevron_right_rounded,
-                    trailingColor:
-                        widget.user.isVerified ? _violet : null,
-                    onTap: widget.user.isVerified || widget.isSaving
-                        ? null
-                        : widget.onVerify,
                   ),
                 ],
               ),

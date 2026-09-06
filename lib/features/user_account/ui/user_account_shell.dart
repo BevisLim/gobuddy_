@@ -149,15 +149,6 @@ class _UserAccountScreenState extends ConsumerState<UserAccountScreen>
           onEditBackgroundPhoto: (source) =>
               viewModel.selectBackgroundImage(source: source),
           onDeleteBackgroundPhoto: viewModel.deleteBackgroundImage,
-          onEditBio: (bio) => viewModel.updateProfile(
-            UserAccountProfileUpdate(
-              profilePhoto: state.user!.profilePhoto,
-              username: state.user!.username,
-              gender: state.user!.gender,
-              nationality: state.user!.nationality,
-              bio: bio,
-            ),
-          ),
           onNotifications: () async {
             await showDialog<void>(
               context: context,
@@ -176,7 +167,6 @@ class _UserAccountScreenState extends ConsumerState<UserAccountScreen>
           onSelectImage: (source) =>
               viewModel.selectProfileImage(source: source),
           onDeleteImage: viewModel.deleteProfileImage,
-          onVerify: () => context.push(Routes.identityVerification),
         ),
         UserAccountPage.security => _AccountStaticFrame(
           title: 'Security',
@@ -247,7 +237,6 @@ class _AccountDashboardView extends StatelessWidget {
   final Future<bool> Function(List<String> photos) onDeletePhotos;
   final Future<String?> Function(ImageSource source) onEditBackgroundPhoto;
   final Future<bool> Function() onDeleteBackgroundPhoto;
-  final Future<void> Function(String bio) onEditBio;
 
   const _AccountDashboardView({
     required this.user,
@@ -260,7 +249,6 @@ class _AccountDashboardView extends StatelessWidget {
     required this.onDeletePhotos,
     required this.onEditBackgroundPhoto,
     required this.onDeleteBackgroundPhoto,
-    required this.onEditBio,
   });
 
   @override
@@ -291,20 +279,30 @@ class _AccountDashboardView extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: _AccountMenuTile(
-              icon: Icons.favorite_outline,
-              title: 'Saved Trips',
-              onTap: () => context.push(Routes.savedTrips),
+            child: _ProfileAboutCard(
+              bio: user.bio,
+              isReadOnly: true,
+              onEdit: () {},
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: _AccountMenuTile(
-              icon: Icons.health_and_safety_outlined,
-              title: 'Emergency contacts',
-              onTap: () => context.push(Routes.emergencyContacts),
+          if (user.isVerified) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: _AccountMenuTile(
+                icon: Icons.favorite_outline,
+                title: 'Saved Trips',
+                onTap: () => context.push(Routes.savedTrips),
+              ),
             ),
-          ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: _AccountMenuTile(
+                icon: Icons.health_and_safety_outlined,
+                title: 'Emergency contacts',
+                onTap: () => context.push(Routes.emergencyContacts),
+              ),
+            ),
+          ],
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             child: _ProfilePhotosCard(
@@ -312,20 +310,6 @@ class _AccountDashboardView extends StatelessWidget {
               onEdit: onEditPhoto,
               onDelete: onDeletePhotos,
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: _ProfileAboutCard(
-              bio: user.bio,
-              onEdit: () async {
-                final bio = await _showAboutMeEditor(context, user.bio);
-                if (bio != null) await onEditBio(bio);
-              },
-            ),
-          ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: _ProfileInterestsCard(),
           ),
         ],
       ),
@@ -441,10 +425,6 @@ class _PublicUserProfileScreenState extends State<PublicUserProfileScreen> {
                     isReadOnly: true,
                     onEdit: () {},
                   ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  child: _ProfileInterestsCard(),
                 ),
               ],
             ),
@@ -1324,28 +1304,6 @@ class _ProfileAboutCard extends StatelessWidget {
   );
 }
 
-class _ProfileInterestsCard extends StatelessWidget {
-  const _ProfileInterestsCard();
-
-  @override
-  Widget build(BuildContext context) => _ProfileCard(
-    title: 'Style & Interests',
-    edit: false,
-    child: const Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('TRAVEL STYLE', style: _label),
-        SizedBox(height: 9),
-        Text('Not set', style: TextStyle(color: _muted)),
-        SizedBox(height: 22),
-        Text('INTERESTS', style: _label),
-        SizedBox(height: 9),
-        Text('Not set', style: TextStyle(color: _muted)),
-      ],
-    ),
-  );
-}
-
 class _ProfileCard extends StatelessWidget {
   final String title;
   final Widget child;
@@ -1387,41 +1345,6 @@ class _ProfileCard extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         child,
-      ],
-    ),
-  );
-}
-
-Future<String?> _showAboutMeEditor(
-  BuildContext context,
-  String currentBio,
-) async {
-  var bio = currentBio;
-  return showDialog<String>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: const Text('About Me'),
-      content: TextFormField(
-        initialValue: currentBio,
-        autofocus: true,
-        minLines: 4,
-        maxLines: 7,
-        maxLength: 500,
-        onChanged: (value) => bio = value,
-        decoration: const InputDecoration(
-          hintText: 'Tell other travellers about yourself',
-          border: OutlineInputBorder(),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(dialogContext),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(dialogContext, bio.trim()),
-          child: const Text('Save'),
-        ),
       ],
     ),
   );

@@ -47,6 +47,7 @@ import 'routes.dart';
 import 'account_access_redirect.dart';
 import '../../features/admin/repository/admin_repository.dart';
 import '../../features/admin/ui/admin_screen.dart';
+import '../../features/common/ui/widgets/verified_access_gate.dart';
 
 enum SlideDirection { right, left, up, down }
 
@@ -258,25 +259,25 @@ final GoRouter router = GoRouter(
     GoRoute(
       path: Routes.messages,
       pageBuilder: (context, state) =>
-          state.navigationPage(const MessagesScreen()),
+          state.navigationPage(const VerifiedAccessGate(featureName: 'Messages', child: MessagesScreen())),
     ),
     GoRoute(
       path: '${Routes.trip}/:tripId/messages',
       pageBuilder: (context, state) => state.slidePage(
-        GroupCollaborationScreen(
+        VerifiedAccessGate(featureName: 'Messages', child: GroupCollaborationScreen(
           tripId: state.pathParameters['tripId']!,
           knownRemoved: state.uri.queryParameters['removed'] == 'true',
           initialView: TripWorkspaceView.messages,
-        ),
+        )),
       ),
     ),
     GoRoute(
       path: '${Routes.trip}/:tripId/timeline',
       pageBuilder: (context, state) => state.slidePage(
-        GroupCollaborationScreen(
+        VerifiedAccessGate(featureName: 'My Trips', child: GroupCollaborationScreen(
           tripId: state.pathParameters['tripId']!,
           initialView: TripWorkspaceView.timeline,
-        ),
+        )),
       ),
     ),
     GoRoute(
@@ -292,74 +293,74 @@ final GoRouter router = GoRouter(
     GoRoute(
       path: '${Routes.groupExpense}/:tripId',
       pageBuilder: (context, state) => state.navigationPage(
-        ExpenseDashboardScreen(tripId: state.pathParameters['tripId']!),
+        VerifiedAccessGate(featureName: 'Expenses', child: ExpenseDashboardScreen(tripId: state.pathParameters['tripId']!)),
       ),
     ),
     GoRoute(
       path: '${Routes.groupExpense}/:tripId/${Routes.createBudget}',
       pageBuilder: (context, state) => state.slidePage(
-        CreateBudgetScreen(tripId: state.pathParameters['tripId']!),
+        VerifiedAccessGate(featureName: 'Expenses', child: CreateBudgetScreen(tripId: state.pathParameters['tripId']!)),
       ),
     ),
     GoRoute(
       path: '${Routes.groupExpense}/:tripId/${Routes.editBudget}',
       pageBuilder: (context, state) => state.slidePage(
-        EditBudgetScreen(tripId: state.pathParameters['tripId']!),
+        VerifiedAccessGate(featureName: 'Expenses', child: EditBudgetScreen(tripId: state.pathParameters['tripId']!)),
       ),
     ),
     GoRoute(
       path: '${Routes.groupExpense}/:tripId/${Routes.addExpense}',
       pageBuilder: (context, state) => state.slidePage(
-        AddExpenseScreen(tripId: state.pathParameters['tripId']!),
+        VerifiedAccessGate(featureName: 'Expenses', child: AddExpenseScreen(tripId: state.pathParameters['tripId']!)),
       ),
     ),
     GoRoute(
       path:
           '${Routes.groupExpense}/:tripId/${Routes.expenseDetails}/:expenseId',
       pageBuilder: (context, state) => state.slidePage(
-        ExpenseDetailsScreen(
+        VerifiedAccessGate(featureName: 'Expenses', child: ExpenseDetailsScreen(
           tripId: state.pathParameters['tripId']!,
           expenseId: state.pathParameters['expenseId']!,
           initialSuccessMessage: state.uri.queryParameters['message'],
-        ),
+        )),
       ),
     ),
     GoRoute(
       path:
           '${Routes.groupExpense}/:tripId/${Routes.expenseDetails}/:expenseId/${Routes.editExpense}',
       pageBuilder: (context, state) => state.slidePage(
-        EditExpenseScreen(
+        VerifiedAccessGate(featureName: 'Expenses', child: EditExpenseScreen(
           tripId: state.pathParameters['tripId']!,
           expenseId: state.pathParameters['expenseId']!,
-        ),
+        )),
       ),
     ),
     GoRoute(
       path: '${Routes.groupExpense}/:tripId/${Routes.outstandingBalance}',
       pageBuilder: (context, state) => state.slidePage(
-        OutstandingBalanceScreen(tripId: state.pathParameters['tripId']!),
+        VerifiedAccessGate(featureName: 'Expenses', child: OutstandingBalanceScreen(tripId: state.pathParameters['tripId']!)),
       ),
     ),
     GoRoute(
       path: '${Routes.groupExpense}/:tripId/${Routes.recordSettlement}',
       pageBuilder: (context, state) => state.slidePage(
-        RecordSettlementScreen(
+        VerifiedAccessGate(featureName: 'Expenses', child: RecordSettlementScreen(
           tripId: state.pathParameters['tripId']!,
           initialPayerId: state.uri.queryParameters['payerId'],
           initialPayeeId: state.uri.queryParameters['payeeId'],
-        ),
+        )),
       ),
     ),
     GoRoute(
       path: '${Routes.groupExpense}/:tripId/${Routes.settlementHistory}',
       pageBuilder: (context, state) => state.slidePage(
-        SettlementHistoryScreen(tripId: state.pathParameters['tripId']!),
+        VerifiedAccessGate(featureName: 'Expenses', child: SettlementHistoryScreen(tripId: state.pathParameters['tripId']!)),
       ),
     ),
     GoRoute(
       path: '${Routes.groupExpense}/:tripId/${Routes.budgetAnalytics}',
       pageBuilder: (context, state) => state.slidePage(
-        BudgetAnalyticsScreen(tripId: state.pathParameters['tripId']!),
+        VerifiedAccessGate(featureName: 'Expenses', child: BudgetAnalyticsScreen(tripId: state.pathParameters['tripId']!)),
       ),
     ),
     GoRoute(
@@ -370,7 +371,7 @@ final GoRouter router = GoRouter(
     GoRoute(
       path: Routes.savedTrips,
       pageBuilder: (context, state) =>
-          state.slidePage(const SavedTripsScreen()),
+          state.slidePage(const VerifiedAccessGate(featureName: 'Saved Trips', child: SavedTripsScreen())),
     ),
     GoRoute(
       path: Routes.travelFootprint,
@@ -386,7 +387,10 @@ final GoRouter router = GoRouter(
     GoRoute(
       path: '${Routes.publicProfile}/:userId',
       pageBuilder: (context, state) => state.slidePage(
-        PublicUserProfileScreen(userId: state.pathParameters['userId']!),
+        VerifiedAccessGate(
+          featureName: 'Traveller profiles',
+          child: PublicUserProfileScreen(userId: state.pathParameters['userId']!),
+        ),
       ),
     ),
     GoRoute(
@@ -460,11 +464,11 @@ final GoRouter router = GoRouter(
         final tripId = state.uri.queryParameters['tripId'] ?? '';
         final knownRemoved = state.uri.queryParameters['removed'] == 'true';
         return state.slidePage(
-          GroupCollaborationScreen(
+          VerifiedAccessGate(featureName: 'Messages', child: GroupCollaborationScreen(
             tripId: tripId,
             knownRemoved: knownRemoved,
             initialView: TripWorkspaceView.messages,
-          ),
+          )),
         );
       },
     ),
