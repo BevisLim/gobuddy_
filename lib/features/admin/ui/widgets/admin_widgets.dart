@@ -69,18 +69,26 @@ class AdminScaffold extends ConsumerWidget {
   final Widget child;
   final VoidCallback onRefresh;
   final String? backPath;
-  static const labels = ['Dashboard', 'Reports', 'Users', 'Activity Logs'];
+  static const labels = [
+    'Dashboard',
+    'Reports',
+    'Users',
+    'Activity Logs',
+    'Review Verification',
+  ];
   static const icons = [
     Icons.dashboard_outlined,
     Icons.flag_outlined,
     Icons.people_outline,
     Icons.history,
+    Icons.verified_user_outlined,
   ];
   static const paths = [
     Routes.admin,
     '${Routes.admin}/reports',
     '${Routes.admin}/users',
     '${Routes.admin}/activity',
+    Routes.identityReviews,
   ];
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -131,7 +139,14 @@ class AdminScaffold extends ConsumerWidget {
                     for (var i = 0; i < labels.length; i++)
                       NavigationDrawerDestination(
                         icon: Icon(icons[i]),
-                        label: Text(labels[i]),
+                        label: SizedBox(
+                          width: 140,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(labels[i]),
+                          ),
+                        ),
                       ),
                   ],
                 ),

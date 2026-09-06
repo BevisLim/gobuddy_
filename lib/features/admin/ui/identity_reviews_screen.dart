@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../repository/identity_review_repository.dart';
+import 'widgets/admin_widgets.dart';
 
 class IdentityReviewsScreen extends StatefulWidget {
   const IdentityReviewsScreen({super.key});
@@ -32,9 +33,11 @@ class _IdentityReviewsScreenState extends State<IdentityReviewsScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Identity reviews')),
-    body: FutureBuilder<bool>(
+  Widget build(BuildContext context) => AdminScaffold(
+    section: 4,
+    title: 'Review Verification',
+    onRefresh: _refresh,
+    child: FutureBuilder<bool>(
       future: _access,
       builder: (context, accessSnapshot) {
         if (accessSnapshot.connectionState == ConnectionState.waiting) {
