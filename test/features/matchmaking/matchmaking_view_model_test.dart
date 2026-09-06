@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_mvvm_riverpod/features/matchmaking/model/matchmaking_models.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/model/matchmaking_notification.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/model/matchmaking_page.dart';
@@ -68,6 +70,99 @@ void main() {
       isNot(contains('other-request')),
     );
   });
+
+  test('an older refresh cannot overwrite a newer trip snapshot', () async {
+    final repository = _DelayedRefreshRepository();
+    final connectedContainer = ProviderContainer(
+      overrides: [matchmakingRepositoryProvider.overrideWithValue(repository)],
+    );
+    addTearDown(connectedContainer.dispose);
+    final connectedNotifier = connectedContainer.read(
+      matchmakingViewModelProvider.notifier,
+    );
+    repository.connected = true;
+
+    final olderRefresh = connectedNotifier.refresh();
+    final newerRefresh = connectedNotifier.refresh();
+
+    repository.tripReads[1].complete([repository.trip(joined: 2)]);
+    await newerRefresh;
+    expect(
+      connectedContainer
+          .read(matchmakingViewModelProvider)
+          .trips
+          .single
+          .spotsLeft,
+      0,
+    );
+
+    repository.tripReads[0].complete([repository.trip(joined: 0)]);
+    await olderRefresh;
+    expect(
+      connectedContainer
+          .read(matchmakingViewModelProvider)
+          .trips
+          .single
+          .spotsLeft,
+      0,
+    );
+  });
+}
+
+class _DelayedRefreshRepository extends MatchmakingRepository {
+  bool connected = false;
+  final List<Completer<List<MatchmakingTrip>>> tripReads = [];
+
+  @override
+  bool get hasAuthenticatedUser => connected;
+
+  @override
+  String get currentUserId => 'owner-id';
+
+  MatchmakingTrip trip({required int joined}) => MatchmakingTrip(
+    id: 'trip-id',
+    destination: 'Osaka, Japan',
+    startDate: DateTime(2026, 9, 10),
+    endDate: DateTime(2026, 9, 12),
+    budget: 1000,
+    styles: const {'Culture'},
+    hostId: 'owner-id',
+    hostName: 'Owner',
+    hostInitials: 'O',
+    imageUrl: '',
+    gender: 'Any',
+    minAge: 18,
+    maxAge: 60,
+    vacancies: 2,
+    joined: joined,
+    description: '',
+    isOwned: true,
+  );
+
+  @override
+  Future<List<MatchmakingTrip>> fetchTrips() {
+    final read = Completer<List<MatchmakingTrip>>();
+    tripReads.add(read);
+    return read.future;
+  }
+
+  @override
+  Future<Set<String>> fetchSavedTripIds() async => {};
+
+  @override
+  Future<List<JoinRequest>> fetchJoinRequests() async => [];
+
+  @override
+  Future<Set<String>> fetchJoinedTripIds() async => {};
+
+  @override
+  Future<Set<String>> fetchDismissedGroupIds() async => {};
+
+  @override
+  Future<List<MatchmakingApplicant>> fetchApplicants() async => [];
+
+  @override
+  Future<List<MatchmakingNotification>> fetchNotifications() async => [];
 }
 
 class _FullTripRepository extends MatchmakingRepository {

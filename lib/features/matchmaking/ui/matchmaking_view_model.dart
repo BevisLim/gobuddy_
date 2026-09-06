@@ -20,6 +20,7 @@ final matchmakingViewModelProvider =
     );
 
 class MatchmakingViewModel extends Notifier<MatchmakingState> {
+  int _refreshRevision = 0;
   int _savedRevision = 0;
   Future<void>? _savedRefresh;
   MatchmakingRepository get _repository =>
@@ -27,7 +28,13 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
   @override
   MatchmakingState build() {
     final connected = _repository.hasAuthenticatedUser;
-    if (connected) unawaited(Future<void>.microtask(refresh));
+    if (connected) {
+      unawaited(
+        Future<void>.microtask(() async {
+          if (_refreshRevision == 0) await refresh();
+        }),
+      );
+    }
     return MatchmakingState(
       page: ref.watch(matchmakingInitialPageProvider),
       availableFilters: _repository.discoveryFilters,
@@ -43,6 +50,7 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
     if (!_repository.hasAuthenticatedUser) return;
     final userId = _repository.currentUserId;
     if (userId.isEmpty) return;
+    final refreshRevision = ++_refreshRevision;
 
     // Clear account-scoped state if Supabase changed users while this provider
     // remained alive in the root ProviderScope.
@@ -94,7 +102,10 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
       final notifications = await _repository.fetchNotifications();
       // Do not publish results belonging to a session that has since ended or
       // been replaced by another account.
-      if (_repository.currentUserId != userId) return;
+      if (refreshRevision != _refreshRevision ||
+          _repository.currentUserId != userId) {
+        return;
+      }
       state = state.copyWith(
         currentUserId: userId,
         trips: trips,
@@ -111,7 +122,10 @@ class MatchmakingViewModel extends Notifier<MatchmakingState> {
         clearError: true,
       );
     } catch (error) {
-      if (_repository.currentUserId != userId) return;
+      if (refreshRevision != _refreshRevision ||
+          _repository.currentUserId != userId) {
+        return;
+      }
       state = state.copyWith(isLoading: false, errorMessage: error.toString());
     }
   }
