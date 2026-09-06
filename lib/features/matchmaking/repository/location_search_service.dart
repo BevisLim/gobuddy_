@@ -58,6 +58,51 @@ class LocationSearchService {
     return results;
   }
 
+  Future<List<String>> searchCities(
+    String query,
+    String countryCode, {
+    required String countryName,
+  }) async {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return const [];
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/api',
+      queryParameters: {
+        'q': trimmed,
+        'countrycode': countryCode.toUpperCase(),
+        'layer': 'city',
+        'limit': 50,
+        'lang': 'en',
+      },
+    );
+    final features = response.data?['features'];
+    if (features is! List) return const [];
+    final results = <String>[];
+    for (final feature in features) {
+      if (feature is! Map || feature['properties'] is! Map) continue;
+      final properties = feature['properties'] as Map;
+      if (properties['countrycode']?.toString().toUpperCase() !=
+          countryCode.toUpperCase()) {
+        continue;
+      }
+      final type = properties['osm_value']?.toString().toLowerCase();
+      if (!const {
+        'city',
+        'town',
+        'municipality',
+        'village',
+        'state',
+      }.contains(type)) {
+        continue;
+      }
+      final name = properties['name']?.toString().trim() ?? '';
+      if (!name.toLowerCase().startsWith(trimmed.toLowerCase())) continue;
+      if (name.isNotEmpty && !results.contains(name)) results.add(name);
+      if (results.length == 15) break;
+    }
+    return results;
+  }
+
   bool _isTravelDestination(Map properties) {
     final key = properties['osm_key']?.toString().toLowerCase() ?? '';
     final value = properties['osm_value']?.toString().toLowerCase() ?? '';

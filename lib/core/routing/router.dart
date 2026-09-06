@@ -28,6 +28,7 @@ import '../../features/admin/ui/identity_reviews_screen.dart';
 import '../../features/user_account/ui/settings/blocked_users_screen.dart';
 import '../../features/user_account/ui/settings/change_password_screen.dart';
 import '../../features/user_account/ui/settings/settings_screen.dart';
+import '../../features/travel_footprint/ui/travel_footprint_screen.dart';
 import '../../features/user_account/ui/login_screen.dart';
 import '../../features/user_account/ui/register_account_screen.dart';
 import '../../features/user_account/ui/personal_information_setup_screen.dart';
@@ -370,6 +371,17 @@ final GoRouter router = GoRouter(
       path: Routes.savedTrips,
       pageBuilder: (context, state) =>
           state.slidePage(const SavedTripsScreen()),
+    ),
+    GoRoute(
+      path: Routes.travelFootprint,
+      pageBuilder: (context, state) =>
+          state.slidePage(const TravelFootprintScreen()),
+    ),
+    GoRoute(
+      path: '${Routes.travelFootprint}/:countryId',
+      pageBuilder: (context, state) => state.slidePage(
+        CountryFootprintScreen(countryId: state.pathParameters['countryId']!),
+      ),
     ),
     GoRoute(
       path: '${Routes.publicProfile}/:userId',

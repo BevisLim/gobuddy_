@@ -32,6 +32,7 @@ class Routes {
   static const budgetAnalytics = 'analytics';
   static const userAccount = '/user_account';
   static const savedTrips = '/user_account/saved-trips';
+  static const travelFootprint = '/user_account/travel-footprint';
   static const publicProfile = '/profile';
   static const groupCollaboration = '/group-collaboration';
   static const identityVerification = '/identity-verification';
@@ -53,4 +54,7 @@ class Routes {
 
   static String tripMessages(String tripId) =>
       '$trip/${Uri.encodeComponent(tripId)}/messages';
+
+  static String travelCountry(String countryId) =>
+      '$travelFootprint/${Uri.encodeComponent(countryId)}';
 }

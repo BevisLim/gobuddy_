@@ -25,7 +25,6 @@ This project was inspired by the [Flutter App Architecture Guide](https://docs.f
 | **Backend & Auth**   |
 |                      | `supabase_flutter`     | Backend as a service         |
 |                      | `google_sign_in`       | Google authentication        |
-|                      | `sign_in_with_apple`   | Apple authentication         |
 | **Navigation**       |
 |                      | `go_router`            | Declarative routing          |
 | **Storage**          |

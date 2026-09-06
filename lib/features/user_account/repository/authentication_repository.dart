@@ -1,16 +1,11 @@
-import 'dart:convert';
-
-import 'package:crypto/crypto.dart';
-import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:flutter_mvvm_riverpod/core/constants/constants.dart';
-import 'package:flutter_mvvm_riverpod/generated/locale_keys.g.dart';
 import 'package:flutter_mvvm_riverpod/features/common/remote/supabase_client.dart';
 
 part 'authentication_repository.g.dart';
@@ -22,6 +17,8 @@ AuthenticationRepository authenticationRepository(Ref ref) {
 
 class AuthenticationRepository {
   const AuthenticationRepository();
+
+  static Future<void>? _googleSignInInitialization;
 
   Future<void> sendRegistrationLink(String email) async {
     try {
@@ -194,6 +191,28 @@ class AuthenticationRepository {
       // A pending email-link registration must never send a Google user to
       // the email-only Set Password flow.
       await setRegistrationPending(false);
+
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        // The browser OAuth flow can leave a blank Samsung Internet tab when
+        // the custom-scheme redirect is handed back to Android. Use Google's
+        // native account picker on Android and give its ID token to Supabase.
+        await (_googleSignInInitialization ??= GoogleSignIn.instance.initialize(
+          serverClientId: Constants.googleWebClientId,
+        ));
+        final googleUser = await GoogleSignIn.instance.authenticate();
+        final idToken = googleUser.authentication.idToken;
+        if (idToken == null || idToken.isEmpty) {
+          throw Exception(
+            'Google did not return a sign-in token. Please try again.',
+          );
+        }
+        await supabase.auth.signInWithIdToken(
+          provider: OAuthProvider.google,
+          idToken: idToken,
+        );
+        return;
+      }
+
       final launched = await supabase.auth.signInWithOAuth(
         OAuthProvider.google,
         // On Flutter web, return to the port used by `flutter run` instead
@@ -202,6 +221,24 @@ class AuthenticationRepository {
       );
       if (!launched) {
         throw Exception('Unable to open Google sign-in. Please try again.');
+      }
+    } on GoogleSignInException catch (error) {
+      switch (error.code) {
+        case GoogleSignInExceptionCode.canceled:
+          throw Exception('Google sign-in was cancelled.');
+        case GoogleSignInExceptionCode.clientConfigurationError:
+        case GoogleSignInExceptionCode.providerConfigurationError:
+          throw Exception(
+            'Google sign-in is not configured for this Android app. '
+            'Add its package name and signing SHA fingerprints in Google Cloud.',
+          );
+        case GoogleSignInExceptionCode.interrupted:
+        case GoogleSignInExceptionCode.uiUnavailable:
+          throw Exception(
+            'Google sign-in is unavailable on this device. Please try again.',
+          );
+        default:
+          throw Exception('Unable to sign in with Google. Please try again.');
       }
     } on AuthException catch (error) {
       throw Exception(_friendlyGoogleSignInError(error));
@@ -259,50 +296,6 @@ class AuthenticationRepository {
       throw Exception(
         'Unable to load your profile. Check your connection and try again.',
       );
-    }
-  }
-
-  Future<AuthResponse> signInWithApple() async {
-    // TODO: fake data
-    return AuthResponse(
-      user: User(
-        id: '',
-        appMetadata: {},
-        userMetadata: {},
-        aud: '',
-        createdAt: '',
-        email: 'henry@apple.com',
-      ),
-    );
-
-    // ignore: dead_code
-    try {
-      final rawNonce = supabase.auth.generateRawNonce();
-      final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
-
-      final credential = await SignInWithApple.getAppleIDCredential(
-        scopes: [
-          AppleIDAuthorizationScopes.email,
-          AppleIDAuthorizationScopes.fullName,
-        ],
-        nonce: hashedNonce,
-      );
-
-      final idToken = credential.identityToken;
-      if (idToken == null) {
-        throw Exception(LocaleKeys.idTokenNotFound.tr());
-      }
-
-      final result = await supabase.auth.signInWithIdToken(
-        provider: OAuthProvider.apple,
-        idToken: idToken,
-        nonce: rawNonce,
-      );
-      return result;
-    } on AuthException catch (error) {
-      throw Exception(error.message);
-    } catch (error) {
-      throw Exception(LocaleKeys.unexpectedErrorOccurred.tr());
     }
   }
 
