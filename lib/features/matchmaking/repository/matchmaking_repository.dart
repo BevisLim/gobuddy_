@@ -161,6 +161,11 @@ class MatchmakingRepository {
               profile?['profile_photo_path'] as String?,
             ),
             imageUrl: data['cover_image_url'] as String? ?? _bali,
+            galleryImageUrls:
+                (data['gallery_image_urls'] as List?)
+                    ?.whereType<String>()
+                    .toList(growable: false) ??
+                const [],
             gender: data['preferred_gender'] as String,
             minAge: data['minimum_age'] as int,
             maxAge: data['maximum_age'] as int,
@@ -340,6 +345,10 @@ class MatchmakingRepository {
         params: {...params}..remove('p_start_time'),
       );
     }
+    await supabase
+        .from('matchmaking_trips')
+        .update({'gallery_image_urls': trip.galleryImageUrls})
+        .eq('id', trip.id);
   }
 
   Future<void> _closeExpiredTripsIfAvailable() async {
@@ -431,6 +440,32 @@ class MatchmakingRepository {
           path,
           bytes,
           fileOptions: const FileOptions(upsert: true),
+        );
+    return supabase.storage.from('trip-images').getPublicUrl(path);
+  }
+
+  Future<String> uploadTripGalleryPhoto({
+    required String tripId,
+    required Uint8List bytes,
+    required String fileName,
+    required int index,
+  }) async {
+    final user = _requireUser();
+    final extension = fileName.contains('.')
+        ? fileName.split('.').last.toLowerCase()
+        : 'jpg';
+    final safeExtension =
+        const {'jpg', 'jpeg', 'png', 'webp'}.contains(extension)
+        ? extension
+        : 'jpg';
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    final path = '${user.id}/$tripId/gallery/${stamp}_$index.$safeExtension';
+    await supabase.storage
+        .from('trip-images')
+        .uploadBinary(
+          path,
+          bytes,
+          fileOptions: const FileOptions(upsert: false),
         );
     return supabase.storage.from('trip-images').getPublicUrl(path);
   }

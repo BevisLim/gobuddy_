@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,6 +17,8 @@ import '../model/matchmaking_models.dart';
 import '../model/matchmaking_validation.dart';
 import '../model/matchmaking_notification.dart';
 import '../model/matchmaking_page.dart';
+import '../repository/destination_image_service.dart';
+import '../repository/location_search_service.dart';
 import 'state/matchmaking_state.dart';
 import 'view_model/matchmaking_view_model.dart';
 import '../../safety/repository/safety_check_in_configuration_repository.dart';
@@ -310,6 +311,7 @@ class _MatchmakingShellScreenState
         onBack: () => viewModel.goTo(MatchmakingPage.discover),
         onPublish: viewModel.saveTrip,
         onUploadImage: viewModel.uploadTripCover,
+        onUploadGalleryImage: viewModel.uploadTripGalleryPhoto,
       ),
       MatchmakingPage.edit => InteractiveTripFormPage(
         edit: true,
@@ -318,6 +320,7 @@ class _MatchmakingShellScreenState
         onBack: () => viewModel.goTo(MatchmakingPage.myTrips),
         onPublish: viewModel.saveTrip,
         onUploadImage: viewModel.uploadTripCover,
+        onUploadGalleryImage: viewModel.uploadTripGalleryPhoto,
         onDelete: () => viewModel.deleteTrip(state.selectedTrip!.id),
       ),
       MatchmakingPage.myTrips => MyTripsPage(
@@ -498,7 +501,7 @@ class MatchmakingNotificationsDialog extends StatelessWidget {
           : ListView.separated(
               shrinkWrap: true,
               itemCount: notifications.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
+              separatorBuilder: (_, index) => const Divider(height: 1),
               itemBuilder: (context, index) {
                 final notification = notifications[index];
                 return ListTile(
@@ -779,55 +782,7 @@ class TripCard extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          height: 270,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              TravelImage(url: trip.imageUrl),
-              const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Color(0xCC171025)],
-                  ),
-                ),
-              ),
-              Positioned(top: 14, left: 14, child: VerifiedBadge(glass: true)),
-              const Positioned(top: 14, right: 14, child: _Counter()),
-              Positioned(
-                left: 20,
-                right: 20,
-                bottom: 18,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      trip.destination,
-                      style: TextStyle(
-                        fontFamily: 'Georgia',
-                        color: Colors.white,
-                        fontSize: 27,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    SizedBox(height: 5),
-                    Text(
-                      _dateRange(trip.startDate, trip.endDate),
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: .7,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+        _TripCardImageCarousel(trip: trip),
         Padding(
           padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
           child: Column(
@@ -931,6 +886,96 @@ class TripCard extends StatelessWidget {
       ],
     ),
   );
+}
+
+class _TripCardImageCarousel extends StatefulWidget {
+  const _TripCardImageCarousel({required this.trip});
+
+  final MatchmakingTrip trip;
+
+  @override
+  State<_TripCardImageCarousel> createState() => _TripCardImageCarouselState();
+}
+
+class _TripCardImageCarouselState extends State<_TripCardImageCarousel> {
+  int _currentImage = 0;
+
+  List<String> get _images => {
+    if (widget.trip.imageUrl.trim().isNotEmpty) widget.trip.imageUrl,
+    ...widget.trip.galleryImageUrls.where((url) => url.trim().isNotEmpty),
+  }.toList(growable: false);
+
+  @override
+  Widget build(BuildContext context) {
+    final images = _images;
+    return SizedBox(
+      height: 270,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (images.isEmpty)
+            const ColoredBox(
+              color: _lavender,
+              child: Icon(Icons.landscape_outlined, size: 48, color: _muted),
+            )
+          else
+            PageView.builder(
+              itemCount: images.length,
+              onPageChanged: (index) => setState(() => _currentImage = index),
+              itemBuilder: (context, index) => TravelImage(url: images[index]),
+            ),
+          const IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, Color(0xCC171025)],
+                ),
+              ),
+            ),
+          ),
+          if (images.isNotEmpty)
+            Positioned(
+              top: 14,
+              right: 14,
+              child: _Counter(current: _currentImage + 1, total: images.length),
+            ),
+          Positioned(
+            left: 20,
+            right: 20,
+            bottom: 18,
+            child: IgnorePointer(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.trip.destination,
+                    style: const TextStyle(
+                      fontFamily: 'Georgia',
+                      color: Colors.white,
+                      fontSize: 27,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    _dateRange(widget.trip.startDate, widget.trip.endDate),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: .7,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class InteractiveFilterPage extends StatefulWidget {
@@ -1238,6 +1283,26 @@ class TripDetailsPage extends StatelessWidget {
                 Text(trip.destination, style: _heading),
                 const SizedBox(height: 5),
                 Text(_dateRange(trip.startDate, trip.endDate), style: _label),
+                if (trip.galleryImageUrls.isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  const FieldLabel('TRIP PHOTOS'),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 110,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: trip.galleryImageUrls.length,
+                      separatorBuilder: (_, index) => const SizedBox(width: 10),
+                      itemBuilder: (context, index) => SizedBox(
+                        width: 150,
+                        child: TravelImage(
+                          url: trip.galleryImageUrls[index],
+                          radius: 10,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 20),
                 InfoRows(trip: trip),
                 const SizedBox(height: 24),
@@ -1319,18 +1384,25 @@ class InteractiveTripFormPage extends StatefulWidget {
   final VoidCallback onBack;
   final ValueChanged<MatchmakingTrip> onPublish;
   final Future<String> Function(String, Uint8List, String) onUploadImage;
+  final Future<String> Function(String, Uint8List, String, int)
+  onUploadGalleryImage;
   final VoidCallback? onDelete;
   final MatchmakingTrip? initialTrip;
   final List<MatchmakingTrip> hostedTrips;
+  final LocationSearchService? locationSearchService;
+  final DestinationImageService? destinationImageService;
   final bool edit;
   const InteractiveTripFormPage({
     super.key,
     required this.onBack,
     required this.onPublish,
     required this.onUploadImage,
+    required this.onUploadGalleryImage,
     this.onDelete,
     this.initialTrip,
     required this.hostedTrips,
+    this.locationSearchService,
+    this.destinationImageService,
     this.edit = false,
   });
 
@@ -1354,8 +1426,24 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
   late String _imageUrl;
   Uint8List? _pendingImageBytes;
   String? _pendingImageName;
+  final List<Uint8List> _pendingGalleryBytes = [];
+  final List<String> _pendingGalleryNames = [];
+  late final List<String> _galleryImageUrls;
   bool _isUploadingImage = false;
   String? _dateError;
+  final _destinationFocus = FocusNode();
+  final _destinationMenu = MenuController();
+  late final LocationSearchService _locationSearch;
+  late final DestinationImageService _destinationImageSearch;
+  Timer? _locationDebounce;
+  Timer? _coverDebounce;
+  List<String> _locationSuggestions = const [];
+  bool _isSearchingLocations = false;
+  int _locationRequest = 0;
+  int _coverRequest = 0;
+  bool _isFindingCover = false;
+  String? _coverMessage;
+  bool _automaticCoverEnabled = true;
   static const _styleOptions = [
     'Adventure',
     'Foodie',
@@ -1369,8 +1457,17 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
   void initState() {
     super.initState();
     final trip = widget.initialTrip;
+    _locationSearch = widget.locationSearchService ?? LocationSearchService();
+    _destinationImageSearch =
+        widget.destinationImageService ?? DestinationImageService();
     _imageUrl = trip?.imageUrl ?? '';
+    _galleryImageUrls = [...?trip?.galleryImageUrls];
+    // Preserve the current cover until the destination changes, then keep the
+    // suggested cover in sync. A photo picked in this editing session still
+    // takes priority and disables automatic updates.
+    _automaticCoverEnabled = true;
     _destination = TextEditingController(text: trip?.destination ?? '');
+    _destinationFocus.addListener(_onDestinationFocusChanged);
     _start = TextEditingController(
       text: trip == null ? '' : _dateInput(trip.startDate),
     );
@@ -1392,6 +1489,11 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
 
   @override
   void dispose() {
+    _locationDebounce?.cancel();
+    _coverDebounce?.cancel();
+    _destinationFocus
+      ..removeListener(_onDestinationFocusChanged)
+      ..dispose();
     for (final item in [
       _destination,
       _start,
@@ -1404,6 +1506,223 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
     }
     super.dispose();
   }
+
+  void _onDestinationFocusChanged() {
+    if (!mounted) return;
+    setState(() {});
+    if (_destinationFocus.hasFocus && _destination.text.trim().length >= 2) {
+      _openDestinationMenu();
+    } else if (_destinationMenu.isOpen) {
+      _destinationMenu.close();
+    }
+  }
+
+  void _openDestinationMenu() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted &&
+          _destinationFocus.hasFocus &&
+          _destination.text.trim().length >= 2 &&
+          !_destinationMenu.isOpen) {
+        _destinationMenu.open();
+      }
+    });
+  }
+
+  void _searchLocations(String value) {
+    if (_automaticCoverEnabled && _pendingImageBytes == null) {
+      _coverDebounce?.cancel();
+      _coverRequest++;
+      _imageUrl = '';
+      _isFindingCover = false;
+      _coverMessage = value.trim().length < 2
+          ? 'Select a destination suggestion to load a matching photo.'
+          : 'Select a suggested destination to load its photo.';
+    }
+    _locationDebounce?.cancel();
+    final request = ++_locationRequest;
+    if (value.trim().length < 2) {
+      if (_destinationMenu.isOpen) _destinationMenu.close();
+      setState(() {
+        _locationSuggestions = const [];
+        _isSearchingLocations = false;
+      });
+      return;
+    }
+    setState(() => _isSearchingLocations = true);
+    _openDestinationMenu();
+    _locationDebounce = Timer(const Duration(milliseconds: 400), () async {
+      try {
+        final results = await _locationSearch.search(value);
+        if (!mounted || request != _locationRequest) return;
+        setState(() {
+          _locationSuggestions = results;
+          _isSearchingLocations = false;
+          if (_automaticCoverEnabled && results.isEmpty) {
+            _coverMessage =
+                'No matching destination was found. Enter a real place or add your own photos.';
+          }
+        });
+        _openDestinationMenu();
+      } catch (_) {
+        if (!mounted || request != _locationRequest) return;
+        setState(() {
+          _locationSuggestions = const [];
+          _isSearchingLocations = false;
+          if (_automaticCoverEnabled) {
+            _coverMessage =
+                'Location search is unavailable. You can add your own photos.';
+          }
+        });
+      }
+    });
+  }
+
+  void _selectLocation(String location, {bool findCover = true}) {
+    _locationDebounce?.cancel();
+    _locationRequest++;
+    setState(() {
+      _destination.text = location;
+      _destination.selection = TextSelection.collapsed(offset: location.length);
+      _locationSuggestions = const [];
+      _isSearchingLocations = false;
+    });
+    _destinationFocus.unfocus();
+    if (_destinationMenu.isOpen) _destinationMenu.close();
+    if (findCover) {
+      _scheduleAutomaticCover(location, immediate: true);
+    } else {
+      setState(() {
+        _imageUrl = '';
+        _coverMessage =
+            'Custom location selected. Add your own photos for this trip.';
+      });
+    }
+  }
+
+  void _scheduleAutomaticCover(String destination, {bool immediate = false}) {
+    if (!_automaticCoverEnabled || _pendingImageBytes != null) return;
+    _coverDebounce?.cancel();
+    final request = ++_coverRequest;
+    if (destination.trim().length < 3) {
+      setState(() {
+        _imageUrl = '';
+        _isFindingCover = false;
+      });
+      return;
+    }
+    setState(() {
+      _isFindingCover = true;
+      _coverMessage = null;
+    });
+    if (immediate) {
+      unawaited(_findAutomaticCover(destination, request));
+    } else {
+      _coverDebounce = Timer(
+        const Duration(milliseconds: 900),
+        () => unawaited(_findAutomaticCover(destination, request)),
+      );
+    }
+  }
+
+  Future<void> _findAutomaticCover(String destination, int request) async {
+    try {
+      final url = await _destinationImageSearch.findImageUrl(destination);
+      if (!mounted || request != _coverRequest) return;
+      setState(() {
+        _imageUrl = url ?? '';
+        _isFindingCover = false;
+        _coverMessage = url == null
+            ? 'No reliable destination photo was found. Please add your own photos.'
+            : null;
+      });
+    } catch (_) {
+      if (!mounted || request != _coverRequest) return;
+      setState(() {
+        _isFindingCover = false;
+        _coverMessage =
+            'No reliable destination photo was found. Please add your own photos.';
+      });
+    }
+  }
+
+  void _removeCover() {
+    _coverDebounce?.cancel();
+    _coverRequest++;
+    setState(() {
+      _imageUrl = '';
+      _pendingImageBytes = null;
+      _pendingImageName = null;
+      _automaticCoverEnabled = false;
+      _isFindingCover = false;
+      _coverMessage = null;
+    });
+  }
+
+  void _useDestinationCover() {
+    setState(() {
+      _automaticCoverEnabled = true;
+      _pendingImageBytes = null;
+      _pendingImageName = null;
+    });
+    _scheduleAutomaticCover(_destination.text, immediate: true);
+  }
+
+  Widget _destinationField() => MenuAnchor(
+    controller: _destinationMenu,
+    crossAxisUnconstrained: false,
+    alignmentOffset: const Offset(0, 4),
+    style: const MenuStyle(
+      maximumSize: WidgetStatePropertyAll(Size(double.infinity, 300)),
+    ),
+    menuChildren: [
+      MenuItemButton(
+        leadingIcon: const Icon(Icons.edit_location_alt_outlined),
+        onPressed: () =>
+            _selectLocation(_destination.text.trim(), findCover: false),
+        child: Text('Use "${_destination.text.trim()}"'),
+      ),
+      if (_isSearchingLocations)
+        const MenuItemButton(
+          onPressed: null,
+          leadingIcon: SizedBox.square(
+            dimension: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          child: Text('Searching for locations...'),
+        ),
+      for (final location in _locationSuggestions)
+        MenuItemButton(
+          leadingIcon: const Icon(Icons.place_outlined, color: _violet),
+          onPressed: () => _selectLocation(location),
+          child: Text(location),
+        ),
+      if (!_isSearchingLocations && _locationSuggestions.isEmpty)
+        const MenuItemButton(
+          onPressed: null,
+          child: Text('No online matches. You can use your typed location.'),
+        ),
+    ],
+    builder: (context, controller, child) => TextFormField(
+      controller: _destination,
+      focusNode: _destinationFocus,
+      textInputAction: TextInputAction.next,
+      onChanged: _searchLocations,
+      decoration: _decoration('Start typing a city or place').copyWith(
+        prefixIcon: const Icon(Icons.location_on_outlined, size: 20),
+        suffixIcon: _isSearchingLocations
+            ? const Padding(
+                padding: EdgeInsets.all(14),
+                child: SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            : null,
+      ),
+      validator: (value) =>
+          value == null || value.trim().isEmpty ? 'Required' : null,
+    ),
+  );
 
   InputDecoration _decoration(String hint, {String? prefix, IconData? icon}) =>
       InputDecoration(
@@ -1524,18 +1843,18 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
     if (value != null) setState(() => _startTime = value);
   }
 
-  Future<void> _pickCoverImage() async {
-    final image = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
+  Future<void> _pickGalleryImages() async {
+    final images = await ImagePicker().pickMultiImage(
       imageQuality: 85,
       maxWidth: 1800,
+      limit: 8 - _galleryImageUrls.length - _pendingGalleryBytes.length,
     );
-    if (image == null) return;
-    final bytes = await image.readAsBytes();
+    if (images.isEmpty) return;
+    final bytes = await Future.wait(images.map((image) => image.readAsBytes()));
     if (!mounted) return;
     setState(() {
-      _pendingImageBytes = bytes;
-      _pendingImageName = image.name;
+      _pendingGalleryBytes.addAll(bytes);
+      _pendingGalleryNames.addAll(images.map((image) => image.name));
     });
   }
 
@@ -1577,6 +1896,7 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
       hostInitials: widget.initialTrip?.hostInitials ?? '',
       hostProfilePhotoUrl: widget.initialTrip?.hostProfilePhotoUrl,
       imageUrl: _imageUrl,
+      galleryImageUrls: [..._galleryImageUrls],
       gender: _gender,
       minAge: _ages.start.round(),
       maxAge: _ages.end.round(),
@@ -1612,6 +1932,29 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
         return;
       }
     }
+    final galleryUrls = [..._galleryImageUrls];
+    if (_pendingGalleryBytes.isNotEmpty) {
+      setState(() => _isUploadingImage = true);
+      try {
+        for (var index = 0; index < _pendingGalleryBytes.length; index++) {
+          galleryUrls.add(
+            await widget.onUploadGalleryImage(
+              tripId,
+              _pendingGalleryBytes[index],
+              _pendingGalleryNames[index],
+              index,
+            ),
+          );
+        }
+      } catch (error) {
+        if (!mounted) return;
+        setState(() => _isUploadingImage = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not upload trip photos: $error')),
+        );
+        return;
+      }
+    }
     if (!mounted) return;
     setState(() => _isUploadingImage = false);
     widget.onPublish(
@@ -1633,7 +1976,8 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
         hostName: widget.initialTrip?.hostName ?? 'Morgan Lee',
         hostInitials: widget.initialTrip?.hostInitials ?? 'ML',
         hostProfilePhotoUrl: widget.initialTrip?.hostProfilePhotoUrl,
-        imageUrl: coverUrl.isEmpty ? _tokyo : coverUrl,
+        imageUrl: coverUrl,
+        galleryImageUrls: galleryUrls,
         gender: _gender,
         minAge: _ages.start.round(),
         maxAge: _ages.end.round(),
@@ -1703,27 +2047,128 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
               width: double.infinity,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: _pendingImageBytes != null
-                    ? Image.memory(_pendingImageBytes!, fit: BoxFit.cover)
-                    : TravelImage(
-                        url: _imageUrl.isEmpty ? _tokyo : _imageUrl,
-                        radius: 12,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (_pendingImageBytes != null)
+                      Image.memory(_pendingImageBytes!, fit: BoxFit.cover)
+                    else if (_imageUrl.isNotEmpty)
+                      TravelImage(url: _imageUrl, radius: 12)
+                    else
+                      const ColoredBox(
+                        color: _lavender,
+                        child: Icon(
+                          Icons.landscape_outlined,
+                          size: 48,
+                          color: _muted,
+                        ),
                       ),
+                    if (_isFindingCover)
+                      const ColoredBox(
+                        color: Color(0x66000000),
+                        child: Center(
+                          child: CircularProgressIndicator(color: Colors.white),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: _isUploadingImage ? null : _pickCoverImage,
-              icon: const Icon(Icons.add_photo_alternate_outlined),
-              label: Text(
-                _imageUrl.isEmpty && _pendingImageBytes == null
-                    ? 'Add photo'
-                    : 'Change photo',
-              ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed:
+                      _isUploadingImage ||
+                          _galleryImageUrls.length +
+                                  _pendingGalleryBytes.length >=
+                              8
+                      ? null
+                      : _pickGalleryImages,
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                  label: const Text('Add your photos'),
+                ),
+                if (_imageUrl.isNotEmpty || _pendingImageBytes != null)
+                  OutlinedButton.icon(
+                    onPressed: _isUploadingImage ? null : _removeCover,
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Remove photo'),
+                  ),
+                if (!_automaticCoverEnabled)
+                  TextButton.icon(
+                    onPressed: _isUploadingImage ? null : _useDestinationCover,
+                    icon: const Icon(Icons.auto_awesome_outlined),
+                    label: const Text('Use destination photo'),
+                  ),
+              ],
             ),
+            if (_automaticCoverEnabled && _imageUrl.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              const Text(
+                'Suggested destination photo from Wikipedia/Wikimedia Commons',
+                style: TextStyle(fontSize: 11, color: _muted),
+              ),
+            ],
+            if (_automaticCoverEnabled &&
+                _imageUrl.isEmpty &&
+                _coverMessage != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                _coverMessage!,
+                style: const TextStyle(fontSize: 11, color: _muted),
+              ),
+            ],
+            if (_galleryImageUrls.isNotEmpty ||
+                _pendingGalleryBytes.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const FieldLabel('YOUR TRIP PHOTOS'),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 92,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    for (
+                      var index = 0;
+                      index < _galleryImageUrls.length;
+                      index++
+                    )
+                      _GalleryPhoto(
+                        image: TravelImage(
+                          url: _galleryImageUrls[index],
+                          radius: 10,
+                        ),
+                        onRemove: () =>
+                            setState(() => _galleryImageUrls.removeAt(index)),
+                      ),
+                    for (
+                      var index = 0;
+                      index < _pendingGalleryBytes.length;
+                      index++
+                    )
+                      _GalleryPhoto(
+                        image: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Image.memory(
+                            _pendingGalleryBytes[index],
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        onRemove: () => setState(() {
+                          _pendingGalleryBytes.removeAt(index);
+                          _pendingGalleryNames.removeAt(index);
+                        }),
+                      ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 18),
             const FieldLabel('DESTINATION'),
-            _field(_destination, 'e.g. Tokyo, Japan'),
+            const SizedBox(height: 8),
+            _destinationField(),
             const SizedBox(height: 18),
             Row(
               children: [
@@ -3281,7 +3726,11 @@ class _Status extends StatelessWidget {
 }
 
 class _Counter extends StatelessWidget {
-  const _Counter();
+  const _Counter({required this.current, required this.total});
+
+  final int current;
+  final int total;
+
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
@@ -3289,9 +3738,9 @@ class _Counter extends StatelessWidget {
       color: Colors.white.withValues(alpha: .22),
       borderRadius: BorderRadius.circular(99),
     ),
-    child: const Text(
-      '1 / 4',
-      style: TextStyle(
+    child: Text(
+      '$current / $total',
+      style: const TextStyle(
         color: Colors.white,
         fontSize: 11,
         fontWeight: FontWeight.w700,
@@ -3312,10 +3761,47 @@ class TravelImage extends StatelessWidget {
     child: CachedNetworkImage(
       imageUrl: url,
       fit: BoxFit.cover,
-      placeholder: (_, __) => const ColoredBox(color: Color(0xFFEDE9FE)),
-      errorWidget: (_, __, ___) => const ColoredBox(
+      placeholder: (_, url) => const ColoredBox(color: Color(0xFFEDE9FE)),
+      errorWidget: (_, url, error) => const ColoredBox(
         color: Color(0xFFEDE9FE),
         child: Icon(Icons.image_not_supported_outlined),
+      ),
+    ),
+  );
+}
+
+class _GalleryPhoto extends StatelessWidget {
+  const _GalleryPhoto({required this.image, required this.onRemove});
+
+  final Widget image;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(right: 10),
+    child: SizedBox(
+      width: 112,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          image,
+          Positioned(
+            right: 4,
+            top: 4,
+            child: Material(
+              color: Colors.black54,
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: onRemove,
+                child: const Padding(
+                  padding: EdgeInsets.all(5),
+                  child: Icon(Icons.close, size: 16, color: Colors.white),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     ),
   );
