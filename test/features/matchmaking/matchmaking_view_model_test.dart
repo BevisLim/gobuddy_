@@ -2,7 +2,7 @@ import 'package:flutter_mvvm_riverpod/features/matchmaking/model/matchmaking_mod
 import 'package:flutter_mvvm_riverpod/features/matchmaking/model/matchmaking_notification.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/model/matchmaking_page.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/repository/matchmaking_repository.dart';
-import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/view_model/matchmaking_view_model.dart';
+import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/matchmaking_view_model.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 

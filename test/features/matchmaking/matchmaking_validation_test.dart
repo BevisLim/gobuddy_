@@ -1,7 +1,7 @@
 import 'package:flutter_mvvm_riverpod/features/matchmaking/model/matchmaking_models.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/model/matchmaking_notification.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/model/matchmaking_validation.dart';
-import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/state/matchmaking_state.dart';
+import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/matchmaking_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

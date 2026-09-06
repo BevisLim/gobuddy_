@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/model/matchmaking_page.dart';
 import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/matchmaking_shell_screen.dart';
-import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/view_model/matchmaking_view_model.dart';
+import 'package:flutter_mvvm_riverpod/features/matchmaking/ui/matchmaking_view_model.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -61,8 +61,9 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const ProviderScope(
-        child: MaterialApp(home: MatchmakingShellScreen())));
+    await tester.pumpWidget(
+      const ProviderScope(child: MaterialApp(home: MatchmakingShellScreen())),
+    );
     await tester.pump();
     expect(find.text('Tokyo, Japan'), findsNothing);
     expect(find.text('Kyoto, Japan'), findsNothing);
@@ -75,8 +76,9 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const ProviderScope(
-        child: MaterialApp(home: MatchmakingShellScreen())));
+    await tester.pumpWidget(
+      const ProviderScope(child: MaterialApp(home: MatchmakingShellScreen())),
+    );
     await tester.tap(find.byIcon(Icons.luggage_outlined));
     await tester.pump();
 
@@ -90,8 +92,9 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const ProviderScope(
-        child: MaterialApp(home: MatchmakingShellScreen())));
+    await tester.pumpWidget(
+      const ProviderScope(child: MaterialApp(home: MatchmakingShellScreen())),
+    );
     expect(find.text('GoBuddy'), findsOneWidget);
     expect(find.text('Sign in to discover trips'), findsOneWidget);
     expect(find.byIcon(Icons.add), findsNothing);

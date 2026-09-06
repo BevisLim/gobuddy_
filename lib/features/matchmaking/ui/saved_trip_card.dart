@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../../model/matchmaking_models.dart';
+import '../model/matchmaking_models.dart';
 
 class SavedTripCard extends StatelessWidget {
   const SavedTripCard({
