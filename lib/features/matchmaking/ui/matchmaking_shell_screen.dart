@@ -26,6 +26,7 @@ import 'matchmaking_view_model.dart';
 import '../../safety/repository/safety_check_in_configuration_repository.dart';
 import '../../safety/ui/widgets/user_safety_actions.dart';
 import '../../user_account/ui/view_model/user_account_view_model.dart';
+import '../../common/ui/widgets/verified_access_gate.dart';
 
 part 'discover_page.dart';
 part 'filter_page.dart';
@@ -302,6 +303,7 @@ class _MatchmakingShellScreenState
             .value ??
         1;
     final viewModel = ref.read(matchmakingViewModelProvider.notifier);
+    final isVerified = accountState?.user?.isVerified == true;
     final page = state.page;
     final content = switch (page) {
       MatchmakingPage.discover => DiscoverPage(
@@ -315,6 +317,7 @@ class _MatchmakingShellScreenState
         notifications: state.notifications,
         unreadNotificationCount: state.unreadNotificationCount,
         profilePhotoUrl: accountState?.user?.profilePhoto,
+        isVerified: isVerified,
         currency: currency,
         currencyRate: currencyRate,
         onNotificationsRead: viewModel.markNotificationsRead,
@@ -366,7 +369,9 @@ class _MatchmakingShellScreenState
         onUploadGalleryImage: viewModel.uploadTripGalleryPhoto,
         onDelete: () => viewModel.deleteTrip(state.selectedTrip!.id),
       ),
-      MatchmakingPage.myTrips => MyTripsPage(
+      MatchmakingPage.myTrips => VerifiedAccessGate(
+        featureName: 'My Trips',
+        child: MyTripsPage(
         isLoading: state.isLoading,
         errorMessage: state.errorMessage,
         trips: state.ownedTrips,
@@ -384,7 +389,8 @@ class _MatchmakingShellScreenState
         onLeaveTrip: viewModel.leaveTrip,
         onDismissRemovedTrip: viewModel.dismissRemovedTrip,
         onOpenTimeline: (id) => context.push(Routes.tripTimeline(id)),
-        onRemoveRequest: viewModel.removeRequest,
+          onRemoveRequest: viewModel.removeRequest,
+        ),
       ),
       MatchmakingPage.request => RequestPage(
         trip: state.selectedTrip!,
@@ -469,7 +475,7 @@ class _MatchmakingShellScreenState
             )
           : null,
       floatingActionButton:
-          page == MatchmakingPage.discover && state.isAuthenticated
+          page == MatchmakingPage.discover && state.isAuthenticated && isVerified
           ? FloatingActionButton(
               onPressed: () => viewModel.goTo(MatchmakingPage.create),
               backgroundColor: _violet,

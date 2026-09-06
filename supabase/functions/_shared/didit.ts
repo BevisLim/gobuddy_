@@ -130,6 +130,32 @@ export function rejectionReason(decision: unknown): string | null {
   return reasons.size ? [...reasons].join("; ").slice(0, 1000) : null;
 }
 
+/// Returns only a calendar-valid ISO date from an approved V3 ID document.
+export function verifiedDateOfBirth(decision: unknown): string | null {
+  if (!decision || typeof decision !== "object") return null;
+  const checks = (decision as Record<string, unknown>).id_verifications;
+  if (!Array.isArray(checks)) return null;
+  for (const value of checks) {
+    if (!value || typeof value !== "object") continue;
+    const check = value as Record<string, unknown>;
+    if (check.status !== "Approved" || typeof check.date_of_birth !== "string") {
+      continue;
+    }
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(check.date_of_birth);
+    if (!match) continue;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (
+      date.getUTCFullYear() === year &&
+      date.getUTCMonth() === month - 1 &&
+      date.getUTCDate() === day
+    ) return check.date_of_birth;
+  }
+  return null;
+}
+
 export function validVerificationUrl(value: unknown): value is string {
   if (typeof value !== "string") return false;
   try {

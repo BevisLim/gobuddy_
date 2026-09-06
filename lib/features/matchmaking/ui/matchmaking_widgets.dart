@@ -227,7 +227,7 @@ class OutlineButton extends StatelessWidget {
 
 class SmallPrimary extends StatelessWidget {
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   const SmallPrimary({super.key, required this.label, required this.onTap});
   @override
   Widget build(BuildContext context) => SizedBox(
@@ -249,7 +249,7 @@ class SmallPrimary extends StatelessWidget {
 
 class SmallOutline extends StatelessWidget {
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   const SmallOutline({super.key, required this.label, required this.onTap});
   @override
   Widget build(BuildContext context) => SizedBox(
