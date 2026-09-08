@@ -161,7 +161,7 @@ class _TripConversationCard extends StatelessWidget {
       onTap: () {
         final path = wasRemoved
             ? '${Routes.tripMessages(trip.id)}?removed=true'
-            : Routes.tripTimeline(trip.id);
+            : Routes.tripMessages(trip.id);
         context.push(path);
       },
     ),

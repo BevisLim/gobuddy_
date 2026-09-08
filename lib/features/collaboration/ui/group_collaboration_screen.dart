@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_mvvm_riverpod/core/routing/routes.dart';
 import 'package:flutter_mvvm_riverpod/core/environment/env.dart';
 import 'package:flutter_mvvm_riverpod/core/permissions/app_permission_service.dart';
+import 'package:flutter_mvvm_riverpod/features/common/ui/widgets/app_module_navigation.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/model/collaboration_models.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/repository/collaboration_repository.dart';
 import 'package:flutter_mvvm_riverpod/features/collaboration/ui/call_screen.dart';
@@ -397,8 +398,14 @@ class _WorkspaceState extends ConsumerState<_Workspace> {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          onPressed: () => context.go(Routes.tripTimeline(state.tripId)),
-          tooltip: 'Back to timeline',
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go(Routes.messages);
+            }
+          },
+          tooltip: 'Back',
           icon: const Icon(Icons.arrow_back),
         ),
         title: InkWell(
@@ -499,6 +506,7 @@ class _WorkspaceState extends ConsumerState<_Workspace> {
         ],
       ),
       body: _ChatTab(state: state),
+      bottomNavigationBar: const AppModuleNavigation(selectedIndex: 2),
     );
   }
 }
@@ -1914,38 +1922,7 @@ class _TripTimelineScreenState extends ConsumerState<_TripTimelineScreen> {
           ],
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: 2,
-        onDestinationSelected: (index) {
-          final route = switch (index) {
-            0 || 1 => Routes.main,
-            2 => Routes.myTrips,
-            3 => Routes.tripMessages(state.tripId),
-            _ => Routes.userAccount,
-          };
-          context.go(route);
-        },
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
-          NavigationDestination(
-            icon: Icon(Icons.search_rounded),
-            label: 'Discover',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.location_on_outlined),
-            label: 'Trips',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline),
-            selectedIcon: Icon(Icons.chat_bubble),
-            label: 'Messages',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            label: 'Profile',
-          ),
-        ],
-      ),
+      bottomNavigationBar: const AppModuleNavigation(selectedIndex: 1),
     );
   }
 
@@ -3086,75 +3063,93 @@ Future<void> _showEditActivityDialog(
   BuildContext context,
   TripActivity activity,
   GroupCollaborationViewModel viewModel,
-) async {
-  final titleController = TextEditingController(text: activity.title);
-  final locationController = TextEditingController(
-    text: activity.location ?? '',
-  );
-  var submitting = false;
+) => showDialog<void>(
+  context: context,
+  builder: (_) => _EditActivityDialog(activity: activity, viewModel: viewModel),
+);
 
-  await showDialog<void>(
-    context: context,
-    builder: (dialogContext) => StatefulBuilder(
-      builder: (dialogContext, setDialogState) => AlertDialog(
-        title: const Text('Edit activity'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: titleController,
-              decoration: const InputDecoration(labelText: 'Activity title'),
-            ),
-            TextField(
-              controller: locationController,
-              decoration: const InputDecoration(labelText: 'Location'),
-            ),
-            const SizedBox(height: 12),
-            Text('Time: ${_shortDate(activity.startTime)}'),
-          ],
+class _EditActivityDialog extends StatefulWidget {
+  const _EditActivityDialog({required this.activity, required this.viewModel});
+
+  final TripActivity activity;
+  final GroupCollaborationViewModel viewModel;
+
+  @override
+  State<_EditActivityDialog> createState() => _EditActivityDialogState();
+}
+
+class _EditActivityDialogState extends State<_EditActivityDialog> {
+  late final TextEditingController _titleController;
+  late final TextEditingController _locationController;
+  bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.activity.title);
+    _locationController = TextEditingController(
+      text: widget.activity.location ?? '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _locationController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() => _submitting = true);
+    try {
+      final location = _locationController.text.trim();
+      await widget.viewModel.editActivity(
+        activity: widget.activity,
+        title: _titleController.text.trim(),
+        startTime: widget.activity.startTime,
+        location: location.isEmpty ? null : location,
+      );
+      if (mounted) Navigator.pop(context);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$error')));
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Edit activity'),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextField(
+          controller: _titleController,
+          decoration: const InputDecoration(labelText: 'Activity title'),
         ),
-        actions: [
-          TextButton(
-            onPressed: submitting ? null : () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: submitting
-                ? null
-                : () async {
-                    setDialogState(() => submitting = true);
-                    try {
-                      await viewModel.editActivity(
-                        activity: activity,
-                        title: titleController.text.trim(),
-                        startTime: activity.startTime,
-                        location: locationController.text.trim().isEmpty
-                            ? null
-                            : locationController.text.trim(),
-                      );
-                      if (dialogContext.mounted) {
-                        Navigator.pop(dialogContext);
-                      }
-                    } catch (error) {
-                      if (dialogContext.mounted) {
-                        ScaffoldMessenger.of(
-                          dialogContext,
-                        ).showSnackBar(SnackBar(content: Text('$error')));
-                      }
-                    } finally {
-                      if (dialogContext.mounted) {
-                        setDialogState(() => submitting = false);
-                      }
-                    }
-                  },
-            child: Text(submitting ? 'Saving...' : 'Save changes'),
-          ),
-        ],
-      ),
+        TextField(
+          controller: _locationController,
+          decoration: const InputDecoration(labelText: 'Location'),
+        ),
+        const SizedBox(height: 12),
+        Text('Time: ${_shortDate(widget.activity.startTime)}'),
+      ],
     ),
+    actions: [
+      TextButton(
+        onPressed: _submitting ? null : () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: _submitting ? null : _save,
+        child: Text(_submitting ? 'Saving...' : 'Save changes'),
+      ),
+    ],
   );
-  titleController.dispose();
-  locationController.dispose();
 }
 
 class _FilesTab extends ConsumerWidget {
