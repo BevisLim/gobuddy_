@@ -1,3 +1,5 @@
+/// <reference path="../editor-compat.d.ts" />
+
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 type CleanupQueueRow = {
