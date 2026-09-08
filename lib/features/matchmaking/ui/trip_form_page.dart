@@ -56,7 +56,6 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
   bool _isUploadingImage = false;
   String? _dateError;
   final _destinationFocus = FocusNode();
-  final _destinationMenu = MenuController();
   late final LocationSearchService _locationSearch;
   late final DestinationImageService _destinationImageSearch;
   Timer? _locationDebounce;
@@ -153,22 +152,6 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
   void _onDestinationFocusChanged() {
     if (!mounted) return;
     setState(() {});
-    if (_destinationFocus.hasFocus && _destination.text.trim().length >= 2) {
-      _openDestinationMenu();
-    } else if (_destinationMenu.isOpen) {
-      _destinationMenu.close();
-    }
-  }
-
-  void _openDestinationMenu() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted &&
-          _destinationFocus.hasFocus &&
-          _destination.text.trim().length >= 2 &&
-          !_destinationMenu.isOpen) {
-        _destinationMenu.open();
-      }
-    });
   }
 
   void _searchLocations(String value) {
@@ -185,7 +168,6 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
     _locationDebounce?.cancel();
     final request = ++_locationRequest;
     if (value.trim().length < 2) {
-      if (_destinationMenu.isOpen) _destinationMenu.close();
       setState(() {
         _locationSuggestions = const [];
         _isSearchingLocations = false;
@@ -193,7 +175,6 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
       return;
     }
     setState(() => _isSearchingLocations = true);
-    _openDestinationMenu();
     _locationDebounce = Timer(const Duration(milliseconds: 400), () async {
       try {
         final results = await _locationSearch.search(value);
@@ -206,7 +187,6 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
                 'No matching destination was found. Enter a real place or add your own photos.';
           }
         });
-        _openDestinationMenu();
       } catch (_) {
         if (!mounted || request != _locationRequest) return;
         setState(() {
@@ -232,7 +212,6 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
       _isSearchingLocations = false;
     });
     _destinationFocus.unfocus();
-    if (_destinationMenu.isOpen) _destinationMenu.close();
     _scheduleAutomaticCover(location, immediate: true);
   }
 
@@ -310,59 +289,73 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
     _scheduleAutomaticCover(_destination.text, immediate: true);
   }
 
-  Widget _destinationField() => MenuAnchor(
-    controller: _destinationMenu,
-    crossAxisUnconstrained: false,
-    alignmentOffset: const Offset(0, 4),
-    style: const MenuStyle(
-      maximumSize: WidgetStatePropertyAll(Size(double.infinity, 300)),
-    ),
-    menuChildren: [
-      if (_isSearchingLocations)
-        const MenuItemButton(
-          onPressed: null,
-          leadingIcon: SizedBox.square(
-            dimension: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
+  Widget _destinationField() {
+    final showSuggestions =
+        _destinationFocus.hasFocus && _destination.text.trim().length >= 2;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextFormField(
+          controller: _destination,
+          focusNode: _destinationFocus,
+          textInputAction: TextInputAction.next,
+          onChanged: _searchLocations,
+          decoration: _decoration('Start typing a city or place').copyWith(
+            prefixIcon: const Icon(Icons.location_on_outlined, size: 20),
+            suffixIcon: _isSearchingLocations
+                ? const Padding(
+                    padding: EdgeInsets.all(14),
+                    child: SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : null,
           ),
-          child: Text('Searching for locations...'),
+          validator: (value) => value == null || value.trim().isEmpty
+              ? 'Required'
+              : _selectedDestination != value.trim()
+              ? 'Choose a destination from the suggestions'
+              : null,
         ),
-      for (final location in _locationSuggestions)
-        MenuItemButton(
-          leadingIcon: const Icon(Icons.place_outlined, color: _violet),
-          onPressed: () => _selectLocation(location),
-          child: Text(location),
-        ),
-      if (!_isSearchingLocations && _locationSuggestions.isEmpty)
-        const MenuItemButton(
-          onPressed: null,
-          child: Text('No matching destinations found.'),
-        ),
-    ],
-    builder: (context, controller, child) => TextFormField(
-      controller: _destination,
-      focusNode: _destinationFocus,
-      textInputAction: TextInputAction.next,
-      onChanged: _searchLocations,
-      decoration: _decoration('Start typing a city or place').copyWith(
-        prefixIcon: const Icon(Icons.location_on_outlined, size: 20),
-        suffixIcon: _isSearchingLocations
-            ? const Padding(
-                padding: EdgeInsets.all(14),
-                child: SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              )
-            : null,
-      ),
-      validator: (value) => value == null || value.trim().isEmpty
-          ? 'Required'
-          : _selectedDestination != value.trim()
-          ? 'Choose a destination from the suggestions'
-          : null,
-    ),
-  );
+        if (showSuggestions)
+          Card(
+            margin: const EdgeInsets.only(top: 4),
+            clipBehavior: Clip.antiAlias,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 300),
+              child: _isSearchingLocations
+                  ? const ListTile(
+                      leading: SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      title: Text('Searching for locations...'),
+                    )
+                  : _locationSuggestions.isEmpty
+                  ? const ListTile(
+                      title: Text('No matching destinations found.'),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _locationSuggestions.length,
+                      itemBuilder: (context, index) {
+                        final location = _locationSuggestions[index];
+                        return ListTile(
+                          leading: const Icon(
+                            Icons.place_outlined,
+                            color: _violet,
+                          ),
+                          title: Text(location),
+                          onTap: () => _selectLocation(location),
+                        );
+                      },
+                    ),
+            ),
+          ),
+      ],
+    );
+  }
 
   InputDecoration _decoration(String hint, {String? prefix, IconData? icon}) =>
       InputDecoration(
@@ -597,6 +590,13 @@ class _InteractiveTripFormPageState extends State<InteractiveTripFormPage> {
     }
     if (!mounted) return;
     setState(() => _isUploadingImage = false);
+
+    // The publish callback immediately replaces this form with My Trips.
+    // Let focused fields detach before replacing the form with My Trips.
+    FocusManager.instance.primaryFocus?.unfocus();
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+
     widget.onPublish(
       MatchmakingTrip(
         id: tripId,
